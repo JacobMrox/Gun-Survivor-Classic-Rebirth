@@ -1,4 +1,4 @@
-/**
+﻿/**
 * Copyright (C) 2020 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
@@ -21,6 +21,9 @@
 #pragma comment (lib, "d3dx8.lib")
 #pragma comment (lib, "legacy_stdio_definitions.lib")
 #pragma comment(lib, "winmm.lib") // needed for timeBeginPeriod()/timeEndPeriod()
+#include "cd_bypass.h"
+#include "dinputhook.h"
+#include "aim_shared.h"
 
 Direct3D8EnableMaximizedWindowedModeShimProc m_pDirect3D8EnableMaximizedWindowedModeShim;
 ValidatePixelShaderProc m_pValidatePixelShader;
@@ -28,7 +31,6 @@ ValidateVertexShaderProc m_pValidateVertexShader;
 DebugSetMuteProc m_pDebugSetMute;
 Direct3DCreate8Proc m_pDirect3DCreate8;
 
-HWND g_hFocusWindow = NULL;
 HMODULE g_hWrapperModule = NULL;
 
 HMODULE d3d8dll = NULL;
@@ -41,6 +43,8 @@ bool bBorderlessFullscreen;
 bool bAlwaysOnTop;
 bool bDoNotNotifyOnTaskSwitch;
 bool bDisplayFPSCounter;
+bool bShowWindowBorder; // read from INI // Show window border in windowed mode; added option
+bool bLockCursorToWindow;//Another extra option
 float fFPSLimit;
 int nFullScreenRefreshRateInHz;
 
@@ -50,7 +54,82 @@ char WinDir[MAX_PATH + 1];
 // WORD classAtom, ULONG_PTR WndProcPtr
 std::vector<std::pair<WORD, ULONG_PTR>> WndProcList;
 
+// Hook the target module's IAT to redirect Direct3D8Create to our function
 void HookModule(HMODULE hmod);
+
+// Resident Evil Survivor Crosshair FIX [Custom Crosshair hooked to D3D8 EndScene]
+// ---------------- Overlay Crosshair (D3D8) ----------------
+static bool  gDrawOverlayCrosshair = true;
+
+extern float gAimSensX, gAimSensY; // from dinputhook.cpp
+extern bool  gUseDIMouseForCrosshair; // from dinputhook.cpp
+extern "C" void InstallDInputHook();// from dinputhook.cpp
+
+//bool gUseRelativeDIForCrosshair = false;
+
+static LPDIRECT3DTEXTURE8 gCrossTex = nullptr;
+static bool gCrossLoaded = false;
+
+// Forward declarations (prevents "undefined" if order changes)
+static void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev);
+static void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h);
+
+static void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev)
+{
+    if (gCrossLoaded) return;
+    gCrossLoaded = true;
+
+    // Put crosshair.bmp next to gun_bio.exe
+    HRESULT hr = D3DXCreateTextureFromFileA(dev, "FIXRES/crosshair.png", &gCrossTex);
+    if (FAILED(hr)) gCrossTex = nullptr;
+}
+
+struct TLVERTEX8
+{
+    float x, y, z, rhw;
+    float u, v;
+};
+#define FVF_TLVERTEX8 (D3DFVF_XYZRHW | D3DFVF_TEX1)
+
+static void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h)
+{
+    TLVERTEX8 v[4] =
+    {
+        { x,     y,     0.0f, 1.0f, 0.0f, 0.0f },
+        { x + w,   y,     0.0f, 1.0f, 1.0f, 0.0f },
+        { x,     y + h,   0.0f, 1.0f, 0.0f, 1.0f },
+        { x + w,   y + h,   0.0f, 1.0f, 1.0f, 1.0f },
+    };
+
+    // Save a few states (minimal; good enough for HUD)
+    DWORD oldZ = 0, oldAlpha = 0, oldSrc = 0, oldDst = 0;
+    dev->GetRenderState(D3DRS_ZENABLE, &oldZ);
+    dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlpha);
+    dev->GetRenderState(D3DRS_SRCBLEND, &oldSrc);
+    dev->GetRenderState(D3DRS_DESTBLEND, &oldDst);
+
+    dev->SetTexture(0, tex);
+    dev->SetVertexShader(FVF_TLVERTEX8);
+
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+
+    dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+
+    dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(TLVERTEX8));
+
+    // Restore states
+    dev->SetRenderState(D3DRS_ZENABLE, oldZ);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlpha);
+    dev->SetRenderState(D3DRS_SRCBLEND, oldSrc);
+    dev->SetRenderState(D3DRS_DESTBLEND, oldDst);
+}
+// ---------------------------------------------------------
+
+// Elisha Riedlinger Frame Limiter Class
 
 class FrameLimiter
 {
@@ -64,6 +143,7 @@ public:
     static inline ID3DXFont* pTimeFont = nullptr;
 
 public:
+	// Elisha Riedlinger Frame Limiter Methods
     enum FPSLimitMode { FPS_NONE, FPS_REALTIME, FPS_ACCURATE };
     static void Init(FPSLimitMode mode)
     {
@@ -200,6 +280,27 @@ private:
 
 FrameLimiter::FPSLimitMode mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
 
+// IDirect3DDevice8 Hooks
+
+// Fix Resident Evil Survivor Crosshair issue by adjusting scissor rect
+/*
+HRESULT m_IDirect3DDevice8::SetScissorRect(CONST RECT* pRect)
+{
+    if (!pRect)
+        return ProxyInterface->SetScissorRect(pRect);
+
+    RECT r = *pRect;
+
+    // If scissor is half width, expand it
+    if (gViewportFixEnabled && gBBWidth && (r.right - r.left) == (LONG)(gBBWidth / 2))
+    {
+        r.left = 0;
+        r.right = (LONG)gBBWidth;
+    }
+
+    return ProxyInterface->SetScissorRect(&r);
+}
+*/
 HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 {
     if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_REALTIME)
@@ -210,10 +311,95 @@ HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRe
     return ProxyInterface->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
 }
 
+/*
 HRESULT m_IDirect3DDevice8::EndScene()
 {
     if (bDisplayFPSCounter)
         FrameLimiter::ShowFPS(ProxyInterface);
+
+    return ProxyInterface->EndScene();
+}*/
+
+// -----------------------------------------------------------------
+// Update cursor clipping to window
+// -----------------------------------------------------------------
+
+static void UpdateCursorClip()
+{
+    if (!bLockCursorToWindow || !g_hFocusWindow)
+    {
+        ClipCursor(NULL);
+        return;
+    }
+
+    if (GetForegroundWindow() != g_hFocusWindow)
+    {
+        ClipCursor(NULL);
+        return;
+    }
+
+    RECT rc;
+    GetClientRect(g_hFocusWindow, &rc);
+
+    POINT tl{ rc.left, rc.top };
+    POINT br{ rc.right, rc.bottom };
+    ClientToScreen(g_hFocusWindow, &tl);
+    ClientToScreen(g_hFocusWindow, &br);
+
+    RECT clip{ tl.x, tl.y, br.x, br.y };
+    ClipCursor(&clip);
+}
+
+
+// -----------------------------------------------------------------
+// Modified EndScene to include overlay crosshair
+// -----------------------------------------------------------------
+
+//UpdateCursorClip();
+
+HRESULT m_IDirect3DDevice8::EndScene()
+{
+	// Update cursor clipping to window
+    UpdateCursorClip();
+
+	// Display FPS Counter
+    if (bDisplayFPSCounter)
+        FrameLimiter::ShowFPS(ProxyInterface);
+	
+    // Draw overlay crosshair
+    if (gDrawOverlayCrosshair && g_hFocusWindow)
+    {
+        RECT r{};
+        GetClientRect(g_hFocusWindow, &r);
+        int cw = r.right - r.left;
+        int ch = r.bottom - r.top;
+
+        if (cw > 0 && ch > 0)
+        {
+            if (!gAimInit)
+            {
+                gAimX = cw * 0.5f;
+                gAimY = ch * 0.5f;
+                gAimInit = true;
+            }
+
+            EnsureCrosshairTexture(ProxyInterface);
+
+            if (gCrossTex)
+            {
+                // clamp and persist
+                if (gAimX < 0) gAimX = 0;
+                if (gAimY < 0) gAimY = 0;
+                if (gAimX > cw - 1) gAimX = (float)cw - 1;
+                if (gAimY > ch - 1) gAimY = (float)ch - 1;
+
+                const float size = 32.0f;
+                DrawTexturedQuad(ProxyInterface, gCrossTex,
+                    gAimX - size * 0.5f, gAimY - size * 0.5f,
+                    size, size);
+            }
+        }
+    }
 
     return ProxyInterface->EndScene();
 }
@@ -231,10 +417,25 @@ void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
     int left = (int)info.rcMonitor.left;
     int top = (int)info.rcMonitor.top;
 
+	// Set and fix Window Title [Gun Suruivor]
+    SetWindowTextA(g_hFocusWindow, "RESIDENT EVIL: SURVIVOR PC");//fix window title
+
+	// Adjust window style and position
+
     if (!bBorderlessFullscreen)
     {
+        LONG style = GetWindowLong(hwnd, GWL_STYLE);
+
         left += (int)(((float)DesktopResX / 2.0f) - ((float)pPresentationParameters->BackBufferWidth / 2.0f));
         top += (int)(((float)DesktopResY / 2.0f) - ((float)pPresentationParameters->BackBufferHeight / 2.0f));
+
+        if (bShowWindowBorder)
+            style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;   // border + title
+        else
+            style = (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP;   // no border
+
+        SetWindowLong(hwnd, GWL_STYLE, style);
+        SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
     }
 
     pPresentationParameters->Windowed = 1;
@@ -267,6 +468,7 @@ void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
             }
             SetWindowPos(hwnd, bAlwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST, left, top, DesktopResX, DesktopResY, uFlags);
         }
+
         else
         {
             if (!bCenterWindow)
@@ -340,6 +542,7 @@ HRESULT m_IDirect3D8::CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFo
 
 HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters)
 {
+    //Rest of Elisha Riedlinger wrapper code
     if (bForceWindowedMode)
         ForceWindowed(pPresentationParameters);
 
@@ -814,6 +1017,10 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
             m_pDebugSetMute = (DebugSetMuteProc)GetProcAddress(d3d8dll, "DebugSetMute");
             m_pDirect3DCreate8 = (Direct3DCreate8Proc)GetProcAddress(d3d8dll, "Direct3DCreate8");
 
+            //Resident Evil Survivor Fixes
+            InstallCDBypass();//Install CD drive checks bypass
+            InstallDInputHook();//Install DirectInput hook to fix controller issues
+
             //ini
             HMODULE hm = NULL;
             GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)&Direct3DCreate8, &hm);
@@ -830,6 +1037,8 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
             bBorderlessFullscreen = GetPrivateProfileInt("FORCEWINDOWED", "BorderlessFullscreen", 0, path) != 0;
             bAlwaysOnTop = GetPrivateProfileInt("FORCEWINDOWED", "AlwaysOnTop", 0, path) != 0;
             bDoNotNotifyOnTaskSwitch = GetPrivateProfileInt("FORCEWINDOWED", "DoNotNotifyOnTaskSwitch", 0, path) != 0;
+            bShowWindowBorder = GetPrivateProfileInt("FORCEWINDOWED", "ShowWindowBorder", 1, path) != 0;
+            bLockCursorToWindow = GetPrivateProfileInt("FORCEWINDOWED", "LockCursorToWindow", 0, path) != 0;
             
             if (fFPSLimit > 0.0f)
             {
@@ -912,6 +1121,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         break;
         case DLL_PROCESS_DETACH:
         {
+			ClipCursor(NULL);//Unlock cursor in case it was locked to window
             if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
                 timeEndPeriod(1);
 
