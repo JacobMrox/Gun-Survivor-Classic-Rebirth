@@ -648,10 +648,10 @@ HRESULT m_IDirect3DDevice8::GetViewport(D3DVIEWPORT8 *pViewport)
 	return ProxyInterface->GetViewport(pViewport);
 }
 
-HRESULT m_IDirect3DDevice8::SetViewport(CONST D3DVIEWPORT8 *pViewport)
-{
-	return ProxyInterface->SetViewport(pViewport);
-}
+//HRESULT m_IDirect3DDevice8::SetViewport(CONST D3DVIEWPORT8 *pViewport)
+//{
+//	return ProxyInterface->SetViewport(pViewport);
+//}
 
 HRESULT m_IDirect3DDevice8::CreateVertexShader(THIS_ CONST DWORD* pDeclaration, CONST DWORD* pFunction, DWORD* pHandle, DWORD Usage)
 {

@@ -24,6 +24,7 @@
 #include "cd_bypass.h"
 #include "dinputhook.h"
 #include "aim_shared.h"
+#include "debug.h"
 
 Direct3D8EnableMaximizedWindowedModeShimProc m_pDirect3D8EnableMaximizedWindowedModeShim;
 ValidatePixelShaderProc m_pValidatePixelShader;
@@ -43,8 +44,10 @@ bool bBorderlessFullscreen;
 bool bAlwaysOnTop;
 bool bDoNotNotifyOnTaskSwitch;
 bool bDisplayFPSCounter;
-bool bShowWindowBorder; // read from INI // Show window border in windowed mode; added option
-bool bLockCursorToWindow;//Another extra option
+bool bShowWindowBorder;//Survivor Exclusive
+bool bLockCursorToWindow;//Survivor Exclusive
+int ForceWidth;//Survivor Exclusive
+int ForceHeight;//Survivor Exclusive
 float fFPSLimit;
 int nFullScreenRefreshRateInHz;
 
@@ -280,6 +283,83 @@ private:
 
 FrameLimiter::FPSLimitMode mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
 
+//Present params logger
+
+static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS* p)
+{
+    if (!p) return;
+
+    char b[512];
+    wsprintfA(b,
+        "[RES] %s: BB=%lux%lu  Win=%d  Swap=%lu  MS=%lu  Interval=%lu  hWnd=%p",
+        tag,
+        (unsigned long)p->BackBufferWidth,
+        (unsigned long)p->BackBufferHeight,
+        (int)p->Windowed,
+        (unsigned long)p->SwapEffect,
+        (unsigned long)p->MultiSampleType,
+        (unsigned long)p->FullScreen_PresentationInterval,
+        p->hDeviceWindow
+    );
+    LogLine(b);
+}
+
+//Viewport logger
+static void LogVP(const char* tag, const D3DVIEWPORT8* vp)
+{
+    if (!vp) { LogLine("[VP] %s (null)", tag); return; }
+    LogLine("[VP] %s X=%u Y=%u W=%u H=%u MinZ=%.3f MaxZ=%.3f",
+        tag, vp->X, vp->Y, vp->Width, vp->Height, vp->MinZ, vp->MaxZ);
+}
+
+//Log back buffer once 
+static UINT lastW = 0, lastH = 0;
+
+static void LogBackbufferOncePerChange(IDirect3DDevice8* dev)
+{
+    IDirect3DSurface8* bb = nullptr;
+    if (SUCCEEDED(dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
+    {
+        D3DSURFACE_DESC d{};
+        bb->GetDesc(&d);
+        bb->Release();
+
+        if (d.Width != lastW || d.Height != lastH)
+        {
+            lastW = d.Width; lastH = d.Height;
+            LogLine("[BB] Backbuffer now %ux%u fmt=%d", d.Width, d.Height, (int)d.Format);
+        }
+    }
+}
+
+// Helper; Resize window to get desired client area size
+
+static void ResizeClient(HWND hwnd, int clientW, int clientH)
+{
+    if (!hwnd || clientW <= 0 || clientH <= 0) return;
+
+    RECT rc = { 0, 0, clientW, clientH };
+    DWORD style = (DWORD)GetWindowLongPtr(hwnd, GWL_STYLE);
+    DWORD exStyle = (DWORD)GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+
+    AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+
+    int winW = rc.right - rc.left;
+    int winH = rc.bottom - rc.top;
+
+    SetWindowPos(hwnd, nullptr, 0, 0, winW, winH,
+        SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+}
+
+// Helper; Apply custom window title
+static void ApplyWindowTitle(HWND hwnd)
+{
+    if (hwnd && IsWindow(hwnd))
+        SetWindowTextA(hwnd, "RESIDENT EVIL: SURVIVOR PC");
+}
+
+
+
 // IDirect3DDevice8 Hooks
 
 // Fix Resident Evil Survivor Crosshair issue by adjusting scissor rect
@@ -308,7 +388,11 @@ HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRe
     else if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
         while (!FrameLimiter::Sync_SLP());
 
+    LogBackbufferOncePerChange(ProxyInterface);//debug
+
     return ProxyInterface->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
+
+    LogBackbufferOncePerChange(ProxyInterface);//debug
 }
 
 /*
@@ -356,30 +440,44 @@ static void UpdateCursorClip()
 // -----------------------------------------------------------------
 
 //UpdateCursorClip();
-
 HRESULT m_IDirect3DDevice8::EndScene()
 {
-	// Update cursor clipping to window
     UpdateCursorClip();
 
-	// Display FPS Counter
     if (bDisplayFPSCounter)
         FrameLimiter::ShowFPS(ProxyInterface);
-	
-    // Draw overlay crosshair
+
     if (gDrawOverlayCrosshair && g_hFocusWindow)
     {
-        RECT r{};
-        GetClientRect(g_hFocusWindow, &r);
-        int cw = r.right - r.left;
-        int ch = r.bottom - r.top;
+        // Query backbuffer size (the coordinate space that DrawPrimitiveUP uses here)
+        UINT bbW = 0, bbH = 0;
+        IDirect3DSurface8* bb = nullptr;
+        if (SUCCEEDED(ProxyInterface->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
+        {
+            D3DSURFACE_DESC d{};
+            if (SUCCEEDED(bb->GetDesc(&d)))
+            {
+                bbW = d.Width;
+                bbH = d.Height;
+            }
+            bb->Release();
+        }
 
-        if (cw > 0 && ch > 0)
+        // Fallback (should rarely happen)
+        if (bbW == 0 || bbH == 0)
+        {
+            RECT r{};
+            GetClientRect(g_hFocusWindow, &r);
+            bbW = (UINT)(r.right - r.left);
+            bbH = (UINT)(r.bottom - r.top);
+        }
+
+        if (bbW > 0 && bbH > 0)
         {
             if (!gAimInit)
             {
-                gAimX = cw * 0.5f;
-                gAimY = ch * 0.5f;
+                gAimX = (float)bbW * 0.5f;
+                gAimY = (float)bbH * 0.5f;
                 gAimInit = true;
             }
 
@@ -387,15 +485,16 @@ HRESULT m_IDirect3DDevice8::EndScene()
 
             if (gCrossTex)
             {
-                // clamp and persist
+                // clamp and persist IN BACKBUFFER SPACE
                 if (gAimX < 0) gAimX = 0;
                 if (gAimY < 0) gAimY = 0;
-                if (gAimX > cw - 1) gAimX = (float)cw - 1;
-                if (gAimY > ch - 1) gAimY = (float)ch - 1;
+                if (gAimX > (float)bbW - 1) gAimX = (float)bbW - 1;
+                if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
 
                 const float size = 32.0f;
                 DrawTexturedQuad(ProxyInterface, gCrossTex,
-                    gAimX - size * 0.5f, gAimY - size * 0.5f,
+                    gAimX - size * 0.5f,
+                    gAimY - size * 0.5f,
                     size, size);
             }
         }
@@ -403,6 +502,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
 
     return ProxyInterface->EndScene();
 }
+
 
 void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
 {
@@ -417,9 +517,6 @@ void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
     int left = (int)info.rcMonitor.left;
     int top = (int)info.rcMonitor.top;
 
-	// Set and fix Window Title [Gun Suruivor]
-    SetWindowTextA(g_hFocusWindow, "RESIDENT EVIL: SURVIVOR PC");//fix window title
-
 	// Adjust window style and position
 
     if (!bBorderlessFullscreen)
@@ -429,10 +526,11 @@ void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
         left += (int)(((float)DesktopResX / 2.0f) - ((float)pPresentationParameters->BackBufferWidth / 2.0f));
         top += (int)(((float)DesktopResY / 2.0f) - ((float)pPresentationParameters->BackBufferHeight / 2.0f));
 
-        if (bShowWindowBorder)
-            style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;   // border + title
-        else
-            style = (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP;   // no border
+        style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;   // border + title
+        //if (bShowWindowBorder)
+        //    style = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;   // border + title
+        //else
+        //    style = (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP;   // no border
 
         SetWindowLong(hwnd, GWL_STYLE, style);
         SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
@@ -510,56 +608,103 @@ void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS* pPresentationParamete
     }
 }
 
-HRESULT m_IDirect3D8::CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* pPresentationParameters, IDirect3DDevice8** ppReturnedDeviceInterface)
+HRESULT m_IDirect3D8::CreateDevice(
+    UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags,
+    D3DPRESENT_PARAMETERS* p, IDirect3DDevice8** ppReturnedDeviceInterface)
 {
-    g_hFocusWindow = hFocusWindow ? hFocusWindow : pPresentationParameters->hDeviceWindow;
+    g_hFocusWindow = hFocusWindow ? hFocusWindow : (p ? p->hDeviceWindow : nullptr);
+
+    // Always apply window title (even if fullscreen; harmless)
+    ApplyWindowTitle(g_hFocusWindow);
+
+    // Debug what the game requested (INTERNAL resolution)
+    LogPP("CreateDevice IN:", p);
+
+    // Wrapper options
     if (bForceWindowedMode)
-    {
-        ForceWindowed(pPresentationParameters);
-    }
+        ForceWindowed(p);
 
     if (nFullScreenRefreshRateInHz)
-        ForceFullScreenRefreshRateInHz(pPresentationParameters);
+        ForceFullScreenRefreshRateInHz(p);
 
+    // FPS overlay resources reset
     if (bDisplayFPSCounter)
     {
-        if (FrameLimiter::pFPSFont)
-            FrameLimiter::pFPSFont->Release();
-        if (FrameLimiter::pTimeFont)
-            FrameLimiter::pTimeFont->Release();
+        if (FrameLimiter::pFPSFont)  FrameLimiter::pFPSFont->Release();
+        if (FrameLimiter::pTimeFont) FrameLimiter::pTimeFont->Release();
         FrameLimiter::pFPSFont = nullptr;
         FrameLimiter::pTimeFont = nullptr;
     }
 
-    HRESULT hr = ProxyInterface->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters, ppReturnedDeviceInterface);
+    HRESULT hr = ProxyInterface->CreateDevice(
+        Adapter, DeviceType, hFocusWindow, BehaviorFlags, p, ppReturnedDeviceInterface);
 
-    if (SUCCEEDED(hr) && ppReturnedDeviceInterface)
+    // Log what actually got created
+    LogPP("CreateDevice OUT:", p);
+
+    if (SUCCEEDED(hr) && ppReturnedDeviceInterface && *ppReturnedDeviceInterface)
     {
         *ppReturnedDeviceInterface = new m_IDirect3DDevice8(*ppReturnedDeviceInterface, this);
+
+        // IMPORTANT:
+        // "Custom resolution" should be OUTPUT/window size only.
+        // Do NOT change p->BackBufferWidth/Height here.
+        if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
+        {
+            ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+        }
+
+        // Re-apply title after resize (some games reset it)
+        ApplyWindowTitle(g_hFocusWindow);
     }
+
     return hr;
 }
 
-HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters)
+HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
 {
-    //Rest of Elisha Riedlinger wrapper code
+    LogPP("Reset IN:", p);
+
+    // Always apply title (some games restore it on reset)
+    ApplyWindowTitle(g_hFocusWindow);
+
+    // Wrapper options
     if (bForceWindowedMode)
-        ForceWindowed(pPresentationParameters);
+        ForceWindowed(p);
 
     if (nFullScreenRefreshRateInHz)
-        ForceFullScreenRefreshRateInHz(pPresentationParameters);
-    
+        ForceFullScreenRefreshRateInHz(p);
+
     if (bDisplayFPSCounter)
     {
-        if (FrameLimiter::pFPSFont)
-            FrameLimiter::pFPSFont->Release();
-        if (FrameLimiter::pTimeFont)
-            FrameLimiter::pTimeFont->Release();
+        if (FrameLimiter::pFPSFont)  FrameLimiter::pFPSFont->Release();
+        if (FrameLimiter::pTimeFont) FrameLimiter::pTimeFont->Release();
         FrameLimiter::pFPSFont = nullptr;
         FrameLimiter::pTimeFont = nullptr;
     }
 
-    return ProxyInterface->Reset(pPresentationParameters);
+    HRESULT hr = ProxyInterface->Reset(p);
+
+    LogPP("Reset OUT:", p);
+
+    // Resize window client area to OUTPUT size (windowed only)
+    if (SUCCEEDED(hr) && p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
+    {
+        ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+
+        // Re-apply title again after window changes
+        ApplyWindowTitle(g_hFocusWindow);
+    }
+
+    return hr;
+}
+
+HRESULT m_IDirect3DDevice8::SetViewport(CONST D3DVIEWPORT8* pViewport)
+{
+    LogVP("SetViewport IN", pViewport);
+    HRESULT hr = ProxyInterface->SetViewport(pViewport);
+    LogVP("SetViewport OUT", pViewport);
+    return hr;
 }
 
 LRESULT WINAPI CustomWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, int idx)
@@ -1037,8 +1182,10 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
             bBorderlessFullscreen = GetPrivateProfileInt("FORCEWINDOWED", "BorderlessFullscreen", 0, path) != 0;
             bAlwaysOnTop = GetPrivateProfileInt("FORCEWINDOWED", "AlwaysOnTop", 0, path) != 0;
             bDoNotNotifyOnTaskSwitch = GetPrivateProfileInt("FORCEWINDOWED", "DoNotNotifyOnTaskSwitch", 0, path) != 0;
-            bShowWindowBorder = GetPrivateProfileInt("FORCEWINDOWED", "ShowWindowBorder", 1, path) != 0;
-            bLockCursorToWindow = GetPrivateProfileInt("FORCEWINDOWED", "LockCursorToWindow", 0, path) != 0;
+            //bShowWindowBorder = GetPrivateProfileInt("FORCEWINDOWED", "ShowWindowBorder", 1, path) != 0;//Survivor Exclusive set in INI
+            bLockCursorToWindow = GetPrivateProfileInt("FORCEWINDOWED", "LockCursorToWindow", 0, path) != 0;//Survivor Exclusive set in INI
+            ForceWidth = GetPrivateProfileInt("MAIN", "ForceWidth", 0, path);//Survivor Exclusive set in INI
+            ForceHeight = GetPrivateProfileInt("MAIN", "ForceHeight", 0, path);//Survivor Exclusive set in INI
             
             if (fFPSLimit > 0.0f)
             {

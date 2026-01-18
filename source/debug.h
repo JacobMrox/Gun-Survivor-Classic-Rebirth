@@ -1,22 +1,27 @@
 #pragma once
-#include <libloaderapi.h>
+#include <windows.h>
+#include <cstdarg>
 #include <cstdio>
-// ===================== File Logger =====================
-// Writes to "<gamefolder>\cdhook.log"
-static void LogLine(const char* line)
+#include <cstring>
+
+static void LogLine(const char* fmt, ...)
 {
     char path[MAX_PATH] = {};
     GetModuleFileNameA(NULL, path, MAX_PATH);
-
     char* slash = strrchr(path, '\\');
-    if (slash) *(slash + 1) = 0; // keep folder only
-
+    if (slash) *(slash + 1) = 0;
     strcat_s(path, "hook.log");
 
     FILE* f = nullptr;
     fopen_s(&f, path, "a");
     if (!f) return;
 
-    fprintf(f, "%s\n", line);
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    fprintf(f, "%s\n", buf);
     fclose(f);
 }

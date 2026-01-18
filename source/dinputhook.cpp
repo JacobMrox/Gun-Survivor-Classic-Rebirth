@@ -145,7 +145,7 @@ static void HookMouseDevice(LPDIRECTINPUTDEVICEA dev)
         }
         else
         {
-            LogLine("[DI] Failed to hook GetDeviceData (idx=%d)" + VTI_DID_GetDeviceData);
+            LogLine("[DI] Failed to hook GetDeviceData (idx=%d)", VTI_DID_GetDeviceData);
         }
     }
 }
@@ -195,7 +195,7 @@ static HRESULT WINAPI Hook_DirectInputCreateA(
     HRESULT hr = Real_DirectInputCreateA(hinst, dwVersion, ppDI, punkOuter);
     if (SUCCEEDED(hr) && ppDI && *ppDI)
     {
-        LogLine("[DI] DirectInputCreateA ok (ver=%lu) -> hook DI" + dwVersion);
+        LogLine("[DI] DirectInputCreateA ok (ver=%lu) -> hook DI", dwVersion);
         HookDirectInputInterface(*ppDI);
     }
     return hr;
