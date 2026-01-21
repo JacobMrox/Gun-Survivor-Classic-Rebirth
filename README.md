@@ -1,8 +1,16 @@
 # Why
 
-Biohazard Gun Survivor was released on PC exclusively in China/Taiwan, and the port is infamous for being buggy and broken, in addition to this,
-running it on modern systems is nearly impossible due to incompatibility issues. This project aims to solve these problems and issues by replacing old api calls and systems with new/modern ones,
-along with adding new configuration settings.
+Biohazard: Gun Survivor was released on PC exclusively in China and Taiwan, and that version has long been infamous for its instability, bugs, and poor technical implementation. On modern systems, the game is extremely difficult—if not impossible—to run properly due to outdated APIs, broken dependencies, and compatibility issues.
+
+This project exists to modernize and preserve the PC version of Gun Survivor by replacing legacy systems with modern, stable alternatives. The goal is not only to make the game playable on current hardware and operating systems, but also to improve its overall usability, performance, and configurability—without altering the original experience.
+
+In short, this project aims to:
+
+* Restore playability on modern Windows systems
+* Replace obsolete or broken APIs
+* Fix long-standing bugs and technical issues
+* Add quality-of-life improvements and configuration options
+* Lay the groundwork for further enhancements and modding
 
 # Project Status
 
@@ -20,8 +28,7 @@ along with adding new configuration settings.
 * Fix NPC/enemy lighting/shader
 * Fix enemy AI/Animations
 * Raw Input + Dinput
-  
-Add a proper in-game options menu backed by d3d8.ini
+* Add a proper in-game options menu backed by d3d8.ini
 
 # Build Instructions
 
