@@ -6,20 +6,20 @@ along with adding new configuration settings.
 
 # Project Status
 
-• ~~Remove CD check~~
-• ~~Add ability to play in window mode~~
-• ~~Show window border in windowed mode~~
-• ~~Add ability to lock mouse in window~~
-• ~~Fix window title typo [GUN SURUIVOR] -> RESIDENT EVIL: SURVIVOR PC~~
-• ~~Fix mouse crosshair alignment (replace crosshair)~~
-• ~~Add custom resolution option~~
-• Fix shadow/blood pool under enemies/npcs
-• Fix Zombie footstep sound
-• Fix movie player by replacing DirectShow with ffmpeg
-• Add option to skip movies/videos
-• Fix NPC/enemy lighting/shader
-• Fix enemy AI/Animations
-• Raw Input + Dinput
+* ~~Remove CD check~~
+* ~~Add ability to play in window mode~~
+* ~~Show window border in windowed mode~~
+* ~~Add ability to lock mouse in window~~
+* ~~Fix window title typo [GUN SURUIVOR] -> RESIDENT EVIL: SURVIVOR PC~~
+* ~~Fix mouse crosshair alignment (replace crosshair)~~
+* ~~Add custom resolution option~~
+* Fix shadow/blood pool under enemies/npcs
+* Fix Zombie footstep sound
+* Fix movie player by replacing DirectShow with ffmpeg
+* Add option to skip movies/videos
+* Fix NPC/enemy lighting/shader
+* Fix enemy AI/Animations
+* Raw Input + Dinput
   
 Add a proper in-game options menu backed by d3d8.ini
 
