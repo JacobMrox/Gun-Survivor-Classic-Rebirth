@@ -16,6 +16,9 @@
 
 #include "d3d8.h"
 
+// somewhere global
+
+
 HRESULT m_IDirect3DDevice8::QueryInterface(REFIID riid, LPVOID *ppvObj)
 {
 	if ((riid == IID_IDirect3DDevice8 || riid == IID_IUnknown) && ppvObj)
@@ -144,7 +147,7 @@ HRESULT m_IDirect3DDevice8::CreateRenderTarget(THIS_ UINT Width, UINT Height, D3
 	return hr;
 }
 
-HRESULT m_IDirect3DDevice8::CreateTexture(THIS_ UINT Width, UINT Height, UINT Levels, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, IDirect3DTexture8** ppTexture)
+/*HRESULT m_IDirect3DDevice8::CreateTexture(THIS_ UINT Width, UINT Height, UINT Levels, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, IDirect3DTexture8** ppTexture)
 {
 	HRESULT hr = ProxyInterface->CreateTexture(Width, Height, Levels, Usage, Format, Pool, ppTexture);
 
@@ -154,7 +157,7 @@ HRESULT m_IDirect3DDevice8::CreateTexture(THIS_ UINT Width, UINT Height, UINT Le
 	}
 
 	return hr;
-}
+}*/
 
 HRESULT m_IDirect3DDevice8::CreateVertexBuffer(THIS_ UINT Length, DWORD Usage, DWORD FVF, D3DPOOL Pool, IDirect3DVertexBuffer8** ppVertexBuffer)
 {
@@ -469,11 +472,12 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 	return ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
 }
 
+/*
 HRESULT m_IDirect3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, CONST void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
 	return ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
 }
-
+*/
 HRESULT m_IDirect3DDevice8::BeginScene()
 {
 	return ProxyInterface->BeginScene();
@@ -554,7 +558,7 @@ HRESULT m_IDirect3DDevice8::GetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTA
 {
 	return ProxyInterface->GetTextureStageState(Stage, Type, pValue);
 }
-
+/*
 HRESULT m_IDirect3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pTexture)
 {
 	if (pTexture)
@@ -574,10 +578,31 @@ HRESULT m_IDirect3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pText
 			return D3DERR_INVALIDCALL;
 		}
 	}
+	//Alpha fix
+	if (Stage == 0)
+	{
+		gStage0IsAlphaFix = false;
+
+		// If this is one of OUR wrapped textures, we can read our flag
+		if (pTexture)
+		{
+			// Your wrapper type might differ: m_IDirect3DTexture8 or m_IDirect3DBaseTexture8 etc.
+			// If you only wrap IDirect3DTexture8, then cast carefully:
+			m_IDirect3DTexture8* w = (m_IDirect3DTexture8*)pTexture;
+			__try {
+				if (w && w->isAlphaFixTexture)
+					gStage0IsAlphaFix = true;
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				gStage0IsAlphaFix = false;
+			}
+		}
+	}
 
 	return ProxyInterface->SetTexture(Stage, pTexture);
-}
 
+}
+*/
 HRESULT m_IDirect3DDevice8::SetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTATETYPE Type, DWORD Value)
 {
 	return ProxyInterface->SetTextureStageState(Stage, Type, Value);

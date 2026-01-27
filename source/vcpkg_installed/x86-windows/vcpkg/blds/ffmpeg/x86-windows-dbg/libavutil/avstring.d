@@ -1,0 +1,11 @@
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/config.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mem.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/avassert.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/log.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/version.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/libavutil/avconfig.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/avstring.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/bprint.h
+libavutil/avstring.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/error.h

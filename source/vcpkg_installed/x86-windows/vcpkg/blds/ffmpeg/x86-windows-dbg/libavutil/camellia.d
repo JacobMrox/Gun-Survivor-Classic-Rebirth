@@ -1,0 +1,11 @@
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/camellia.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/error.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/libavutil/avconfig.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intreadwrite.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/bswap.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/config.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/x86/bswap.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/x86/intreadwrite.h
+libavutil/camellia.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mem.h

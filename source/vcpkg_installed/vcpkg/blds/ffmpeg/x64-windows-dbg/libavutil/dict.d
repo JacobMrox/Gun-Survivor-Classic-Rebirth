@@ -1,0 +1,14 @@
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/avassert.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/x64-windows-dbg/config.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/log.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/version.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/x64-windows-dbg/libavutil/avconfig.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/avstring.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/dict.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/dict_internal.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/error.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mem.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/time_internal.h
+libavutil/dict.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/bprint.h

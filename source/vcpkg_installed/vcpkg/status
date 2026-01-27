@@ -1,0 +1,112 @@
+Package: vcpkg-cmake
+Version: 2024-04-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 6c58dbb07a68c6a4661f0a761112a2e40d6a87913ccced97fe4175d218bb8e3f
+Status: install ok installed
+
+Package: vcpkg-cmake-get-vars
+Version: 2025-05-29
+Depends: vcpkg-cmake
+Architecture: x64-windows
+Multi-Arch: same
+Abi: a5e080965e333843899d66cf06bb2a5900534f06c2e129675237f085931378c3
+Status: install ok installed
+
+Package: vcpkg-tool-meson
+Version: 1.9.0
+Depends: vcpkg-cmake-get-vars
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 9d1bbcbc2b64e9a635fd91d2044a68cdc3553207d1192fd1c003c36c1f9a48f6
+Description: Meson build system
+Status: install ok installed
+
+Package: pkgconf
+Version: 2.5.1
+Port-Version: 1
+Depends: vcpkg-tool-meson
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 7575ac927ff44ff1384ea88d517a3c0617972393ccfe0b372eff3befcbcf1163
+Description: pkgconf is a program which helps to configure compiler and linker flags for development libraries. It is similar to pkg-config from freedesktop.org.
+Status: install ok installed
+
+Package: vcpkg-pkgconfig-get-modules
+Version: 2024-04-03
+Depends: pkgconf
+Architecture: x64-windows
+Multi-Arch: same
+Abi: b1b8a997b27df340e9122132e844e70783b9fcdad7deca2110703c980618064a
+Status: install ok installed
+
+Package: ffmpeg
+Version: 7.1.1
+Port-Version: 5
+Depends: vcpkg-cmake-get-vars, vcpkg-pkgconfig-get-modules
+Architecture: x64-windows
+Multi-Arch: same
+Abi: ec3cee105bbba413465a5dcd7017c80ad992c4dc227f43054e61d8f676b6c6b7
+Description: A library to decode, encode, transcode, mux, demux, stream, filter and play pretty much anything that humans and machines have created.
+    FFmpeg is the leading multimedia framework, able to decode, encode, transcode, mux, demux, stream, filter and play pretty much anything that humans and machines have created. It supports the most obscure ancient formats up to the cutting edge. No matter if they were designed by some standards committee, the community or a corporation. It is also highly portable: FFmpeg compiles, runs, and passes our testing infrastructure FATE across Linux, Mac OS X, Microsoft Windows, the BSDs, Solaris, etc. under a wide variety of build environments, machine architectures, and configurations.
+Default-Features: avcodec, avdevice, avfilter, avformat, swresample, swscale
+Status: install ok installed
+
+Package: ffmpeg
+Feature: avcodec
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build the avcodec library
+Status: install ok installed
+
+Package: ffmpeg
+Feature: avdevice
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build the avdevice library
+Status: install ok installed
+
+Package: ffmpeg
+Feature: avfilter
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build the avfilter library
+Status: install ok installed
+
+Package: ffmpeg
+Feature: avformat
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build the avformat library
+Status: install ok installed
+
+Package: ffmpeg
+Feature: swresample
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build the swresample library
+Status: install ok installed
+
+Package: ffmpeg
+Feature: swscale
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build the swscale library
+Status: install ok installed
+
+Package: vcpkg-cmake-config
+Version: 2024-05-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 6ef755c85ebd0bf14e8cd822c8460e8444a946ae5263db36284bcafd4b70b3d0
+Status: install ok installed
+
+Package: minhook
+Version: 1.3.4
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 100ca03120f38a1a5a9f8c99ec3cc2dd12584829d0aff5b72bf05e0f83e33778
+Description: The Minimalistic x86/x64 API Hooking Library for Windows.
+Status: install ok installed
+

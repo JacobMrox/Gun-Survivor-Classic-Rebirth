@@ -1,0 +1,15 @@
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/common.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/error.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/libavutil/avconfig.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/version.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/config.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intmath.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/x86/intmath.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/internal.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/libm.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intfloat.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mathematics.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/rational.h
+libavfilter/motion_estimation.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavfilter/motion_estimation.h

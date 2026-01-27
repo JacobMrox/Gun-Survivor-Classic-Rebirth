@@ -1,0 +1,12 @@
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/avassert.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/x64-windows-rel/config.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/log.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/version.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/x64-windows-rel/libavutil/avconfig.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/libm.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intfloat.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mathematics.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/rational.h
+libavcodec/kbdwin.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavcodec/kbdwin.h

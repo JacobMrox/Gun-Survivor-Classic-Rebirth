@@ -1,0 +1,14 @@
+prefix=C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/pkgs/ffmpeg_x86-windows/debug
+exec_prefix=${prefix}
+libdir=C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/pkgs/ffmpeg_x86-windows/debug/lib
+includedir=C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/pkgs/ffmpeg_x86-windows/debug/include
+
+Name: libavfilter
+Description: FFmpeg audio/video filtering library
+Version: 10.4.100
+Requires: 
+Requires.private: libswscale >= 8.3.100, libavformat >= 61.7.100, libavcodec >= 61.19.101, libswresample >= 5.3.100, libavutil >= 59.39.100
+Conflicts:
+Libs: -L${libdir}  -lavfilter 
+Libs.private: 
+Cflags: -I${includedir}

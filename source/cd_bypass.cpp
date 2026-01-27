@@ -4,6 +4,8 @@
 #include "MinHook.h"
 #include "cd_bypass.h"
 #include "debug.h"
+#include "file_events.h"
+#include "alpha_fix.h"
 
 static void LogMH(const char* what, MH_STATUS s)
 {
@@ -171,6 +173,9 @@ static HANDLE WINAPI Hook_CreateFileA(
 {
     if (name)
     {
+        //Call alpha-fix file open notifier
+        AlphaFix_OnFileOpenA(name);
+
         // Log only CD-ish probes
         if (!_strnicmp(name, "\\\\.\\", 4) || (name[1] == ':' && (name[2] == 0 || name[2] == '\\' || name[2] == '/')))
         {
@@ -190,6 +195,8 @@ static HANDLE WINAPI Hook_CreateFileA(
             char buf[700];
             sprintf_s(buf, "[CD] Redirect %s -> %s", name, localExe);
             //LogFileA(buf);
+
+            NotifyFileOpenA(name);
 
             return Real_CreateFileA
                 ? Real_CreateFileA(localExe, access, share, sa, creation, flags, templateFile)

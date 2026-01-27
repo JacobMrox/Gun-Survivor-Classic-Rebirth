@@ -1,0 +1,13 @@
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/avassert.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/config.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/log.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/version.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/x86-windows-dbg/libavutil/avconfig.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intreadwrite.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/bswap.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/x86/bswap.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/x86/intreadwrite.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/lzo.h
+libavutil/lzo.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mem.h

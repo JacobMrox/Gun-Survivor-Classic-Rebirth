@@ -1,0 +1,12 @@
+prefix=
+exec_prefix=
+libdir=${pcfiledir}/../../../libavcodec
+includedir=/c/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean
+
+Name: libavcodec
+Description: FFmpeg codec library
+Version: 61.19.101
+Requires:  libswresample >= 5.3.100,  libavutil >= 59.39.100
+Conflicts:
+Libs: -L${libdir} -Wl,-rpath,${libdir} -lavcodec 
+Cflags: -I${includedir}

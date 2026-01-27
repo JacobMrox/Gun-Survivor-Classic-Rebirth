@@ -1,0 +1,22 @@
+[
+  {
+    "name": "dep328695895904534729148483802005475361141",
+    "type": "internal",
+    "version": "2.5.1",
+    "compile_args": [],
+    "link_args": [],
+    "include_directories": [
+      "C:\\Users\\user\\source\\repos\\Gun-Survivor-Classic-Rebirth\\source\\vcpkg_installed\\vcpkg\\blds\\pkgconf\\src\\conf-2.5.1-c2c2eca4e6.clean\\.",
+      "C:\\Users\\user\\source\\repos\\Gun-Survivor-Classic-Rebirth\\source\\vcpkg_installed\\vcpkg\\blds\\pkgconf\\x64-windows-rel\\."
+    ],
+    "sources": [],
+    "extra_files": [],
+    "dependencies": [],
+    "depends": [
+      "pkgconf@sha"
+    ],
+    "meson_variables": [
+      "dep_libpkgconf"
+    ]
+  }
+]

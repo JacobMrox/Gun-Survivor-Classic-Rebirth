@@ -1,0 +1,17 @@
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/x64-windows-dbg/config.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/attributes.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/common.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/error.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/macros.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/x64-windows-dbg/libavutil/avconfig.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/version.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intmath.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/x86/intmath.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/internal.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/libm.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/intfloat.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/mathematics.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavutil/rational.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavcodec/idctdsp.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavcodec/proresdsp.h
+libavcodec/proresdsp.o: C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/ffmpeg/src/n7.1.1-92d93b4c20.clean/libavcodec/simple_idct.h

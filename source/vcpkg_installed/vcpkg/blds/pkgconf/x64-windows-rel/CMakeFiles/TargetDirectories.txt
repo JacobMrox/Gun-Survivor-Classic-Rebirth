@@ -1,0 +1,2 @@
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/pkgconf/x64-windows-rel/CMakeFiles/edit_cache.dir
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/blds/pkgconf/x64-windows-rel/CMakeFiles/rebuild_cache.dir

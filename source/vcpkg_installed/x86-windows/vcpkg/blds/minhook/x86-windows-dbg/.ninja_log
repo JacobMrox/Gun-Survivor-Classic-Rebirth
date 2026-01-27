@@ -1,0 +1,9 @@
+# ninja log v6
+27	246	7907414357335463	CMakeFiles/minhook.dir/dll_resources/MinHook.rc.res	d564fadddc31e801
+8	483	7907414357142294	CMakeFiles/minhook.dir/src/buffer.c.obj	b2ec20dc02d759fc
+21	488	7907414357277358	CMakeFiles/minhook.dir/src/hde/hde32.c.obj	85a6a30fc29829af
+12	494	7907414357188924	CMakeFiles/minhook.dir/src/hook.c.obj	bf560a90e3a39e2e
+17	531	7907414357233152	CMakeFiles/minhook.dir/src/trampoline.c.obj	5e0f77978706c352
+531	865	7907414365476281	minhook.x32d.dll	15bf69a7aee993b6
+531	865	7907414365476281	minhook.x32d.lib	15bf69a7aee993b6
+865	1031	7907414365714414	CMakeFiles/install.util	27d3ac1d8e425b73

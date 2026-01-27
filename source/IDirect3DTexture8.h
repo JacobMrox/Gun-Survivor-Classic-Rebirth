@@ -1,4 +1,5 @@
 #pragma once
+#include "alpha_fix.h"
 
 class m_IDirect3DTexture8 : public IDirect3DTexture8, public AddressLookupTableObject
 {
@@ -7,6 +8,9 @@ private:
 	m_IDirect3DDevice8* m_pDevice;
 
 public:
+	bool isAlphaFixTexture = false;//ALPHA FIX
+	AlphaFixTag alphaFixTag = AFT_None;//ALPHA FIX
+
 	m_IDirect3DTexture8(LPDIRECT3DTEXTURE8 pTexture8, m_IDirect3DDevice8* pDevice) : ProxyInterface(pTexture8), m_pDevice(pDevice)
 	{
 		m_pDevice->ProxyAddressLookupTable->SaveAddress(this, ProxyInterface);
@@ -37,4 +41,6 @@ public:
 	STDMETHOD(LockRect)(THIS_ UINT Level, D3DLOCKED_RECT* pLockedRect, CONST RECT* pRect, DWORD Flags);
 	STDMETHOD(UnlockRect)(THIS_ UINT Level);
 	STDMETHOD(AddDirtyRect)(THIS_ CONST RECT* pDirtyRect);
+
+	//AlphaFixTag alphaFixTag = AFT_None; // Alphafix tag
 };

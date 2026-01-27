@@ -1,3 +1,4 @@
+//Debug.h: logging utility for Windows applications
 #pragma once
 #include <windows.h>
 #include <cstdarg>

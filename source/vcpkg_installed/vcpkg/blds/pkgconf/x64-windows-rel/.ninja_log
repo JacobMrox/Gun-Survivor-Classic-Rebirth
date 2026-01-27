@@ -1,0 +1,26 @@
+# ninja log v6
+26	526	7907352511160998	pkgconf-7.dll.p/libpkgconf_bsdstubs.c.obj	92326cf1be71625a
+18	553	7907352511081201	pkgconf-7.dll.p/libpkgconf_buffer.c.obj	6cf2cdb747ed9e92
+12	563	7907352511030719	pkgconf-7.dll.p/libpkgconf_audit.c.obj	f31e7d8fe4fcd356
+6	579	7907352510960205	pkgconf-7.dll.p/libpkgconf_argvsplit.c.obj	1fdad4906b8bb4df
+33	595	7907352511235125	pkgconf-7.dll.p/libpkgconf_cache.c.obj	deaebab4335f818e
+42	626	7907352511326331	pkgconf-7.dll.p/libpkgconf_client.c.obj	ba31fdf5973f7263
+51	642	7907352511414120	pkgconf-7.dll.p/libpkgconf_dependency.c.obj	b889b9adbca0b62
+86	873	7907352511769974	pkgconf-7.dll.p/libpkgconf_parser.c.obj	954d694102409d6f
+61	887	7907352511523918	pkgconf-7.dll.p/libpkgconf_fileio.c.obj	f1308abf2b8c40a9
+73	904	7907352511625008	pkgconf-7.dll.p/libpkgconf_fragment.c.obj	af4695024275b1a2
+642	1140	7907352517329181	pkgconf.exe.p/cli_getopt_long.c.obj	3bb5aca3757c314b
+874	1176	7907352519637099	pkgconf.exe.p/cli_renderer-msvc.c.obj	174e2698385623e3
+554	1204	7907352516448106	pkgconf-7.dll.p/libpkgconf_personality.c.obj	ea14bbf104e21f83
+528	1214	7907352516180347	pkgconf-7.dll.p/libpkgconf_path.c.obj	401f76a8f86cfea1
+904	1228	7907352519949103	bomtool.exe.p/cli_getopt_long.c.obj	93d7997a5c8f20ff
+580	1235	7907352516699466	pkgconf-7.dll.p/libpkgconf_queue.c.obj	80fb9e7e96d1a5d1
+596	1262	7907352516861978	pkgconf-7.dll.p/libpkgconf_tuple.c.obj	576fbfd607ebb661
+563	1305	7907352516540118	pkgconf-7.dll.p/libpkgconf_pkg.c.obj	9c11c6d1f12cafe5
+1305	1413	7907352523955815	pkgconf-7.dll	ceb8263a7293fd0e
+888	1508	7907352519780526	bomtool.exe.p/cli_bomtool_main.c.obj	d8612575b4d190d3
+627	1612	7907352517171817	pkgconf.exe.p/cli_main.c.obj	8877a407de3fb4a2
+1414	1753	7907352528263600	pkgconf-7.dll.p/pkgconf-7.dll.symbols	28bd3d8c8b33cc9
+1754	1831	7907352528442758	pkgconf.exe	9a78163a6de350c5
+1757	1834	7907352528470686	bomtool.exe	ba276c58d1fe5f4a
+1834	2284	7907352529249660	meson-internal__install	4f6d8a77b6ba7051

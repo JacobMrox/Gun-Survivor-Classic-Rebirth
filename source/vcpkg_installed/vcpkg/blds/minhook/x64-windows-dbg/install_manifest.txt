@@ -1,0 +1,7 @@
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/lib/minhook/minhook-config.cmake
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/lib/minhook/minhook-config-version.cmake
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/lib/minhook.x64d.lib
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/bin/minhook.x64d.dll
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/lib/minhook/minhook-targets.cmake
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/lib/minhook/minhook-targets-debug.cmake
+C:/Users/user/source/repos/Gun-Survivor-Classic-Rebirth/source/vcpkg_installed/vcpkg/pkgs/minhook_x64-windows/debug/./include/MinHook.h

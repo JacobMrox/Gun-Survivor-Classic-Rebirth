@@ -15,6 +15,7 @@
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>d3d8-wrapper</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -29,6 +30,7 @@
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
+  
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
@@ -38,6 +40,18 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <PropertyGroup Label="Vcpkg">
+  <!-- Set this to where vcpkg.exe actually lives on your machine -->
+  <VcpkgRoot>C:\Program Files\Microsoft Visual Studio\18\Community\VC\vcpkg</VcpkgRoot>
+
+  <!-- Enable manifest mode -->
+  <VcpkgEnableManifest>true</VcpkgEnableManifest>
+
+  <!-- Force 32-bit packages -->
+  <VcpkgTriplet>x86-windows</VcpkgTriplet>
+</PropertyGroup>
+
+<Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -48,7 +62,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\data\</OutDir>
+    <OutDir>..\bin\</OutDir>
     <IntDir>obj\Win32\Debug\</IntDir>
     <TargetName>d3d8</TargetName>
     <TargetExt>.dll</TargetExt>
@@ -128,11 +142,15 @@
     <ClInclude Include="..\source\helpers.h" />
     <ClInclude Include="..\source\iathook.h" />
     <ClInclude Include="aim_shared.h" />
+    <ClInclude Include="alpha_fix.h" />
+    <ClInclude Include="AviFfmpegHook.h" />
     <ClInclude Include="cd_bypass.h">
       <DeploymentContent>false</DeploymentContent>
     </ClInclude>
     <ClInclude Include="debug.h" />
     <ClInclude Include="dinputhook.h" />
+    <ClInclude Include="file_events.h" />
+    <ClInclude Include="stb_image.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\source\IDirect3D8.cpp" />
@@ -148,10 +166,13 @@
     <ClCompile Include="..\source\InterfaceQuery.cpp" />
     <ClCompile Include="..\source\dllmain.cpp" />
     <ClCompile Include="aim_shared.cpp" />
+    <ClCompile Include="alpha_fix.cpp" />
+    <ClCompile Include="AviFfmpegHook.cpp" />
     <ClCompile Include="cd_bypass.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="dinputhook.cpp" />
+    <ClCompile Include="file_events.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\source\d3d8.def" />

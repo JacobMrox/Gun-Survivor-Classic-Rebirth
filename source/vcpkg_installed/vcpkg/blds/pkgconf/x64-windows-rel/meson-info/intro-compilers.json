@@ -1,0 +1,58 @@
+{
+  "host": {
+    "c": {
+      "id": "msvc",
+      "exelist": [
+        "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe",
+        "-DWIN32",
+        "-D_WINDOWS",
+        "-utf-8",
+        "-MP",
+        "-MD",
+        "-O2",
+        "-Oi",
+        "-Gy",
+        "-DNDEBUG",
+        "-Z7"
+      ],
+      "linker_exelist": [
+        "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/link.exe"
+      ],
+      "file_suffixes": [
+        "c"
+      ],
+      "default_suffix": "c",
+      "version": "19.44.35221",
+      "full_version": "Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35221 for x64",
+      "linker_id": "link"
+    }
+  },
+  "build": {
+    "c": {
+      "id": "msvc",
+      "exelist": [
+        "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe",
+        "-DWIN32",
+        "-D_WINDOWS",
+        "-utf-8",
+        "-MP",
+        "-MD",
+        "-O2",
+        "-Oi",
+        "-Gy",
+        "-DNDEBUG",
+        "-Z7"
+      ],
+      "linker_exelist": [
+        "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/link.exe"
+      ],
+      "file_suffixes": [
+        "c"
+      ],
+      "default_suffix": "c",
+      "version": "19.44.35221",
+      "full_version": "Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35221 for x64",
+      "linker_id": "link"
+    }
+  }
+}

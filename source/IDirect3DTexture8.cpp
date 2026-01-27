@@ -132,11 +132,11 @@ HRESULT m_IDirect3DTexture8::LockRect(THIS_ UINT Level, D3DLOCKED_RECT* pLockedR
 {
 	return ProxyInterface->LockRect(Level, pLockedRect, pRect, Flags);
 }
-
+/*
 HRESULT m_IDirect3DTexture8::UnlockRect(THIS_ UINT Level)
 {
 	return ProxyInterface->UnlockRect(Level);
-}
+}*/
 
 HRESULT m_IDirect3DTexture8::AddDirtyRect(THIS_ CONST RECT* pDirtyRect)
 {
