@@ -1,40 +1,55 @@
-#define WIN32_LEAN_AND_MEAN
+﻿#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
 #include <imagehlp.h>
+#include <psapi.h>
 #include <vfw.h>
-
-#include <string>
-#include <vector>
-#include <memory>
+#include <cstdio>
+#include <cstring>
 
 #pragma comment(lib, "imagehlp.lib")
-
-extern "C" {
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/avutil.h>
-#include <libswscale/swscale.h>
-}
+#pragma comment(lib, "psapi.lib")
 
 #include "AviFfmpegHook.h"
 #include "debug.h"
 
-
-// Log IAT patch result
-static void LogPatch(const char* name, bool ok)
-{
-    LogLine("[AviFfmpegHook] IAT patch %s: %s", name, ok ? "OK" : "NOT FOUND");
-}
-
 namespace
 {
-    // ------------------------------
-    // Simple IAT patcher
-    // ------------------------------
+    // ------------------------------------------------------------
+    // Game dir filter (prevents patching system DLLs)
+    // ------------------------------------------------------------
+    static char gGameDir[MAX_PATH] = {};
+
+    static void InitGameDirOnce()
+    {
+        if (gGameDir[0]) return;
+        GetModuleFileNameA(nullptr, gGameDir, MAX_PATH);
+        char* slash = strrchr(gGameDir, '\\');
+        if (slash) *(slash + 1) = 0; // keep trailing backslash
+    }
+
+    static bool IsGameDirModule(HMODULE m)
+    {
+        if (!m) return false;
+
+        InitGameDirOnce();
+
+        char modPath[MAX_PATH] = {};
+        if (!GetModuleFileNameA(m, modPath, MAX_PATH))
+            return false;
+
+        // case-insensitive prefix match
+        return _strnicmp(modPath, gGameDir, strlen(gGameDir)) == 0;
+    }
+
+    // ------------------------------------------------------------
+    // IAT patch helper
+    // ------------------------------------------------------------
     bool PatchIAT(HMODULE module, const char* importedDll, const char* funcName, void* hookFn, void** realFnOut)
     {
+        if (!module) return false;
+
         ULONG size = 0;
         auto* impDesc = (PIMAGE_IMPORT_DESCRIPTOR)ImageDirectoryEntryToData(
             module, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &size);
@@ -44,19 +59,21 @@ namespace
         for (; impDesc->Name; impDesc++)
         {
             const char* dllName = (const char*)((BYTE*)module + impDesc->Name);
+            if (!dllName) continue;
             if (_stricmp(dllName, importedDll) != 0) continue;
 
             auto* thunk = (PIMAGE_THUNK_DATA)((BYTE*)module + impDesc->FirstThunk);
             auto* orig = (PIMAGE_THUNK_DATA)((BYTE*)module + impDesc->OriginalFirstThunk);
+            if (!thunk || !orig) return false;
 
-            for (; orig && orig->u1.AddressOfData; thunk++, orig++)
+            for (; orig->u1.AddressOfData; thunk++, orig++)
             {
                 if (orig->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
 
                 auto* ibn = (PIMAGE_IMPORT_BY_NAME)((BYTE*)module + orig->u1.AddressOfData);
                 if (!ibn || !ibn->Name) continue;
 
-                if (strcmp((char*)ibn->Name, funcName) != 0) continue;
+                if (strcmp((const char*)ibn->Name, funcName) != 0) continue;
 
                 DWORD oldProt = 0;
                 if (!VirtualProtect(&thunk->u1.Function, sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProt))
@@ -72,214 +89,16 @@ namespace
         return false;
     }
 
-    std::wstring AnsiToWide(LPCSTR s)
+    static void LogPatch(const char* what, bool ok)
     {
-        if (!s) return L"";
-        int n = MultiByteToWideChar(CP_ACP, 0, s, -1, nullptr, 0);
-        std::wstring w(n > 1 ? n - 1 : 0, L'\0');
-        if (n > 1) MultiByteToWideChar(CP_ACP, 0, s, -1, w.data(), n);
-        return w;
+        // Uncomment when needed:
+        // LogLine("[AviFfmpegHook] IAT patch %s: %s", what, ok ? "OK" : "NOT FOUND");
+        (void)what; (void)ok;
     }
 
-    bool HasMovieExt(const std::wstring& p)
-    {
-        auto lower = p;
-        for (auto& ch : lower) ch = (wchar_t)towlower(ch);
-
-        // add more if you want
-        return lower.rfind(L".avi") != std::wstring::npos ||
-            lower.rfind(L".mpg") != std::wstring::npos ||
-            lower.rfind(L".mpeg") != std::wstring::npos ||
-            lower.rfind(L".mp4") != std::wstring::npos;
-    }
-
-    // ------------------------------
-    // FFmpeg-backed "movie" object
-    // Emulates AVIStreamGetFrame path (returns a DIB: BITMAPINFOHEADER + BGR24 pixels)
-    // ------------------------------
-    struct FFMpegMovie
-    {
-        AVFormatContext* fmt = nullptr;
-        AVCodecContext* vdec = nullptr;
-        SwsContext* sws = nullptr;
-        int videoStream = -1;
-
-        int width = 0;
-        int height = 0;
-        AVRational timeBase{};
-        double fps = 30.0;
-        int64_t frameCount = 0;
-
-        AVFrame* frame = nullptr;
-        AVPacket* pkt = nullptr;
-
-        // buffer returned by AVIStreamGetFrame -> pointer stays valid until next GetFrame
-        std::vector<uint8_t> dibBuffer;
-
-        ~FFMpegMovie()
-        {
-            if (sws) sws_freeContext(sws);
-            if (vdec) avcodec_free_context(&vdec);
-            if (fmt) avformat_close_input(&fmt);
-            if (frame) av_frame_free(&frame);
-            if (pkt) av_packet_free(&pkt);
-        }
-
-        bool openFile(const wchar_t* pathW)
-        {
-            int needed = WideCharToMultiByte(CP_UTF8, 0, pathW, -1, nullptr, 0, nullptr, nullptr);
-            if (needed <= 0) return false;
-
-            std::string pathUtf8(needed, '\0');
-            WideCharToMultiByte(CP_UTF8, 0, pathW, -1, pathUtf8.data(), needed, nullptr, nullptr);
-
-            if (avformat_open_input(&fmt, pathUtf8.c_str(), nullptr, nullptr) < 0) return false;
-            if (avformat_find_stream_info(fmt, nullptr) < 0) return false;
-
-            videoStream = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-            if (videoStream < 0) return false;
-
-            AVStream* vs = fmt->streams[videoStream];
-            width = vs->codecpar->width;
-            height = vs->codecpar->height;
-            timeBase = vs->time_base;
-
-            AVRational fr = vs->avg_frame_rate.num ? vs->avg_frame_rate : vs->r_frame_rate;
-            if (fr.num && fr.den)
-            {
-                double f = (double)fr.num / (double)fr.den;
-                if (f > 1.0 && f < 240.0) fps = f;
-            }
-
-            if (vs->nb_frames > 0) frameCount = (int64_t)vs->nb_frames;
-            else if (fmt->duration > 0 && fps > 0.0)
-                frameCount = (int64_t)((fmt->duration / (double)AV_TIME_BASE) * fps);
-
-            const AVCodec* codec = avcodec_find_decoder(vs->codecpar->codec_id);
-            if (!codec) return false;
-
-            vdec = avcodec_alloc_context3(codec);
-            if (!vdec) return false;
-
-            if (avcodec_parameters_to_context(vdec, vs->codecpar) < 0) return false;
-            if (avcodec_open2(vdec, codec, nullptr) < 0) return false;
-
-            frame = av_frame_alloc();
-            pkt = av_packet_alloc();
-            if (!frame || !pkt) return false;
-
-            sws = sws_getContext(width, height, vdec->pix_fmt,
-                width, height, AV_PIX_FMT_BGR24,
-                SWS_BILINEAR, nullptr, nullptr, nullptr);
-            if (!sws) return false;
-
-            return true;
-        }
-
-        int64_t frameIndexToTimestamp(int64_t frameIndex) const
-        {
-            // seconds = frameIndex / fps; ts = seconds / timeBase
-            double seconds = (fps > 0.0) ? (double)frameIndex / fps : 0.0;
-            double tb = av_q2d(timeBase);
-            if (tb <= 0.0) tb = 1.0 / 90000.0;
-            return (int64_t)(seconds / tb);
-        }
-
-        bool seekToFrame(int64_t frameIndex)
-        {
-            if (!fmt || videoStream < 0) return false;
-            int64_t ts = frameIndexToTimestamp(frameIndex);
-            if (av_seek_frame(fmt, videoStream, ts, AVSEEK_FLAG_BACKWARD) < 0) return false;
-            avcodec_flush_buffers(vdec);
-            return true;
-        }
-
-        BITMAPINFOHEADER* decodeFrameToDIB(int64_t requestedFrame)
-        {
-            if (!seekToFrame(requestedFrame)) return nullptr;
-
-            bool got = false;
-
-            while (!got)
-            {
-                int rr = av_read_frame(fmt, pkt);
-                if (rr < 0)
-                {
-                    // flush
-                    avcodec_send_packet(vdec, nullptr);
-                }
-                else
-                {
-                    if (pkt->stream_index != videoStream)
-                    {
-                        av_packet_unref(pkt);
-                        continue;
-                    }
-                    if (avcodec_send_packet(vdec, pkt) < 0)
-                    {
-                        av_packet_unref(pkt);
-                        continue;
-                    }
-                    av_packet_unref(pkt);
-                }
-
-                while (true)
-                {
-                    rr = avcodec_receive_frame(vdec, frame);
-                    if (rr == AVERROR(EAGAIN) || rr == AVERROR_EOF) break;
-                    if (rr < 0) return nullptr;
-                    got = true;
-                    break;
-                }
-            }
-
-            if (!got) return nullptr;
-
-            const int stride = width * 3;
-            const int imgSize = stride * height;
-
-            std::vector<uint8_t> bgr(imgSize);
-
-            uint8_t* dstData[4] = { bgr.data(), nullptr, nullptr, nullptr };
-            int dstLinesize[4] = { stride, 0, 0, 0 };
-
-            sws_scale(sws, frame->data, frame->linesize, 0, height, dstData, dstLinesize);
-
-            dibBuffer.resize(sizeof(BITMAPINFOHEADER) + imgSize);
-            auto* bih = reinterpret_cast<BITMAPINFOHEADER*>(dibBuffer.data());
-            ZeroMemory(bih, sizeof(BITMAPINFOHEADER));
-            bih->biSize = sizeof(BITMAPINFOHEADER);
-            bih->biWidth = width;
-            bih->biHeight = height;      // bottom-up
-            bih->biPlanes = 1;
-            bih->biBitCount = 24;
-            bih->biCompression = BI_RGB;
-            bih->biSizeImage = imgSize;
-
-            uint8_t* outPixels = dibBuffer.data() + sizeof(BITMAPINFOHEADER);
-
-            // flip vertically for bottom-up DIB
-            for (int y = 0; y < height; y++)
-            {
-                const uint8_t* srcRow = bgr.data() + (height - 1 - y) * stride;
-                uint8_t* dstRow = outPixels + y * stride;
-                memcpy(dstRow, srcRow, stride);
-            }
-
-            return bih;
-        }
-    };
-
-    // ------------------------------
-    // Fake handles (opaque pointers)
-    // ------------------------------
-    struct FakeAviFile { std::shared_ptr<FFMpegMovie> movie; std::wstring path; };
-    struct FakeAviStream { std::shared_ptr<FFMpegMovie> movie; };
-    struct FakeGetFrame { std::shared_ptr<FFMpegMovie> movie; };
-
-    // ------------------------------
-    // Real AVIFIL32 functions (for fallback)
-    // ------------------------------
+    // ------------------------------------------------------------
+    // Real AVIFIL32 (pass-through for now)
+    // ------------------------------------------------------------
     using AVIFileOpenW_t = HRESULT(WINAPI*)(PAVIFILE* ppfile, LPCWSTR szFile, UINT uMode, LPCLSID lpHandler);
     using AVIFileOpenA_t = HRESULT(WINAPI*)(PAVIFILE* ppfile, LPCSTR  szFile, UINT uMode, LPCLSID lpHandler);
     using AVIFileRelease_t = ULONG(WINAPI*)(PAVIFILE pfile);
@@ -295,6 +114,8 @@ namespace
     using AVIStreamGetFrameClose_t = HRESULT(WINAPI*)(PGETFRAME pg);
 
     using AVIStreamRelease_t = ULONG(WINAPI*)(PAVISTREAM pStream);
+
+    static HMODULE gAvifil = nullptr;
 
     static AVIFileOpenW_t           Real_AVIFileOpenW = nullptr;
     static AVIFileOpenA_t           Real_AVIFileOpenA = nullptr;
@@ -312,342 +133,312 @@ namespace
 
     static AVIStreamRelease_t       Real_AVIStreamRelease = nullptr;
 
-    // ------------------------------
-    // Hooked implementations
-    // ------------------------------
-    HRESULT WINAPI Hook_AVIFileOpenW(PAVIFILE* ppfile, LPCWSTR szFile, UINT uMode, LPCLSID lpHandler)
+    static bool ResolveRealAvifil32()
     {
-        if (!ppfile) return AVIERR_BADPARAM;
-        *ppfile = nullptr;
+        if (gAvifil) return true;
 
-        if (szFile && HasMovieExt(szFile))
-        {
-            auto movie = std::make_shared<FFMpegMovie>();
-            if (movie->openFile(szFile))
-            {
-                auto* f = new FakeAviFile();
-                f->movie = movie;
-                f->path = szFile;
-                *ppfile = reinterpret_cast<PAVIFILE>(f);
-                return S_OK;
-            }
-        }
+        // Load only once, from our init thread (not from inside loader hooks)
+        gAvifil = LoadLibraryW(L"avifil32.dll");
+        if (!gAvifil) return false;
 
+        Real_AVIFileOpenW = (AVIFileOpenW_t)GetProcAddress(gAvifil, "AVIFileOpenW");
+        Real_AVIFileOpenA = (AVIFileOpenA_t)GetProcAddress(gAvifil, "AVIFileOpenA");
+        Real_AVIFileRelease = (AVIFileRelease_t)GetProcAddress(gAvifil, "AVIFileRelease");
+        Real_AVIFileGetStream = (AVIFileGetStream_t)GetProcAddress(gAvifil, "AVIFileGetStream");
+
+        Real_AVIStreamInfoW = (AVIStreamInfoW_t)GetProcAddress(gAvifil, "AVIStreamInfoW");
+        Real_AVIStreamInfoA = (AVIStreamInfoA_t)GetProcAddress(gAvifil, "AVIStreamInfoA");
+        Real_AVIStreamLength = (AVIStreamLength_t)GetProcAddress(gAvifil, "AVIStreamLength");
+        Real_AVIStreamSampleToTime = (AVIStreamSampleToTime_t)GetProcAddress(gAvifil, "AVIStreamSampleToTime");
+
+        Real_AVIStreamGetFrameOpen = (AVIStreamGetFrameOpen_t)GetProcAddress(gAvifil, "AVIStreamGetFrameOpen");
+        Real_AVIStreamGetFrame = (AVIStreamGetFrame_t)GetProcAddress(gAvifil, "AVIStreamGetFrame");
+        Real_AVIStreamGetFrameClose = (AVIStreamGetFrameClose_t)GetProcAddress(gAvifil, "AVIStreamGetFrameClose");
+
+        Real_AVIStreamRelease = (AVIStreamRelease_t)GetProcAddress(gAvifil, "AVIStreamRelease");
+
+        return true;
+    }
+
+    // ------------------------------------------------------------
+    // Hooked AVIFIL32 exports (pass-through + minimal log)
+    // ------------------------------------------------------------
+    static HRESULT WINAPI Hook_AVIFileOpenW(PAVIFILE* ppfile, LPCWSTR szFile, UINT uMode, LPCLSID lpHandler)
+    {
+        LogLine("[AVI] AVIFileOpenW: %S", szFile ? szFile : L"(null)");
         return Real_AVIFileOpenW ? Real_AVIFileOpenW(ppfile, szFile, uMode, lpHandler) : AVIERR_ERROR;
     }
 
-    HRESULT WINAPI Hook_AVIFileOpenA(PAVIFILE* ppfile, LPCSTR szFile, UINT uMode, LPCLSID lpHandler)
+    static HRESULT WINAPI Hook_AVIFileOpenA(PAVIFILE* ppfile, LPCSTR szFile, UINT uMode, LPCLSID lpHandler)
     {
-        if (!ppfile) return AVIERR_BADPARAM;
-        *ppfile = nullptr;
-
-        if (szFile)
-        {
-            std::wstring w = AnsiToWide(szFile);
-            if (HasMovieExt(w))
-            {
-                auto movie = std::make_shared<FFMpegMovie>();
-                if (movie->openFile(w.c_str()))
-                {
-                    auto* f = new FakeAviFile();
-                    f->movie = movie;
-                    f->path = w;
-                    *ppfile = reinterpret_cast<PAVIFILE>(f);
-                    return S_OK;
-                }
-            }
-        }
-
+        LogLine("[AVI] AVIFileOpenA: %s", szFile ? szFile : "(null)");
         return Real_AVIFileOpenA ? Real_AVIFileOpenA(ppfile, szFile, uMode, lpHandler) : AVIERR_ERROR;
     }
 
-    ULONG WINAPI Hook_AVIFileRelease(PAVIFILE pfile)
+    static ULONG WINAPI Hook_AVIFileRelease(PAVIFILE pfile)
     {
-        // Safe-ish: only delete if it looks like our fake type (has movie shared_ptr)
-        auto* f = reinterpret_cast<FakeAviFile*>(pfile);
-        __try
-        {
-            if (f && f->movie)
-            {
-                delete f;
-                return 0;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
+        LogLine("[AVI] AVIFileRelease");
         return Real_AVIFileRelease ? Real_AVIFileRelease(pfile) : 0;
     }
 
-    HRESULT WINAPI Hook_AVIFileGetStream(PAVIFILE pfile, PAVISTREAM* ppStream, DWORD fccType, LONG lParam)
+    static HRESULT WINAPI Hook_AVIFileGetStream(PAVIFILE pfile, PAVISTREAM* ppStream, DWORD fccType, LONG lParam)
     {
-        if (!ppStream) return AVIERR_BADPARAM;
-        *ppStream = nullptr;
-
-        auto* f = reinterpret_cast<FakeAviFile*>(pfile);
-        __try
-        {
-            if (f && f->movie)
-            {
-                // Many games request streamtypeVIDEO, or pass 0 to mean "first".
-                if (fccType == streamtypeVIDEO || fccType == 0)
-                {
-                    auto* s = new FakeAviStream();
-                    s->movie = f->movie;
-                    *ppStream = reinterpret_cast<PAVISTREAM>(s);
-                    return S_OK;
-                }
-                return AVIERR_NODATA;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
+        LogLine("[AVI] AVIFileGetStream fccType=0x%08X", (unsigned)fccType);
         return Real_AVIFileGetStream ? Real_AVIFileGetStream(pfile, ppStream, fccType, lParam) : AVIERR_NODATA;
     }
 
-    ULONG WINAPI Hook_AVIStreamRelease(PAVISTREAM pStream)
+    static HRESULT WINAPI Hook_AVIStreamInfoW(PAVISTREAM pStream, AVISTREAMINFOW* psi, LONG lSize)
     {
-        auto* s = reinterpret_cast<FakeAviStream*>(pStream);
-        __try
-        {
-            if (s && s->movie)
-            {
-                delete s;
-                return 0;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-        return Real_AVIStreamRelease ? Real_AVIStreamRelease(pStream) : 0;
-    }
-
-    HRESULT WINAPI Hook_AVIStreamInfoW(PAVISTREAM pStream, AVISTREAMINFOW* psi, LONG lSize)
-    {
-        auto* s = reinterpret_cast<FakeAviStream*>(pStream);
-        __try
-        {
-            if (s && s->movie && psi && lSize >= (LONG)sizeof(AVISTREAMINFOW))
-            {
-                ZeroMemory(psi, sizeof(AVISTREAMINFOW));
-                psi->fccType = streamtypeVIDEO;
-                psi->dwScale = 1;
-                psi->dwRate = (DWORD)(s->movie->fps > 0 ? (s->movie->fps + 0.5) : 30);
-                psi->dwLength = (DWORD)(s->movie->frameCount > 0 ? s->movie->frameCount : 0x7fffffff);
-                psi->rcFrame.left = 0;
-                psi->rcFrame.top = 0;
-                psi->rcFrame.right = s->movie->width;
-                psi->rcFrame.bottom = s->movie->height;
-                return S_OK;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
         return Real_AVIStreamInfoW ? Real_AVIStreamInfoW(pStream, psi, lSize) : AVIERR_ERROR;
     }
 
-    HRESULT WINAPI Hook_AVIStreamInfoA(PAVISTREAM pStream, AVISTREAMINFOA* psi, LONG lSize)
+    static HRESULT WINAPI Hook_AVIStreamInfoA(PAVISTREAM pStream, AVISTREAMINFOA* psi, LONG lSize)
     {
-        auto* s = reinterpret_cast<FakeAviStream*>(pStream);
-        __try
-        {
-            if (s && s->movie && psi && lSize >= (LONG)sizeof(AVISTREAMINFOA))
-            {
-                ZeroMemory(psi, sizeof(AVISTREAMINFOA));
-                psi->fccType = streamtypeVIDEO;
-                psi->dwScale = 1;
-                psi->dwRate = (DWORD)(s->movie->fps > 0 ? (s->movie->fps + 0.5) : 30);
-                psi->dwLength = (DWORD)(s->movie->frameCount > 0 ? s->movie->frameCount : 0x7fffffff);
-                psi->rcFrame.left = 0;
-                psi->rcFrame.top = 0;
-                psi->rcFrame.right = s->movie->width;
-                psi->rcFrame.bottom = s->movie->height;
-                return S_OK;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
         return Real_AVIStreamInfoA ? Real_AVIStreamInfoA(pStream, psi, lSize) : AVIERR_ERROR;
     }
 
-    LONG WINAPI Hook_AVIStreamLength(PAVISTREAM pStream)
+    static LONG WINAPI Hook_AVIStreamLength(PAVISTREAM pStream)
     {
-        auto* s = reinterpret_cast<FakeAviStream*>(pStream);
-        __try
-        {
-            if (s && s->movie)
-            {
-                if (s->movie->frameCount > 0) return (LONG)s->movie->frameCount;
-                return 0x7fffffff;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
         return Real_AVIStreamLength ? Real_AVIStreamLength(pStream) : 0;
     }
 
-    LONG WINAPI Hook_AVIStreamSampleToTime(PAVISTREAM pStream, LONG lSample)
+    static LONG WINAPI Hook_AVIStreamSampleToTime(PAVISTREAM pStream, LONG lSample)
     {
-        auto* s = reinterpret_cast<FakeAviStream*>(pStream);
-        __try
-        {
-            if (s && s->movie && s->movie->fps > 0.0)
-            {
-                double ms = (double)lSample * (1000.0 / s->movie->fps);
-                return (LONG)(ms + 0.5);
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
         return Real_AVIStreamSampleToTime ? Real_AVIStreamSampleToTime(pStream, lSample) : 0;
     }
 
-    PGETFRAME WINAPI Hook_AVIStreamGetFrameOpen(PAVISTREAM pStream, LPBITMAPINFOHEADER /*lpbiWanted*/)
+    static PGETFRAME WINAPI Hook_AVIStreamGetFrameOpen(PAVISTREAM pStream, LPBITMAPINFOHEADER lpbiWanted)
     {
-        auto* s = reinterpret_cast<FakeAviStream*>(pStream);
-        __try
-        {
-            if (s && s->movie)
-            {
-                auto* gf = new FakeGetFrame();
-                gf->movie = s->movie;
-                return reinterpret_cast<PGETFRAME>(gf);
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-        return Real_AVIStreamGetFrameOpen ? Real_AVIStreamGetFrameOpen(pStream, nullptr) : nullptr;
+        LogLine("[AVI] AVIStreamGetFrameOpen");
+        return Real_AVIStreamGetFrameOpen ? Real_AVIStreamGetFrameOpen(pStream, lpbiWanted) : nullptr;
     }
 
-    LPVOID WINAPI Hook_AVIStreamGetFrame(PGETFRAME pg, LONG lPos)
+    static LPVOID WINAPI Hook_AVIStreamGetFrame(PGETFRAME pg, LONG lPos)
     {
-        auto* gf = reinterpret_cast<FakeGetFrame*>(pg);
-        __try
-        {
-            if (gf && gf->movie)
-            {
-                return gf->movie->decodeFrameToDIB((int64_t)lPos);
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
         return Real_AVIStreamGetFrame ? Real_AVIStreamGetFrame(pg, lPos) : nullptr;
     }
 
-    HRESULT WINAPI Hook_AVIStreamGetFrameClose(PGETFRAME pg)
+    static HRESULT WINAPI Hook_AVIStreamGetFrameClose(PGETFRAME pg)
     {
-        auto* gf = reinterpret_cast<FakeGetFrame*>(pg);
-        __try
-        {
-            if (gf && gf->movie)
-            {
-                delete gf;
-                return S_OK;
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
+        LogLine("[AVI] AVIStreamGetFrameClose");
         return Real_AVIStreamGetFrameClose ? Real_AVIStreamGetFrameClose(pg) : AVIERR_ERROR;
     }
 
-    bool ResolveRealAvifil32()
+    static ULONG WINAPI Hook_AVIStreamRelease(PAVISTREAM pStream)
     {
-        HMODULE avifil = LoadLibraryW(L"avifil32.dll");
-        if (!avifil) return false;
-
-        Real_AVIFileOpenW = (AVIFileOpenW_t)GetProcAddress(avifil, "AVIFileOpenW");
-        Real_AVIFileOpenA = (AVIFileOpenA_t)GetProcAddress(avifil, "AVIFileOpenA");
-        Real_AVIFileRelease = (AVIFileRelease_t)GetProcAddress(avifil, "AVIFileRelease");
-        Real_AVIFileGetStream = (AVIFileGetStream_t)GetProcAddress(avifil, "AVIFileGetStream");
-
-        Real_AVIStreamInfoW = (AVIStreamInfoW_t)GetProcAddress(avifil, "AVIStreamInfoW");
-        Real_AVIStreamInfoA = (AVIStreamInfoA_t)GetProcAddress(avifil, "AVIStreamInfoA");
-        Real_AVIStreamLength = (AVIStreamLength_t)GetProcAddress(avifil, "AVIStreamLength");
-        Real_AVIStreamSampleToTime = (AVIStreamSampleToTime_t)GetProcAddress(avifil, "AVIStreamSampleToTime");
-
-        Real_AVIStreamGetFrameOpen = (AVIStreamGetFrameOpen_t)GetProcAddress(avifil, "AVIStreamGetFrameOpen");
-        Real_AVIStreamGetFrame = (AVIStreamGetFrame_t)GetProcAddress(avifil, "AVIStreamGetFrame");
-        Real_AVIStreamGetFrameClose = (AVIStreamGetFrameClose_t)GetProcAddress(avifil, "AVIStreamGetFrameClose");
-
-        Real_AVIStreamRelease = (AVIStreamRelease_t)GetProcAddress(avifil, "AVIStreamRelease");
-
-        // We allow some of these to be null (some games don't import all)
-        return true;
+        LogLine("[AVI] AVIStreamRelease");
+        return Real_AVIStreamRelease ? Real_AVIStreamRelease(pStream) : 0;
     }
 
-    bool InstallHooksInto(HMODULE module)
+    // ------------------------------------------------------------
+    // Patch AVIFIL32 imports in a single module
+    // ------------------------------------------------------------
+    static void PatchAvifilImportsInModule(HMODULE m)
     {
+        if (!m) return;
+
         bool ok;
+        ok = PatchIAT(m, "avifil32.dll", "AVIFileOpenW", (void*)Hook_AVIFileOpenW, (void**)&Real_AVIFileOpenW); LogPatch("AVIFileOpenW", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIFileOpenA", (void*)Hook_AVIFileOpenA, (void**)&Real_AVIFileOpenA); LogPatch("AVIFileOpenA", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIFileRelease", (void*)Hook_AVIFileRelease, (void**)&Real_AVIFileRelease); LogPatch("AVIFileRelease", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIFileGetStream", (void*)Hook_AVIFileGetStream, (void**)&Real_AVIFileGetStream); LogPatch("AVIFileGetStream", ok);
 
-        if (!module) return false;
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamInfoW", (void*)Hook_AVIStreamInfoW, (void**)&Real_AVIStreamInfoW); LogPatch("AVIStreamInfoW", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamInfoA", (void*)Hook_AVIStreamInfoA, (void**)&Real_AVIStreamInfoA); LogPatch("AVIStreamInfoA", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamLength", (void*)Hook_AVIStreamLength, (void**)&Real_AVIStreamLength); LogPatch("AVIStreamLength", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamSampleToTime", (void*)Hook_AVIStreamSampleToTime, (void**)&Real_AVIStreamSampleToTime); LogPatch("AVIStreamSampleToTime", ok);
 
-        // FFmpeg one-time: safe to call multiple times
-        av_log_set_level(AV_LOG_ERROR);
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamGetFrameOpen", (void*)Hook_AVIStreamGetFrameOpen, (void**)&Real_AVIStreamGetFrameOpen); LogPatch("AVIStreamGetFrameOpen", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamGetFrame", (void*)Hook_AVIStreamGetFrame, (void**)&Real_AVIStreamGetFrame); LogPatch("AVIStreamGetFrame", ok);
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamGetFrameClose", (void*)Hook_AVIStreamGetFrameClose, (void**)&Real_AVIStreamGetFrameClose); LogPatch("AVIStreamGetFrameClose", ok);
 
-        if (!ResolveRealAvifil32())
-            return false;
+        ok = PatchIAT(m, "avifil32.dll", "AVIStreamRelease", (void*)Hook_AVIStreamRelease, (void**)&Real_AVIStreamRelease); LogPatch("AVIStreamRelease", ok);
+    }
 
-		// Patch whatever exists in the IAT and print debug info
-        //PatchIAT(module, "avifil32.dll", "AVIFileOpenW", (void*)Hook_AVIFileOpenW, (void**)&Real_AVIFileOpenW);
-        ok = PatchIAT(module, "avifil32.dll", "AVIFileOpenW", (void*)Hook_AVIFileOpenW, (void**)&Real_AVIFileOpenW);
-        LogPatch("AVIFileOpenW", ok);
+    // ------------------------------------------------------------
+    // Kernel32 hooks (only patch game-folder modules)
+    // ------------------------------------------------------------
+    using LoadLibraryA_t = HMODULE(WINAPI*)(LPCSTR);
+    using LoadLibraryW_t = HMODULE(WINAPI*)(LPCWSTR);
+    using LoadLibraryExA_t = HMODULE(WINAPI*)(LPCSTR, HANDLE, DWORD);
+    using LoadLibraryExW_t = HMODULE(WINAPI*)(LPCWSTR, HANDLE, DWORD);
+    using GetProcAddress_t = FARPROC(WINAPI*)(HMODULE, LPCSTR);
 
-        //PatchIAT(module, "avifil32.dll", "AVIFileOpenA", (void*)Hook_AVIFileOpenA, (void**)&Real_AVIFileOpenA);
-        ok = PatchIAT(module, "avifil32.dll", "AVIFileOpenA", (void*)Hook_AVIFileOpenA, (void**)&Real_AVIFileOpenA);
-        LogPatch("AVIFileOpenA", ok);
+    static LoadLibraryA_t   Real_LoadLibraryA = nullptr;
+    static LoadLibraryW_t   Real_LoadLibraryW = nullptr;
+    static LoadLibraryExA_t Real_LoadLibraryExA = nullptr;
+    static LoadLibraryExW_t Real_LoadLibraryExW = nullptr;
+    static GetProcAddress_t Real_GetProcAddress = nullptr;
 
-        //PatchIAT(module, "avifil32.dll", "AVIFileRelease", (void*)Hook_AVIFileRelease, (void**)&Real_AVIFileRelease);
-        ok = PatchIAT(module, "avifil32.dll", "AVIFileRelease", (void*)Hook_AVIFileRelease, (void**)&Real_AVIFileRelease);
-        LogPatch("AVIFileRelease", ok);
+    static thread_local bool gInLoaderHook = false;
 
-        //PatchIAT(module, "avifil32.dll", "AVIFileGetStream", (void*)Hook_AVIFileGetStream, (void**)&Real_AVIFileGetStream);
-        ok = PatchIAT(module, "avifil32.dll", "AVIFileGetStream", (void*)Hook_AVIFileGetStream, (void**)&Real_AVIFileGetStream);
-        LogPatch("AVIFileGetStream", ok);
+    static bool IsAvifilHandle(HMODULE mod)
+    {
+        if (!mod) return false;
+        if (gAvifil && mod == gAvifil) return true;
+        HMODULE h = GetModuleHandleW(L"avifil32.dll");
+        return (h && mod == h);
+    }
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamInfoW", (void*)Hook_AVIStreamInfoW, (void**)&Real_AVIStreamInfoW);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamInfoW", (void*)Hook_AVIStreamInfoW, (void**)&Real_AVIStreamInfoW);
-        LogPatch("AVIStreamInfoW", ok);
+    static void PatchKernelImportsInModule(HMODULE m);
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamInfoA", (void*)Hook_AVIStreamInfoA, (void**)&Real_AVIStreamInfoA);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamInfoA", (void*)Hook_AVIStreamInfoA, (void**)&Real_AVIStreamInfoA);
-        LogPatch("AVIStreamInfoA", ok);
+    static void PatchIfGameModule(HMODULE mod)
+    {
+        if (!mod) return;
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamLength", (void*)Hook_AVIStreamLength, (void**)&Real_AVIStreamLength);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamLength", (void*)Hook_AVIStreamLength, (void**)&Real_AVIStreamLength);
-        LogPatch("AVIStreamLength", ok);
+        // Always allow EXE, and allow game-folder modules.
+        HMODULE exe = GetModuleHandleW(nullptr);
+        if (mod != exe && !IsGameDirModule(mod))
+            return;
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamSampleToTime", (void*)Hook_AVIStreamSampleToTime, (void**)&Real_AVIStreamSampleToTime);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamSampleToTime", (void*)Hook_AVIStreamSampleToTime, (void**)&Real_AVIStreamSampleToTime);
-        LogPatch("AVIStreamSampleToTime", ok);
+        PatchAvifilImportsInModule(mod);
+        PatchKernelImportsInModule(mod);
+    }
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamGetFrameOpen", (void*)Hook_AVIStreamGetFrameOpen, (void**)&Real_AVIStreamGetFrameOpen);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamGetFrameOpen", (void*)Hook_AVIStreamGetFrameOpen, (void**)&Real_AVIStreamGetFrameOpen);
-        LogPatch("AVIStreamGetFrameOpen", ok);
+    static HMODULE WINAPI Hook_LoadLibraryA(LPCSTR s)
+    {
+        if (gInLoaderHook) return Real_LoadLibraryA ? Real_LoadLibraryA(s) : nullptr;
+        gInLoaderHook = true;
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamGetFrame", (void*)Hook_AVIStreamGetFrame, (void**)&Real_AVIStreamGetFrame);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamGetFrame", (void*)Hook_AVIStreamGetFrame, (void**)&Real_AVIStreamGetFrame);
-        LogPatch("AVIStreamGetFrame", ok);
+        HMODULE mod = Real_LoadLibraryA ? Real_LoadLibraryA(s) : nullptr;
+        PatchIfGameModule(mod);
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamGetFrameClose", (void*)Hook_AVIStreamGetFrameClose, (void**)&Real_AVIStreamGetFrameClose);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamGetFrameClose", (void*)Hook_AVIStreamGetFrameClose, (void**)&Real_AVIStreamGetFrameClose);
-        LogPatch("AVIStreamGetFrameClose", ok);
+        gInLoaderHook = false;
+        return mod;
+    }
 
-        //PatchIAT(module, "avifil32.dll", "AVIStreamRelease", (void*)Hook_AVIStreamRelease, (void**)&Real_AVIStreamRelease);
-        ok = PatchIAT(module, "avifil32.dll", "AVIStreamRelease", (void*)Hook_AVIStreamRelease, (void**)&Real_AVIStreamRelease);
-        LogPatch("AVIStreamRelease", ok);
+    static HMODULE WINAPI Hook_LoadLibraryW(LPCWSTR s)
+    {
+        if (gInLoaderHook) return Real_LoadLibraryW ? Real_LoadLibraryW(s) : nullptr;
+        gInLoaderHook = true;
 
-        return true;
+        HMODULE mod = Real_LoadLibraryW ? Real_LoadLibraryW(s) : nullptr;
+        PatchIfGameModule(mod);
+
+        gInLoaderHook = false;
+        return mod;
+    }
+
+    static HMODULE WINAPI Hook_LoadLibraryExA(LPCSTR s, HANDLE f, DWORD fl)
+    {
+        if (gInLoaderHook) return Real_LoadLibraryExA ? Real_LoadLibraryExA(s, f, fl) : nullptr;
+        gInLoaderHook = true;
+
+        HMODULE mod = Real_LoadLibraryExA ? Real_LoadLibraryExA(s, f, fl) : nullptr;
+        PatchIfGameModule(mod);
+
+        gInLoaderHook = false;
+        return mod;
+    }
+
+    static HMODULE WINAPI Hook_LoadLibraryExW(LPCWSTR s, HANDLE f, DWORD fl)
+    {
+        if (gInLoaderHook) return Real_LoadLibraryExW ? Real_LoadLibraryExW(s, f, fl) : nullptr;
+        gInLoaderHook = true;
+
+        HMODULE mod = Real_LoadLibraryExW ? Real_LoadLibraryExW(s, f, fl) : nullptr;
+        PatchIfGameModule(mod);
+
+        gInLoaderHook = false;
+        return mod;
+    }
+
+    static FARPROC WINAPI Hook_GetProcAddress(HMODULE mod, LPCSTR name)
+    {
+        if (gInLoaderHook)
+            return Real_GetProcAddress ? Real_GetProcAddress(mod, name) : nullptr;
+
+        if (mod && name && IsAvifilHandle(mod))
+        {
+            if (strcmp(name, "AVIFileOpenW") == 0) return (FARPROC)Hook_AVIFileOpenW;
+            if (strcmp(name, "AVIFileOpenA") == 0) return (FARPROC)Hook_AVIFileOpenA;
+            if (strcmp(name, "AVIFileRelease") == 0) return (FARPROC)Hook_AVIFileRelease;
+            if (strcmp(name, "AVIFileGetStream") == 0) return (FARPROC)Hook_AVIFileGetStream;
+
+            if (strcmp(name, "AVIStreamInfoW") == 0) return (FARPROC)Hook_AVIStreamInfoW;
+            if (strcmp(name, "AVIStreamInfoA") == 0) return (FARPROC)Hook_AVIStreamInfoA;
+            if (strcmp(name, "AVIStreamLength") == 0) return (FARPROC)Hook_AVIStreamLength;
+            if (strcmp(name, "AVIStreamSampleToTime") == 0) return (FARPROC)Hook_AVIStreamSampleToTime;
+
+            if (strcmp(name, "AVIStreamGetFrameOpen") == 0) return (FARPROC)Hook_AVIStreamGetFrameOpen;
+            if (strcmp(name, "AVIStreamGetFrame") == 0) return (FARPROC)Hook_AVIStreamGetFrame;
+            if (strcmp(name, "AVIStreamGetFrameClose") == 0) return (FARPROC)Hook_AVIStreamGetFrameClose;
+
+            if (strcmp(name, "AVIStreamRelease") == 0) return (FARPROC)Hook_AVIStreamRelease;
+        }
+
+        return Real_GetProcAddress ? Real_GetProcAddress(mod, name) : nullptr;
+    }
+
+    static void PatchKernelImportsInModule(HMODULE m)
+    {
+        if (!m) return;
+
+        PatchIAT(m, "kernel32.dll", "LoadLibraryA", (void*)Hook_LoadLibraryA, (void**)&Real_LoadLibraryA);
+        PatchIAT(m, "kernel32.dll", "LoadLibraryW", (void*)Hook_LoadLibraryW, (void**)&Real_LoadLibraryW);
+        PatchIAT(m, "kernel32.dll", "LoadLibraryExA", (void*)Hook_LoadLibraryExA, (void**)&Real_LoadLibraryExA);
+        PatchIAT(m, "kernel32.dll", "LoadLibraryExW", (void*)Hook_LoadLibraryExW, (void**)&Real_LoadLibraryExW);
+        PatchIAT(m, "kernel32.dll", "GetProcAddress", (void*)Hook_GetProcAddress, (void**)&Real_GetProcAddress);
+
+        PatchIAT(m, "kernelbase.dll", "LoadLibraryA", (void*)Hook_LoadLibraryA, (void**)&Real_LoadLibraryA);
+        PatchIAT(m, "kernelbase.dll", "LoadLibraryW", (void*)Hook_LoadLibraryW, (void**)&Real_LoadLibraryW);
+        PatchIAT(m, "kernelbase.dll", "LoadLibraryExA", (void*)Hook_LoadLibraryExA, (void**)&Real_LoadLibraryExA);
+        PatchIAT(m, "kernelbase.dll", "LoadLibraryExW", (void*)Hook_LoadLibraryExW, (void**)&Real_LoadLibraryExW);
+        PatchIAT(m, "kernelbase.dll", "GetProcAddress", (void*)Hook_GetProcAddress, (void**)&Real_GetProcAddress);
+    }
+
+    static void PatchAllLoadedModulesOnce()
+    {
+        HMODULE mods[1024]{};
+        DWORD needed = 0;
+        if (!EnumProcessModules(GetCurrentProcess(), mods, sizeof(mods), &needed))
+            return;
+
+        HMODULE exe = GetModuleHandleW(nullptr);
+
+        DWORD count = needed / sizeof(HMODULE);
+        for (DWORD i = 0; i < count; i++)
+        {
+            HMODULE m = mods[i];
+            if (!m) continue;
+
+            // ✅ only patch EXE + game-folder DLLs
+            if (m != exe && !IsGameDirModule(m))
+                continue;
+
+            PatchAvifilImportsInModule(m);
+            PatchKernelImportsInModule(m);
+        }
     }
 }
 
 namespace AviFfmpegHook
 {
-    bool InstallForMainModule()
+    bool Install()
     {
-        HMODULE exe = GetModuleHandleW(nullptr);
-        return InstallHooksInto(exe);
-    }
+        static LONG sOnce = 0;
+        if (InterlockedExchange(&sOnce, 1) != 0)
+            return true;
 
-    bool InstallForModule(HMODULE module)
-    {
-        return InstallHooksInto(module);
+        LogLine("[AviFfmpegHook] Install ENTER");
+
+        InitGameDirOnce();
+
+        HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
+        HMODULE kb = GetModuleHandleW(L"kernelbase.dll");
+
+        Real_LoadLibraryA = (LoadLibraryA_t)GetProcAddress(k32 ? k32 : kb, "LoadLibraryA");
+        Real_LoadLibraryW = (LoadLibraryW_t)GetProcAddress(k32 ? k32 : kb, "LoadLibraryW");
+        Real_LoadLibraryExA = (LoadLibraryExA_t)GetProcAddress(k32 ? k32 : kb, "LoadLibraryExA");
+        Real_LoadLibraryExW = (LoadLibraryExW_t)GetProcAddress(k32 ? k32 : kb, "LoadLibraryExW");
+        Real_GetProcAddress = (GetProcAddress_t)GetProcAddress(k32 ? k32 : kb, "GetProcAddress");
+
+        if (!ResolveRealAvifil32())
+            LogLine("[AviFfmpegHook] Note: avifil32.dll could not be loaded now (still catches via GetProcAddress).");
+
+        PatchAllLoadedModulesOnce();
+
+        LogLine("[AviFfmpegHook] Install EXIT");
+        return true;
     }
 }

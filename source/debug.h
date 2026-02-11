@@ -5,8 +5,13 @@
 #include <cstdio>
 #include <cstring>
 
+// Global flag to enable/disable logging (defined in dllmain.cpp)
+extern bool gEnableLogging;
+
 static void LogLine(const char* fmt, ...)
 {
+    if (!gEnableLogging) return;
+
     char path[MAX_PATH] = {};
     GetModuleFileNameA(NULL, path, MAX_PATH);
     char* slash = strrchr(path, '\\');

@@ -1,0 +1,20 @@
+#pragma once
+#ifndef IDC_STATIC
+#define IDC_STATIC -1
+#endif
+
+#define IDD_CONFIG_DIALOG 101
+#define IDC_RES_COMBO     1001
+#define IDC_FPS_COMBO     1002
+#define IDC_REFRESH       1005
+#define IDC_WINDOWED      1006
+#define IDC_BORDERLESS    1007
+#define IDC_CENTER        1008
+#define IDC_ALWAYS_ONTOP  1009
+#define IDC_LOCK_CURSOR   1010
+#define IDC_PRIMARY_MON   1011
+#define IDC_ALPHA_FIX     1012
+#define IDC_SKIP_MOVIES   1013
+#define IDC_ENABLE_LOG    1014
+#define IDC_DISABLE_SHIM  1015
+#define IDC_FPS_COUNTER   1016

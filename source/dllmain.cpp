@@ -13,9 +13,9 @@
 *      being the original software.
 *   3. This notice may not be removed or altered from any source distribution.
 */
-
-#include "d3d8.h"
 #include <d3dx8.h>
+#include <cstdio>
+#include "d3d8.h"
 #include "iathook.h"
 #include "helpers.h"
 #pragma comment (lib, "d3dx8.lib")
@@ -27,8 +27,15 @@
 #include "debug.h"
 #include "alpha_fix.h"
 #include "file_events.h"
-#include <AviFfmpegHook.h>
-#include <cstdio>
+#include "AviFfmpegHook.h"
+#include "MciHook.h"
+#include "DirectShowHook.h"
+#include "ConfigWindow.h"
+
+#pragma once
+#include <windows.h>
+
+//void ShowConfigWindow(HINSTANCE hInst);
 
 Direct3D8EnableMaximizedWindowedModeShimProc m_pDirect3D8EnableMaximizedWindowedModeShim;
 ValidatePixelShaderProc m_pValidatePixelShader;
@@ -53,6 +60,8 @@ bool bLockCursorToWindow;//Survivor Exclusive
 int ForceWidth;//Survivor Exclusive
 int ForceHeight;//Survivor Exclusive
 bool bAlphaFix;//Survivor Exclusive; whether to use PNG shadows reminiscent of PS1 shadows or not
+bool bSkipMovies;//Survivor Exclusive; skip movies
+bool gEnableLogging;//Survivor Exclusive; whether to log to file or not
 float fFPSLimit;
 int nFullScreenRefreshRateInHz;
 
@@ -86,7 +95,8 @@ static void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev)
     if (gCrossLoaded) return;
     gCrossLoaded = true;
 
-    // Put crosshair.bmp next to gun_bio.exe
+	// Put crosshair.png in FIXRES/crosshair.png relative to the game exe.
+    // It should be a 32-bit RGBA image with premultiplied alpha (e.g. exported from Photoshop with "Save for Web" and "Transparency: On").
     HRESULT hr = D3DXCreateTextureFromFileA(dev, "FIXRES/crosshair.png", &gCrossTex);
     if (FAILED(hr)) gCrossTex = nullptr;
 }
@@ -1266,156 +1276,222 @@ void HookImportedModules()
     }
 }
 
-static DWORD WINAPI InitThread(LPVOID)
+DWORD WINAPI InitThread(LPVOID)
 {
-    // Give the process a moment to finish loading its imports (optional but helps some games)
-    Sleep(50);
+    //ShowConfigWindow();
+    LogLine("[INIT] InitThread ENTER");
 
-	AviFfmpegHook::InstallForMainModule();//Install AviFfmpegHook for the main module to fix AVI playback issues
+    // Small delay is optional. If things are stable without it, remove it.
+    // Sleep(200);
+
+    // Install DirectShow hook once.
+    DirectShowHook::Install();
+
+    // bSkipMovies should already be set in DllMain after reading the config.ini
+    DirectShowHook::SetSkipMovies(bSkipMovies != 0);
+
+    LogLine("[INIT] SkipMovies=%d", (int)(bSkipMovies != 0));
+    LogLine("[INIT] InitThread EXIT");
     return 0;
 }
 
 bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 {
-    static HMODULE d3d8dll = nullptr;
+    static bool bInitialized = false; // Guard variable
 
     switch (dwReason)
     {
-        case DLL_PROCESS_ATTACH:
+    case DLL_PROCESS_ATTACH:
+    {
+        if (bInitialized) return TRUE;
+        bInitialized = true;
+
+        g_hWrapperModule = hModule; // Store the DLL handle
+
+        // 1. Show the window FIRST. 
+        // This will update the variables (bSkipMovies, ForceWidth, etc.)
+        ShowConfigWindow(hModule);
+
+        // ---- Load real system d3d8.dll FIRST (critical) ----
+        char path[MAX_PATH]{};
+        GetSystemDirectoryA(path, MAX_PATH);
+        strcat_s(path, "\\d3d8.dll");
+
+        d3d8dll = LoadLibraryA(path);
+        LogLine("[DLL] LoadLibraryA(%s) -> %p err=%lu", path, d3d8dll, GetLastError());
+        if (!d3d8dll)
+            return FALSE;
+
+        // ---- Resolve exports (at least Direct3DCreate8 must exist) ----
+        m_pDirect3D8EnableMaximizedWindowedModeShim =
+            (Direct3D8EnableMaximizedWindowedModeShimProc)GetProcAddress(d3d8dll, "Direct3D8EnableMaximizedWindowedModeShim");
+        m_pValidatePixelShader =
+            (ValidatePixelShaderProc)GetProcAddress(d3d8dll, "ValidatePixelShader");
+        m_pValidateVertexShader =
+            (ValidateVertexShaderProc)GetProcAddress(d3d8dll, "ValidateVertexShader");
+        m_pDebugSetMute =
+            (DebugSetMuteProc)GetProcAddress(d3d8dll, "DebugSetMute");
+        m_pDirect3DCreate8 =
+            (Direct3DCreate8Proc)GetProcAddress(d3d8dll, "Direct3DCreate8");
+
+        LogLine("[DLL] GetProcAddress(Direct3DCreate8) -> %p", (void*)m_pDirect3DCreate8);
+        if (!m_pDirect3DCreate8)
+            return FALSE;
+
+        // ---- Resident Evil Survivor Fixes (safe here) ----
+        InstallCDBypass();
+        InstallDInputHook();
+        // AviFfmpegHook::Install();   // DO NOT call here; call from InitThread
+
+        // ---- INI path ----
+        HMODULE hm = NULL;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)&Direct3DCreate8, &hm);
+
+        GetModuleFileNameA(hm, path, sizeof(path));
+        char* lastSlash = strrchr(path, '\\');
+        if (lastSlash) strcpy(lastSlash, "\\config.ini");
+
+        // --- GRAPHICS ---
+        fFPSLimit = static_cast<float>(GetPrivateProfileInt("Graphics", "FPSLimit", 0, path));
+        nFullScreenRefreshRateInHz = GetPrivateProfileInt("Graphics", "FullScreenRefreshRateInHz", 0, path);
+        ForceWidth = GetPrivateProfileInt("Graphics", "ForceWidth", 0, path);
+        ForceHeight = GetPrivateProfileInt("Graphics", "ForceHeight", 0, path);
+        bDisplayFPSCounter = GetPrivateProfileInt("Graphics", "DisplayFPSCounter", 0, path) != 0;
+
+        // --- WINDOW ---
+        bForceWindowedMode = GetPrivateProfileInt("Window", "ForceWindowedMode", 0, path) != 0;
+        bBorderlessFullscreen = GetPrivateProfileInt("Window", "BorderlessFullscreen", 0, path) != 0;
+        bCenterWindow = GetPrivateProfileInt("Window", "CenterWindow", 1, path) != 0;
+        bAlwaysOnTop = GetPrivateProfileInt("Window", "AlwaysOnTop", 0, path) != 0;
+        bLockCursorToWindow = GetPrivateProfileInt("Window", "LockCursorToWindow", 0, path) != 0;
+        bUsePrimaryMonitor = GetPrivateProfileInt("Window", "UsePrimaryMonitor", 0, path) != 0;
+        bDoNotNotifyOnTaskSwitch = GetPrivateProfileInt("Window", "DoNotNotifyOnTaskSwitch", 0, path) != 0;
+
+        // --- FIXES ---
+        bAlphaFix = GetPrivateProfileInt("Fixes", "AlphaFix", 0, path) != 0;
+        bSkipMovies = GetPrivateProfileInt("Fixes", "SkipMovies", 0, path) != 0;
+        bDirect3D8DisableMaximizedWindowedModeShim = GetPrivateProfileInt("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0, path) != 0;
+
+        // --- DEBUG ---
+        gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
+
+        // ---- FPS limiter ----
+        if (fFPSLimit > 0.0f)
         {
-            g_hWrapperModule = hModule;
-            
-            // Load dll
-            char path[MAX_PATH];
-            GetSystemDirectoryA(path, MAX_PATH);
-            strcat_s(path, "\\d3d8.dll");
-            d3d8dll = LoadLibraryA(path);
+            FrameLimiter::FPSLimitMode mode =
+                (GetPrivateProfileInt("MAIN", "FPSLimitMode", 1, path) == 2)
+                ? FrameLimiter::FPSLimitMode::FPS_ACCURATE
+                : FrameLimiter::FPSLimitMode::FPS_REALTIME;
 
-            // Get function addresses
-            m_pDirect3D8EnableMaximizedWindowedModeShim = (Direct3D8EnableMaximizedWindowedModeShimProc)GetProcAddress(d3d8dll, "Direct3D8EnableMaximizedWindowedModeShim");
-            m_pValidatePixelShader = (ValidatePixelShaderProc)GetProcAddress(d3d8dll, "ValidatePixelShader");
-            m_pValidateVertexShader = (ValidateVertexShaderProc)GetProcAddress(d3d8dll, "ValidateVertexShader");
-            m_pDebugSetMute = (DebugSetMuteProc)GetProcAddress(d3d8dll, "DebugSetMute");
-            m_pDirect3DCreate8 = (Direct3DCreate8Proc)GetProcAddress(d3d8dll, "Direct3DCreate8");
+            if (mode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
+                timeBeginPeriod(1);
 
-            //Resident Evil Survivor Fixes
-            InstallCDBypass();//Install CD drive checks bypass
-            InstallDInputHook();//Install DirectInput hook to fix controller issues
-			AviFfmpegHook::InstallForMainModule();//Movie AVI/MPG playback fix (FFMPEG
+            FrameLimiter::Init(mode);
+            mFPSLimitMode = mode;
+        }
+        else
+        {
+            mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
+        }
 
-            //ini
-            HMODULE hm = NULL;
-            GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)&Direct3DCreate8, &hm);
-            GetModuleFileNameA(hm, path, sizeof(path));
-            strcpy(strrchr(path, '\\'), "\\d3d8.ini");
-
-            bForceWindowedMode = GetPrivateProfileInt("MAIN", "ForceWindowedMode", 0, path) != 0;
-            bDirect3D8DisableMaximizedWindowedModeShim = GetPrivateProfileInt("MAIN", "Direct3D8DisableMaximizedWindowedModeShim", 0, path) != 0;
-            fFPSLimit = static_cast<float>(GetPrivateProfileInt("MAIN", "FPSLimit", 0, path));
-            nFullScreenRefreshRateInHz = GetPrivateProfileInt("MAIN", "FullScreenRefreshRateInHz", 0, path);
-            bDisplayFPSCounter = GetPrivateProfileInt("MAIN", "DisplayFPSCounter", 0, path);
-            bUsePrimaryMonitor = GetPrivateProfileInt("FORCEWINDOWED", "UsePrimaryMonitor", 0, path) != 0;
-            bCenterWindow = GetPrivateProfileInt("FORCEWINDOWED", "CenterWindow", 1, path) != 0;
-            bBorderlessFullscreen = GetPrivateProfileInt("FORCEWINDOWED", "BorderlessFullscreen", 0, path) != 0;
-            bAlwaysOnTop = GetPrivateProfileInt("FORCEWINDOWED", "AlwaysOnTop", 0, path) != 0;
-            bDoNotNotifyOnTaskSwitch = GetPrivateProfileInt("FORCEWINDOWED", "DoNotNotifyOnTaskSwitch", 0, path) != 0;
-            //bShowWindowBorder = GetPrivateProfileInt("FORCEWINDOWED", "ShowWindowBorder", 1, path) != 0;//Survivor Exclusive set in INI
-            bLockCursorToWindow = GetPrivateProfileInt("FORCEWINDOWED", "LockCursorToWindow", 0, path) != 0;//Survivor Exclusive set in INI
-            ForceWidth = GetPrivateProfileInt("MAIN", "ForceWidth", 0, path);//Survivor Exclusive set in INI
-            ForceHeight = GetPrivateProfileInt("MAIN", "ForceHeight", 0, path);//Survivor Exclusive set in INI
-            bAlphaFix = GetPrivateProfileInt("GFX", "AlphaFix", 0, path);//Survivor Exclusive set in INI
-
-            if (fFPSLimit > 0.0f)
+        // ---- Disable maximized windowed mode shim ----
+        if (bDirect3D8DisableMaximizedWindowedModeShim)
+        {
+            auto addr = (uintptr_t)GetProcAddress(d3d8dll, "Direct3D8EnableMaximizedWindowedModeShim");
+            if (addr)
             {
-                FrameLimiter::FPSLimitMode mode = (GetPrivateProfileInt("MAIN", "FPSLimitMode", 1, path) == 2) ? FrameLimiter::FPSLimitMode::FPS_ACCURATE : FrameLimiter::FPSLimitMode::FPS_REALTIME;
-                if (mode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
-                    timeBeginPeriod(1);
-
-                FrameLimiter::Init(mode);
-                mFPSLimitMode = mode;
+                DWORD Protect;
+                VirtualProtect((LPVOID)(addr + 6), 4, PAGE_EXECUTE_READWRITE, &Protect);
+                *(unsigned*)(addr + 6) = 0;
+                *(unsigned*)(*(unsigned*)(addr + 2)) = 0;
+                VirtualProtect((LPVOID)(addr + 6), 4, Protect, &Protect);
+                bForceWindowedMode = false;
             }
+        }
+
+        // ---- Task switch notify hooks ----
+        if (bDoNotNotifyOnTaskSwitch)
+        {
+            GetSystemWindowsDirectoryA(WinDir, MAX_PATH);
+
+            oRegisterClassA = (RegisterClassA_fn)Iat_hook::detour_iat_ptr("RegisterClassA", (void*)hk_RegisterClassA);
+            oRegisterClassW = (RegisterClassW_fn)Iat_hook::detour_iat_ptr("RegisterClassW", (void*)hk_RegisterClassW);
+            oRegisterClassExA = (RegisterClassExA_fn)Iat_hook::detour_iat_ptr("RegisterClassExA", (void*)hk_RegisterClassExA);
+            oRegisterClassExW = (RegisterClassExW_fn)Iat_hook::detour_iat_ptr("RegisterClassExW", (void*)hk_RegisterClassExW);
+            oGetForegroundWindow = (GetForegroundWindow_fn)Iat_hook::detour_iat_ptr("GetForegroundWindow", (void*)hk_GetForegroundWindow);
+            oGetActiveWindow = (GetActiveWindow_fn)Iat_hook::detour_iat_ptr("GetActiveWindow", (void*)hk_GetActiveWindow);
+            oGetFocus = (GetFocus_fn)Iat_hook::detour_iat_ptr("GetFocus", (void*)hk_GetFocus);
+            oLoadLibraryA = (LoadLibraryA_fn)Iat_hook::detour_iat_ptr("LoadLibraryA", (void*)hk_LoadLibraryA);
+            oLoadLibraryW = (LoadLibraryW_fn)Iat_hook::detour_iat_ptr("LoadLibraryW", (void*)hk_LoadLibraryW);
+            oLoadLibraryExA = (LoadLibraryExA_fn)Iat_hook::detour_iat_ptr("LoadLibraryExA", (void*)hk_LoadLibraryExA);
+            oLoadLibraryExW = (LoadLibraryExW_fn)Iat_hook::detour_iat_ptr("LoadLibraryExW", (void*)hk_LoadLibraryExW);
+            oFreeLibrary = (FreeLibrary_fn)Iat_hook::detour_iat_ptr("FreeLibrary", (void*)hk_FreeLibrary);
+
+            Iat_hook::detour_iat_ptr("GetProcAddress", (void*)hk_GetProcAddress);
+            Iat_hook::detour_iat_ptr("GetProcAddress", (void*)hk_GetProcAddress, d3d8dll);
+
+            if (oGetForegroundWindow == NULL)
+                oGetForegroundWindow = (GetForegroundWindow_fn)Iat_hook::detour_iat_ptr("GetForegroundWindow", (void*)hk_GetForegroundWindow, d3d8dll);
             else
-                mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
+                Iat_hook::detour_iat_ptr("GetForegroundWindow", (void*)hk_GetForegroundWindow, d3d8dll);
 
-            if (bDirect3D8DisableMaximizedWindowedModeShim)
+            HMODULE ole32 = GetModuleHandleA("ole32.dll");
+            if (ole32)
             {
-                auto addr = (uintptr_t)GetProcAddress(d3d8dll, "Direct3D8EnableMaximizedWindowedModeShim");
-                if (addr)
-                {
-                    DWORD Protect;
-                    VirtualProtect((LPVOID)(addr + 6), 4, PAGE_EXECUTE_READWRITE, &Protect);
-                    *(unsigned*)(addr + 6) = 0;
-                    *(unsigned*)(*(unsigned*)(addr + 2)) = 0;
-                    VirtualProtect((LPVOID)(addr + 6), 4, Protect, &Protect);
-                    bForceWindowedMode = false;
-                }
-            }
-
-            if (bDoNotNotifyOnTaskSwitch)
-            {
-                GetSystemWindowsDirectoryA(WinDir, MAX_PATH);
-
-                oRegisterClassA = (RegisterClassA_fn)Iat_hook::detour_iat_ptr("RegisterClassA", (void*)hk_RegisterClassA);
-                oRegisterClassW = (RegisterClassW_fn)Iat_hook::detour_iat_ptr("RegisterClassW", (void*)hk_RegisterClassW);
-                oRegisterClassExA = (RegisterClassExA_fn)Iat_hook::detour_iat_ptr("RegisterClassExA", (void*)hk_RegisterClassExA);
-                oRegisterClassExW = (RegisterClassExW_fn)Iat_hook::detour_iat_ptr("RegisterClassExW", (void*)hk_RegisterClassExW);
-                oGetForegroundWindow = (GetForegroundWindow_fn)Iat_hook::detour_iat_ptr("GetForegroundWindow", (void*)hk_GetForegroundWindow);
-                oGetActiveWindow = (GetActiveWindow_fn)Iat_hook::detour_iat_ptr("GetActiveWindow", (void*)hk_GetActiveWindow);
-                oGetFocus = (GetFocus_fn)Iat_hook::detour_iat_ptr("GetFocus", (void*)hk_GetFocus);
-                oLoadLibraryA = (LoadLibraryA_fn)Iat_hook::detour_iat_ptr("LoadLibraryA", (void*)hk_LoadLibraryA);
-                oLoadLibraryW = (LoadLibraryW_fn)Iat_hook::detour_iat_ptr("LoadLibraryW", (void*)hk_LoadLibraryW);
-                oLoadLibraryExA = (LoadLibraryExA_fn)Iat_hook::detour_iat_ptr("LoadLibraryExA", (void*)hk_LoadLibraryExA);
-                oLoadLibraryExW = (LoadLibraryExW_fn)Iat_hook::detour_iat_ptr("LoadLibraryExW", (void*)hk_LoadLibraryExW);
-                oFreeLibrary = (FreeLibrary_fn)Iat_hook::detour_iat_ptr("FreeLibrary", (void*)hk_FreeLibrary);
-
-                Iat_hook::detour_iat_ptr("GetProcAddress", (void*)hk_GetProcAddress);
-                Iat_hook::detour_iat_ptr("GetProcAddress", (void*)hk_GetProcAddress, d3d8dll);
-
-                if (oGetForegroundWindow == NULL)
-                    oGetForegroundWindow = (GetForegroundWindow_fn)Iat_hook::detour_iat_ptr("GetForegroundWindow", (void*)hk_GetForegroundWindow, d3d8dll);
+                if (oRegisterClassA == NULL)
+                    oRegisterClassA = (RegisterClassA_fn)Iat_hook::detour_iat_ptr("RegisterClassA", (void*)hk_RegisterClassA, ole32);
                 else
-                    Iat_hook::detour_iat_ptr("GetForegroundWindow", (void*)hk_GetForegroundWindow, d3d8dll);
+                    Iat_hook::detour_iat_ptr("RegisterClassA", (void*)hk_RegisterClassA, ole32);
 
-                HMODULE ole32 = GetModuleHandleA("ole32.dll");
-                if (ole32) {
-                    if (oRegisterClassA == NULL)
-                        oRegisterClassA = (RegisterClassA_fn)Iat_hook::detour_iat_ptr("RegisterClassA", (void*)hk_RegisterClassA, ole32);
-                    else
-                        Iat_hook::detour_iat_ptr("RegisterClassA", (void*)hk_RegisterClassA, ole32);
-                    if (oRegisterClassW == NULL)
-                        oRegisterClassW = (RegisterClassW_fn)Iat_hook::detour_iat_ptr("RegisterClassW", (void*)hk_RegisterClassW, ole32);
-                    else
-                        Iat_hook::detour_iat_ptr("RegisterClassW", (void*)hk_RegisterClassW, ole32);
-                    if (oRegisterClassExA == NULL)
-                        oRegisterClassExA = (RegisterClassExA_fn)Iat_hook::detour_iat_ptr("RegisterClassExA", (void*)hk_RegisterClassExA, ole32);
-                    else
-                        Iat_hook::detour_iat_ptr("RegisterClassExA", (void*)hk_RegisterClassExA, ole32);
-                    if (oRegisterClassExW == NULL)
-                        oRegisterClassExW = (RegisterClassExW_fn)Iat_hook::detour_iat_ptr("RegisterClassExW", (void*)hk_RegisterClassExW, ole32);
-                    else
-                        Iat_hook::detour_iat_ptr("RegisterClassExW", (void*)hk_RegisterClassExW, ole32);
-                    if (oGetActiveWindow == NULL)
-                        oGetActiveWindow = (GetActiveWindow_fn)Iat_hook::detour_iat_ptr("GetActiveWindow", (void*)hk_GetActiveWindow, ole32);
-                    else
-                        Iat_hook::detour_iat_ptr("GetActiveWindow", (void*)hk_GetActiveWindow, ole32);
-                }
+                if (oRegisterClassW == NULL)
+                    oRegisterClassW = (RegisterClassW_fn)Iat_hook::detour_iat_ptr("RegisterClassW", (void*)hk_RegisterClassW, ole32);
+                else
+                    Iat_hook::detour_iat_ptr("RegisterClassW", (void*)hk_RegisterClassW, ole32);
 
-                HookImportedModules();
+                if (oRegisterClassExA == NULL)
+                    oRegisterClassExA = (RegisterClassExA_fn)Iat_hook::detour_iat_ptr("RegisterClassExA", (void*)hk_RegisterClassExA, ole32);
+                else
+                    Iat_hook::detour_iat_ptr("RegisterClassExA", (void*)hk_RegisterClassExA, ole32);
+
+                if (oRegisterClassExW == NULL)
+                    oRegisterClassExW = (RegisterClassExW_fn)Iat_hook::detour_iat_ptr("RegisterClassExW", (void*)hk_RegisterClassExW, ole32);
+                else
+                    Iat_hook::detour_iat_ptr("RegisterClassExW", (void*)hk_RegisterClassExW, ole32);
+
+                if (oGetActiveWindow == NULL)
+                    oGetActiveWindow = (GetActiveWindow_fn)Iat_hook::detour_iat_ptr("GetActiveWindow", (void*)hk_GetActiveWindow, ole32);
+                else
+                    Iat_hook::detour_iat_ptr("GetActiveWindow", (void*)hk_GetActiveWindow, ole32);
             }
-        }
-        break;
-        case DLL_PROCESS_DETACH:
-        {
-			ClipCursor(NULL);//Unlock cursor in case it was locked to window
-            if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
-                timeEndPeriod(1);
 
-            FreeLibrary(d3d8dll);
+            HookImportedModules();
         }
+
+        // ---- Start InitThread LAST (after real d3d8 is ready) ----
+        HANDLE h = CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
+        LogLine("[DLL] CreateThread InitThread -> %p err=%lu", h, GetLastError());
+        if (h) CloseHandle(h);
+
         break;
     }
 
-    return true;
+    case DLL_PROCESS_DETACH:
+    {
+        ClipCursor(NULL);
+
+        if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
+            timeEndPeriod(1);
+
+        if (d3d8dll)
+            FreeLibrary(d3d8dll);
+
+        break;
+    }
+    }
+
+    return TRUE;
 }
 
 int WINAPI Direct3D8EnableMaximizedWindowedModeShim(BOOL mEnable)

@@ -1,0 +1,101 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\source\IDirect3D8.cpp" />
+    <ClCompile Include="..\source\IDirect3DCubeTexture8.cpp" />
+    <ClCompile Include="..\source\IDirect3DDevice8.cpp" />
+    <ClCompile Include="..\source\IDirect3DIndexBuffer8.cpp" />
+    <ClCompile Include="..\source\IDirect3DSurface8.cpp" />
+    <ClCompile Include="..\source\IDirect3DSwapChain8.cpp" />
+    <ClCompile Include="..\source\IDirect3DTexture8.cpp" />
+    <ClCompile Include="..\source\IDirect3DVertexBuffer8.cpp" />
+    <ClCompile Include="..\source\IDirect3DVolume8.cpp" />
+    <ClCompile Include="..\source\IDirect3DVolumeTexture8.cpp" />
+    <ClCompile Include="..\source\InterfaceQuery.cpp" />
+    <ClCompile Include="..\source\dllmain.cpp" />
+    <ClCompile Include="dinputhook.cpp" />
+    <ClCompile Include="file_events.cpp" />
+    <ClCompile Include="MciHook.cpp" />
+    <ClCompile Include="ConfigWindow.cpp">
+      <Filter>Cofing Window %28User Interface%29</Filter>
+    </ClCompile>
+    <ClCompile Include="alpha_fix.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="AviFfmpegHook.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="cd_bypass.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="aim_shared.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="DirectShowHook.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\source\AddressLookupTable.h" />
+    <ClInclude Include="..\source\IDirect3D8.h" />
+    <ClInclude Include="..\source\IDirect3DCubeTexture8.h" />
+    <ClInclude Include="..\source\IDirect3DDevice8.h" />
+    <ClInclude Include="..\source\IDirect3DIndexBuffer8.h" />
+    <ClInclude Include="..\source\IDirect3DSurface8.h" />
+    <ClInclude Include="..\source\IDirect3DSwapChain8.h" />
+    <ClInclude Include="..\source\IDirect3DTexture8.h" />
+    <ClInclude Include="..\source\IDirect3DVertexBuffer8.h" />
+    <ClInclude Include="..\source\IDirect3DVolume8.h" />
+    <ClInclude Include="..\source\IDirect3DVolumeTexture8.h" />
+    <ClInclude Include="..\source\VersionInfo.h" />
+    <ClInclude Include="..\source\d3d8.h" />
+    <ClInclude Include="..\source\helpers.h" />
+    <ClInclude Include="..\source\iathook.h" />
+    <ClInclude Include="dinputhook.h" />
+    <ClInclude Include="file_events.h" />
+    <ClInclude Include="MciHook.h" />
+    <ClInclude Include="stb_image.h" />
+    <ClInclude Include="resource.h">
+      <Filter>Cofing Window %28User Interface%29</Filter>
+    </ClInclude>
+    <ClInclude Include="alpha_fix.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="AviFfmpegHook.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="cd_bypass.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="aim_shared.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="debug.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="DirectShowHook.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="ConfigWindow.h">
+      <Filter>Cofing Window %28User Interface%29</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\source\VersionInfo.rc" />
+    <ResourceCompile Include="Resource.rc">
+      <Filter>Cofing Window %28User Interface%29</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\source\d3d8.def" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Survivor Fixes">
+      <UniqueIdentifier>{88069ab2-c61b-4b33-9ae3-6d36f6b37d34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cofing Window %28User Interface%29">
+      <UniqueIdentifier>{fe10e5cf-d79b-495b-8ce4-ba55a15749a1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

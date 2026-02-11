@@ -1,0 +1,37 @@
+#include <windows.h>
+#include <commctrl.h>
+#include "resource.h"
+
+IDD_CONFIG_DIALOG DIALOGEX 0, 0, 280, 260
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Resident Evil: Survivor Classic Rebirth 1.0"
+FONT 9, "Segoe UI"
+BEGIN
+GROUPBOX        "Graphics", IDC_STATIC, 7, 7, 266, 65
+LTEXT           "Resolution:", IDC_STATIC, 15, 22, 40, 8
+COMBOBOX        IDC_RES_COMBO, 60, 20, 95, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+LTEXT           "FPS Limit:", IDC_STATIC, 165, 22, 35, 8
+COMBOBOX        IDC_FPS_COMBO, 205, 20, 60, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+CONTROL         "Display FPS Counter", IDC_FPS_COUNTER, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 40, 100, 10
+LTEXT           "Refresh Rate:", IDC_STATIC, 125, 40, 50, 8
+EDITTEXT        IDC_REFRESH, 175, 38, 30, 12, ES_NUMBER
+
+GROUPBOX        "Window", IDC_STATIC, 7, 75, 266, 65
+CONTROL         "Force Windowed", IDC_WINDOWED, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 90, 80, 10
+CONTROL         "Borderless Fullscreen", IDC_BORDERLESS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 90, 100, 10
+CONTROL         "Center Window", IDC_CENTER, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 105, 80, 10
+CONTROL         "Always On Top", IDC_ALWAYS_ONTOP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 105, 100, 10
+CONTROL         "Lock Cursor", IDC_LOCK_CURSOR, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 120, 80, 10
+CONTROL         "Primary Monitor Only", IDC_PRIMARY_MON, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 120, 100, 10
+
+GROUPBOX        "Fixes & Debug", IDC_STATIC, 7, 145, 266, 50
+CONTROL         "Alpha Fix (PS1 Shadows)", IDC_ALPHA_FIX, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 160, 100, 10
+CONTROL         "Skip Intro Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 125, 160, 100, 10
+CONTROL         "Enable Logging", IDC_ENABLE_LOG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 175, 100, 10
+CONTROL         "Disable D3D8 Shim", IDC_DISABLE_SHIM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 125, 175, 100, 10
+
+CTEXT           "Resident Evil: Survivor Classic Rebirth 1.0 @Mehrqarox", IDC_STATIC, 7, 210, 266, 8, WS_DISABLED
+
+DEFPUSHBUTTON   "Save & Launch", IDOK, 80, 230, 55, 14
+PUSHBUTTON      "Cancel", IDCANCEL, 145, 230, 55, 14
+END
