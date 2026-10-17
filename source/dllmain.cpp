@@ -1,5 +1,5 @@
 ﻿/**
-* Copyright (C) 2020 Elisha Riedlinger
+* Copyright (C) 2020 Elisha Riedlinger, Jacob Qarooni
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -13,29 +13,53 @@
 *      being the original software.
 *   3. This notice may not be removed or altered from any source distribution.
 */
-#include <d3dx8.h>
+#define DIRECT3D_VERSION 0x0800 // Force headers to prefer D3D8 definitions
 #include <cstdio>
-#include "d3d8.h"
+#include <windows.h>
+#include <string>
+// Use the project's D3D9 compatibility header instead of including <d3d9.h>
+#include "d3d8types.hpp"
+#pragma comment(lib, "d3d9.lib") // link d3d9.lib
+
 #include "iathook.h"
 #include "helpers.h"
-#pragma comment (lib, "d3dx8.lib")
-#pragma comment (lib, "legacy_stdio_definitions.lib")
-#pragma comment(lib, "winmm.lib") // needed for timeBeginPeriod()/timeEndPeriod()
 #include "cd_bypass.h"
-#include "dinputhook.h"
 #include "aim_shared.h"
 #include "debug.h"
 #include "alpha_fix.h"
-#include "file_events.h"
-#include "AviFfmpegHook.h"
-#include "MciHook.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
+#include "AviFfmpegHook.h" // Access to g_Video
+#include "globals.h"
+#include <string.h>
+#include <algorithm>
+#include <cstdarg>
+#include <cstdint>
+#include <excpt.h>
+#include <list>
+#include <string.h>
+#include <utility>
+#include <vector>
+#include "d3d8.h"
+#include "d3d8caps.h"
+#include "d3dx8core.h"
+#include "d3dx8math.h"
+#include "d3dx8tex.h"
+#include "IDirect3D8.h"
+#include "IDirect3DCubeTexture8.h"
+#include "IDirect3DDevice8.h"
+#include "IDirect3DTexture8.h"
+#include "IDirect3DVolumeTexture8.h"
+#include "libavcodec/avcodec.h"
+#include "libavcodec/packet.h"
+#include "libavformat/avformat.h"
+#include "libswscale/swscale.h"
 
 #pragma once
-#include <windows.h>
-
-//void ShowConfigWindow(HINSTANCE hInst);
+#pragma comment(lib, "d3d9.lib")
+#pragma comment (lib, "d3dx8.lib")
+#pragma comment (lib, "legacy_stdio_definitions.lib")
+#pragma comment(lib, "winmm.lib") // needed for timeBeginPeriod()/timeEndPeriod()
 
 Direct3D8EnableMaximizedWindowedModeShimProc m_pDirect3D8EnableMaximizedWindowedModeShim;
 ValidatePixelShaderProc m_pValidatePixelShader;
@@ -46,6 +70,9 @@ Direct3DCreate8Proc m_pDirect3DCreate8;
 HMODULE g_hWrapperModule = NULL;
 
 HMODULE d3d8dll = NULL;
+
+// Use the D3D9 texture type from d3d9.h
+IDirect3DTexture9* g_MovieTex = nullptr;
 
 bool bForceWindowedMode;
 bool bDirect3D8DisableMaximizedWindowedModeShim;
@@ -67,86 +94,102 @@ int nFullScreenRefreshRateInHz;
 
 char WinDir[MAX_PATH + 1];
 
-// List of registered window classes and procedures
-// WORD classAtom, ULONG_PTR WndProcPtr
-std::vector<std::pair<WORD, ULONG_PTR>> WndProcList;
+    // List of registered window classes and procedures
+    // WORD classAtom, ULONG_PTR WndProcPtr
+    std::vector<std::pair<WORD, ULONG_PTR>> WndProcList;
 
-// Hook the target module's IAT to redirect Direct3D8Create to our function
-void HookModule(HMODULE hmod);
+    // Hook the target module's IAT to redirect Direct3D8Create to our function
+    void HookModule(HMODULE hmod);
 
-static bool  gDrawOverlayCrosshair = true;
+    static bool  gDrawOverlayCrosshair = true;
 
-extern float gAimSensX, gAimSensY; // from dinputhook.cpp
-extern bool  gUseDIMouseForCrosshair; // from dinputhook.cpp
-extern "C" void InstallDInputHook();// from dinputhook.cpp
+    extern float gAimSensX, gAimSensY; // from dinputhook.cpp
+    extern bool  gUseDIMouseForCrosshair; // from dinputhook.cpp
+    extern "C" void InstallDInputHook();// from dinputhook.cpp
+    std::string sCrosshairPath = "FIXRES/crosshair.png";//ConfinWindow.cpp; path to crosshair texture, can be set in config.ini or via config window. 
+    extern float fCrosshairScale = 1.0f;
+    extern "C" IDirect3D8* WINAPI Direct3D8_Create(UINT SDKVersion);    // Tells the linker that this function comes from d3d8to9.cpp
 
-//bool gUseRelativeDIForCrosshair = false;
+    //bool gUseRelativeDIForCrosshair = false;
 
-static LPDIRECT3DTEXTURE8 gCrossTex = nullptr;
-static bool gCrossLoaded = false;
-static bool gStage0IsAlphaFix = false;
+    LPDIRECT3DTEXTURE8 gCrossTex = nullptr;
+    bool gCrossLoaded = false;
+    bool gStage0IsAlphaFix = false;
 
-// Forward declarations (prevents "undefined" if order changes)
-static void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev);
-static void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h);
+    // Forward declarations (prevents "undefined" if order changes)
+    void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev);
+    void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h);
 
-static void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev)
-{
-    if (gCrossLoaded) return;
-    gCrossLoaded = true;
 
-	// Put crosshair.png in FIXRES/crosshair.png relative to the game exe.
-    // It should be a 32-bit RGBA image with premultiplied alpha (e.g. exported from Photoshop with "Save for Web" and "Transparency: On").
-    HRESULT hr = D3DXCreateTextureFromFileA(dev, "FIXRES/crosshair.png", &gCrossTex);
-    if (FAILED(hr)) gCrossTex = nullptr;
-}
+    std::string lastLoadedPath = "";
 
-struct TLVERTEX8
-{
-    float x, y, z, rhw;
-    float u, v;
-};
-#define FVF_TLVERTEX8 (D3DFVF_XYZRHW | D3DFVF_TEX1)
-
-static void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h)
-{
-    TLVERTEX8 v[4] =
+    void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev)
     {
-        { x,     y,     0.0f, 1.0f, 0.0f, 0.0f },
-        { x + w,   y,     0.0f, 1.0f, 1.0f, 0.0f },
-        { x,     y + h,   0.0f, 1.0f, 0.0f, 1.0f },
-        { x + w,   y + h,   0.0f, 1.0f, 1.0f, 1.0f },
+        // Reload if not loaded OR if the path has changed in the config window
+        if (gCrossLoaded && sCrosshairPath == lastLoadedPath) return;
+
+        if (gCrossTex) {
+            gCrossTex->Release();
+            gCrossTex = nullptr;
+        }
+
+        HRESULT hr = D3DXCreateTextureFromFileA(dev, sCrosshairPath.c_str(), &gCrossTex);
+        if (SUCCEEDED(hr)) {
+            lastLoadedPath = sCrosshairPath;
+            gCrossLoaded = true;
+        }
+        else {
+            gCrossLoaded = false;
+        }
+    }
+
+    struct TLVERTEX8
+    {
+        float x, y, z, rhw;
+        float u, v;
     };
+    #define FVF_TLVERTEX8 (D3DFVF_XYZRHW | D3DFVF_TEX1)
 
-    // Save a few states (minimal; good enough for HUD)
-    DWORD oldZ = 0, oldAlpha = 0, oldSrc = 0, oldDst = 0;
-    dev->GetRenderState(D3DRS_ZENABLE, &oldZ);
-    dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlpha);
-    dev->GetRenderState(D3DRS_SRCBLEND, &oldSrc);
-    dev->GetRenderState(D3DRS_DESTBLEND, &oldDst);
+    void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h)
+    {
+        TLVERTEX8 v[4] =
+        {
+            { x,     y,     0.0f, 1.0f, 0.0f, 0.0f },
+            { x + w,   y,     0.0f, 1.0f, 1.0f, 0.0f },
+            { x,     y + h,   0.0f, 1.0f, 0.0f, 1.0f },
+            { x + w,   y + h,   0.0f, 1.0f, 1.0f, 1.0f },
+        };
 
-    dev->SetTexture(0, tex);
-    dev->SetVertexShader(FVF_TLVERTEX8);
+        // Save a few states (minimal; good enough for HUD)
+        DWORD oldZ = 0, oldAlpha = 0, oldSrc = 0, oldDst = 0;
+        dev->GetRenderState(D3DRS_ZENABLE, &oldZ);
+        dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &oldAlpha);
+        dev->GetRenderState(D3DRS_SRCBLEND, &oldSrc);
+        dev->GetRenderState(D3DRS_DESTBLEND, &oldDst);
 
-    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
-    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        dev->SetTexture(0, tex);
+        dev->SetVertexShader(FVF_TLVERTEX8);
 
-    dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-    dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+        dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 
-    dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(TLVERTEX8));
+        dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
 
-    // Restore states
-    dev->SetRenderState(D3DRS_ZENABLE, oldZ);
-    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlpha);
-    dev->SetRenderState(D3DRS_SRCBLEND, oldSrc);
-    dev->SetRenderState(D3DRS_DESTBLEND, oldDst);
-}
+        dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(TLVERTEX8));
+
+        // Restore states
+        dev->SetRenderState(D3DRS_ZENABLE, oldZ);
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlpha);
+        dev->SetRenderState(D3DRS_SRCBLEND, oldSrc);
+        dev->SetRenderState(D3DRS_DESTBLEND, oldDst);
+    }
+
 // ---------------------------------------------------------
-
 // Elisha Riedlinger Frame Limiter Class
+// ---------------------------------------------------------
 
 class FrameLimiter
 {
@@ -297,6 +340,10 @@ private:
 
 FrameLimiter::FPSLimitMode mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
 
+// ---------------------------------------------------------
+// --------------------- Helper methods --------------------
+// ----------------------------------------------------------
+
 //Present params logger
 
 static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS* p)
@@ -372,7 +419,33 @@ static void ApplyWindowTitle(HWND hwnd)
         SetWindowTextA(hwnd, "RESIDENT EVIL: SURVIVOR PC");
 }
 
+void StealIconFromExe(HWND hWnd) {
+    if (!hWnd || !IsWindow(hWnd)) return;
 
+    // 1. Get the path of the current process (.exe)
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(NULL, exePath, MAX_PATH);
+
+    // 2. Extract the icon from the exe
+    // Index 0 is almost always the main game icon
+    HICON hIconLarge = nullptr;
+    HICON hIconSmall = nullptr;
+
+    // ExtractIconEx gets both the 32x32 and 16x16 versions
+    if (ExtractIconExA(exePath, 0, &hIconLarge, &hIconSmall, 1) != 0) {
+        // 3. Force the window to use them
+        if (hIconLarge) {
+            SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM)hIconLarge);
+        }
+        if (hIconSmall) {
+            SendMessage(hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+        }
+
+        // 4. Update the Window Class so it stays persistent
+        if (hIconLarge) SetClassLongPtr(hWnd, GCLP_HICON, (LONG_PTR)hIconLarge);
+        if (hIconSmall) SetClassLongPtr(hWnd, GCLP_HICONSM, (LONG_PTR)hIconSmall);
+    }
+}
 
 // IDirect3DDevice8 Hooks
 
@@ -397,16 +470,40 @@ HRESULT m_IDirect3DDevice8::SetScissorRect(CONST RECT* pRect)
 */
 HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 {
+    // --- FPS Limiter Logic ---
     if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_REALTIME)
         while (!FrameLimiter::Sync_RT());
     else if (mFPSLimitMode == FrameLimiter::FPSLimitMode::FPS_ACCURATE)
         while (!FrameLimiter::Sync_SLP());
 
-    LogBackbufferOncePerChange(ProxyInterface);//debug
+    // --- DX9 COMPATIBILITY: Window Handle Safety ---
+    // If the game passes NULL for the window override (very common in DX8),
+    // we use the g_hFocusWindow we captured during CreateDevice.
+    // This ensures the DX9 swapchain knows exactly which window to draw into.
+    HWND targetWnd = hDestWindowOverride;
+    if (targetWnd == NULL) targetWnd = g_hFocusWindow;
+    if (targetWnd == NULL) targetWnd = GetActiveWindow();
 
-    return ProxyInterface->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
+    LogBackbufferOncePerChange(ProxyInterface); // debug
 
-    LogBackbufferOncePerChange(ProxyInterface);//debug
+    // Call the actual DX9-backed Present
+    HRESULT hr = ProxyInterface->Present(pSourceRect, pDestRect, targetWnd, pDirtyRegion);
+
+    // --- DX9 COMPATIBILITY: Device State Management ---
+    // If Present returns an error, the game engine usually panics and shuts down.
+    // We catch common DX9 errors here to prevent the 'Black Screen -> Close' loop.
+    if (FAILED(hr))
+    {
+        // D3DERR_DEVICELOST: Occurs if the user Alt-Tabs or during resolution changes.
+        // We return S_OK to the game engine so it doesn't crash, allowing us to 
+        // wait for the device to become ready again.
+        if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICENOTRESET)
+        {
+            return S_OK;
+        }
+    }
+
+    return hr;
 }
 
 // -----------------------------------------------------------------
@@ -439,42 +536,17 @@ static void UpdateCursorClip()
     ClipCursor(&clip);
 }
 
-
-// -----------------------------------------------------------------
-// Modified EndScene to include overlay crosshair
-// -----------------------------------------------------------------
-
-//UpdateCursorClip();
-HRESULT m_IDirect3DDevice8::EndScene()
-{
-    UpdateCursorClip();
-
-    if (bDisplayFPSCounter)
-        FrameLimiter::ShowFPS(ProxyInterface);
-
-    if (gDrawOverlayCrosshair && g_hFocusWindow)
-    {
-        // Query backbuffer size (the coordinate space that DrawPrimitiveUP uses here)
-        UINT bbW = 0, bbH = 0;
-        IDirect3DSurface8* bb = nullptr;
-        if (SUCCEEDED(ProxyInterface->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
-        {
-            D3DSURFACE_DESC d{};
-            if (SUCCEEDED(bb->GetDesc(&d)))
-            {
-                bbW = d.Width;
-                bbH = d.Height;
-            }
-            bb->Release();
-        }
-
+// Movie rendering and EndScene happen inside IDirect3DDevice8.cpp implementation.
+// Duplicate/older implementations were removed to avoid symbol conflicts.
         // Fallback (should rarely happen)
         if (bbW == 0 || bbH == 0)
         {
             RECT r{};
-            GetClientRect(g_hFocusWindow, &r);
-            bbW = (UINT)(r.right - r.left);
-            bbH = (UINT)(r.bottom - r.top);
+            if (GetClientRect(g_hFocusWindow, &r))
+            {
+                bbW = (UINT)(r.right - r.left);
+                bbH = (UINT)(r.bottom - r.top);
+            }
         }
 
         if (bbW > 0 && bbH > 0)
@@ -496,16 +568,33 @@ HRESULT m_IDirect3DDevice8::EndScene()
                 if (gAimX > (float)bbW - 1) gAimX = (float)bbW - 1;
                 if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
 
-                const float size = 32.0f;
-                DrawTexturedQuad(ProxyInterface, gCrossTex,
-                    gAimX - size * 0.5f,
-                    gAimY - size * 0.5f,
-                    size, size);
+                // --- PATCHED SCALE LOGIC ---
+                D3DSURFACE_DESC texDesc;
+                if (SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
+                {
+                    // Use original PNG size multiplied by the scale from the Config Window
+                    float finalW = (float)texDesc.Width * fCrosshairScale;
+                    float finalH = (float)texDesc.Height * fCrosshairScale;
+
+                    // Draw centered on current Aim coordinates
+                    DrawTexturedQuad(ProxyInterface, gCrossTex,
+                        gAimX - (finalW * 0.5f),
+                        gAimY - (finalH * 0.5f),
+                        finalW, finalH);
+                }
             }
         }
+        return ProxyInterface->EndScene();
     }
 
-    return ProxyInterface->EndScene();
+    // Call the DX9-backed EndScene
+    HRESULT hr = ProxyInterface->EndScene();
+
+    // If the engine fails here, we return S_OK to try and keep the game process alive 
+    // during the transition.
+    if (FAILED(hr)) return S_OK;
+
+    return hr;
 }
 
 HRESULT m_IDirect3DDevice8::CreateTexture(
@@ -743,22 +832,35 @@ HRESULT m_IDirect3D8::CreateDevice(
     UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags,
     D3DPRESENT_PARAMETERS* p, IDirect3DDevice8** ppReturnedDeviceInterface)
 {
-    g_hFocusWindow = hFocusWindow ? hFocusWindow : (p ? p->hDeviceWindow : nullptr);
+    // --- 1. Fix Window Handle ---
+    HWND actualWnd = hFocusWindow;
+    if (actualWnd == NULL) actualWnd = (p ? p->hDeviceWindow : NULL);
+    if (actualWnd == NULL) actualWnd = GetActiveWindow();
+    g_hFocusWindow = actualWnd;
 
-    // Always apply window title (even if fullscreen; harmless)
     ApplyWindowTitle(g_hFocusWindow);
-
-    // Debug what the game requested (INTERNAL resolution)
     LogPP("CreateDevice IN:", p);
 
-    // Wrapper options
+    // --- 2. Apply Wrapper & DX9 Compatibility Options ---
     if (bForceWindowedMode)
         ForceWindowed(p);
 
     if (nFullScreenRefreshRateInHz)
         ForceFullScreenRefreshRateInHz(p);
 
-    // FPS overlay resources reset
+    if (p)
+    {
+        // DX9 translation requires DISCARD and hates Lockable Backbuffers
+        p->SwapEffect = D3DSWAPEFFECT_DISCARD;
+        p->BackBufferFormat = D3DFMT_X8R8G8B8; // Match the Format 22 from your log
+        p->Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+    }
+
+    // --- 3. Create the Device ---
+    HRESULT hr = ProxyInterface->CreateDevice(
+        Adapter, DeviceType, actualWnd, BehaviorFlags, p, ppReturnedDeviceInterface);
+
+    // --- 4. Cleanup UI Resources ---
     if (bDisplayFPSCounter)
     {
         if (FrameLimiter::pFPSFont)  FrameLimiter::pFPSFont->Release();
@@ -767,34 +869,22 @@ HRESULT m_IDirect3D8::CreateDevice(
         FrameLimiter::pTimeFont = nullptr;
     }
 
-    HRESULT hr = ProxyInterface->CreateDevice(
-        Adapter, DeviceType, hFocusWindow, BehaviorFlags, p, ppReturnedDeviceInterface);
-
-    // Log what actually got created
     LogPP("CreateDevice OUT:", p);
 
+    // --- 5. Wrap and Finalize ---
     if (SUCCEEDED(hr) && ppReturnedDeviceInterface && *ppReturnedDeviceInterface)
     {
-        //*ppReturnedDeviceInterface = new m_IDirect3DDevice8(*ppReturnedDeviceInterface, this);
+        // Wrap it FIRST so the game uses your proxy for subsequent calls
+        *ppReturnedDeviceInterface = new m_IDirect3DDevice8(*ppReturnedDeviceInterface, this);
 
-        // IMPORTANT:
-        // "Custom resolution" should be OUTPUT/window size only.
-        // Do NOT change p->BackBufferWidth/Height here.
         if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
         {
             ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
         }
 
-        // Re-apply title after resize (some games reset it)
         ApplyWindowTitle(g_hFocusWindow);
-
-        // Call alpha fix with the REAL device (before you wrap it is fine)
-        //AlphaFix_OnDeviceCreated(*ppReturnedDeviceInterface); // safe no-op
-
-        // then wrap as you already do
-        *ppReturnedDeviceInterface = new m_IDirect3DDevice8(*ppReturnedDeviceInterface, this);
+        StealIconFromExe(g_hFocusWindow);
     }
-
     return hr;
 }
 
@@ -802,16 +892,25 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
 {
     LogPP("Reset IN:", p);
 
-    // Always apply title (some games restore it on reset)
+    // Always apply title
     ApplyWindowTitle(g_hFocusWindow);
 
-    // Wrapper options
-    if (bForceWindowedMode)
-        ForceWindowed(p);
+    // --- DX9 COMPATIBILITY FIX (MUST MATCH CreateDevice) ---
+    if (p)
+    {
+        if (bForceWindowedMode)
+            ForceWindowed(p);
 
-    if (nFullScreenRefreshRateInHz)
-        ForceFullScreenRefreshRateInHz(p);
+        if (nFullScreenRefreshRateInHz)
+            ForceFullScreenRefreshRateInHz(p);
 
+        // Force these for DX9 translation stability
+        p->SwapEffect = D3DSWAPEFFECT_DISCARD;
+        p->BackBufferFormat = D3DFMT_X8R8G8B8;
+        p->Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+    }
+
+    // FPS resources MUST be released before Reset
     if (bDisplayFPSCounter)
     {
         if (FrameLimiter::pFPSFont)  FrameLimiter::pFPSFont->Release();
@@ -820,17 +919,18 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
         FrameLimiter::pTimeFont = nullptr;
     }
 
+    // Call the actual DX9 Reset
     HRESULT hr = ProxyInterface->Reset(p);
 
     LogPP("Reset OUT:", p);
 
-    // Resize window client area to OUTPUT size (windowed only)
-    if (SUCCEEDED(hr) && p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
+    if (SUCCEEDED(hr))
     {
-        ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
-
-        // Re-apply title again after window changes
-        ApplyWindowTitle(g_hFocusWindow);
+        if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
+        {
+            ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+            ApplyWindowTitle(g_hFocusWindow);
+        }
     }
 
     return hr;
@@ -1278,7 +1378,6 @@ void HookImportedModules()
 
 DWORD WINAPI InitThread(LPVOID)
 {
-    //ShowConfigWindow();
     LogLine("[INIT] InitThread ENTER");
 
     // Small delay is optional. If things are stable without it, remove it.
@@ -1289,12 +1388,83 @@ DWORD WINAPI InitThread(LPVOID)
 
     // bSkipMovies should already be set in DllMain after reading the config.ini
     DirectShowHook::SetSkipMovies(bSkipMovies != 0);
+    //AviFfmpegHook::Install();
 
     LogLine("[INIT] SkipMovies=%d", (int)(bSkipMovies != 0));
     LogLine("[INIT] InitThread EXIT");
     return 0;
 }
 
+// -----------------------------------------------------------------
+// DllMain: Simplified for d3d8to9 Stability
+// -----------------------------------------------------------------
+bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
+{
+    static bool bInitialized = false;
+
+    switch (dwReason)
+    {
+    case DLL_PROCESS_ATTACH:
+    {
+        if (bInitialized) return TRUE;
+        bInitialized = true;
+        g_hWrapperModule = hModule;
+
+        // --- Resident Evil Survivor Fixes ---
+        InstallCDBypass();
+        InstallDInputHook();
+
+        // --- Config Reading ---
+        char path[MAX_PATH]{};
+        GetModuleFileNameA(hModule, path, sizeof(path));
+        char* lastSlash = strrchr(path, '\\');
+        if (lastSlash) strcpy(lastSlash, "\\config.ini");
+
+        // Load Settings
+        // --- GRAPHICS ---
+        fFPSLimit = static_cast<float>(GetPrivateProfileInt("Graphics", "FPSLimit", 0, path));
+        nFullScreenRefreshRateInHz = GetPrivateProfileInt("Graphics", "FullScreenRefreshRateInHz", 0, path);
+        ForceWidth = GetPrivateProfileInt("Graphics", "ForceWidth", 0, path);
+        ForceHeight = GetPrivateProfileInt("Graphics", "ForceHeight", 0, path);
+        bDisplayFPSCounter = GetPrivateProfileInt("Graphics", "DisplayFPSCounter", 0, path) != 0;
+
+        // --- WINDOW ---
+        bForceWindowedMode = GetPrivateProfileInt("Window", "ForceWindowedMode", 0, path) != 0;
+        bBorderlessFullscreen = GetPrivateProfileInt("Window", "BorderlessFullscreen", 0, path) != 0;
+        bCenterWindow = GetPrivateProfileInt("Window", "CenterWindow", 1, path) != 0;
+        bAlwaysOnTop = GetPrivateProfileInt("Window", "AlwaysOnTop", 0, path) != 0;
+        bLockCursorToWindow = GetPrivateProfileInt("Window", "LockCursorToWindow", 0, path) != 0;
+        bUsePrimaryMonitor = GetPrivateProfileInt("Window", "UsePrimaryMonitor", 0, path) != 0;
+        //bDoNotNotifyOnTaskSwitch = GetPrivateProfileInt("Window", "DoNotNotifyOnTaskSwitch", 0, path) != 0;
+
+        // --- FIXES ---
+        bAlphaFix = GetPrivateProfileInt("Fixes", "AlphaFix", 0, path) != 0;
+        bSkipMovies = GetPrivateProfileInt("Fixes", "SkipMovies", 0, path) != 0;
+        //bDirect3D8DisableMaximizedWindowedModeShim = GetPrivateProfileInt("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0, path) != 0;
+
+        // --- DEBUG ---
+        gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
+
+        // Initialize Limiter
+        if (fFPSLimit > 0.0f) {
+            FrameLimiter::Init(FrameLimiter::FPS_REALTIME);
+            mFPSLimitMode = FrameLimiter::FPS_REALTIME;
+        }
+
+        // --- Start Movie/DirectShow Thread ---
+        //HANDLE h = CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
+        //if (h) CloseHandle(h);
+
+        break;
+    }
+    case DLL_PROCESS_DETACH:
+        ClipCursor(NULL);
+        break;
+    }
+    return TRUE;
+}
+
+/*
 bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 {
     static bool bInitialized = false; // Guard variable
@@ -1307,10 +1477,6 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         bInitialized = true;
 
         g_hWrapperModule = hModule; // Store the DLL handle
-
-        // 1. Show the window FIRST. 
-        // This will update the variables (bSkipMovies, ForceWidth, etc.)
-        ShowConfigWindow(hModule);
 
         // ---- Load real system d3d8.dll FIRST (critical) ----
         char path[MAX_PATH]{};
@@ -1492,7 +1658,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
     }
 
     return TRUE;
-}
+}*/
 
 int WINAPI Direct3D8EnableMaximizedWindowedModeShim(BOOL mEnable)
 {
@@ -1534,18 +1700,41 @@ void WINAPI DebugSetMute()
     return m_pDebugSetMute();
 }
 
-IDirect3D8 *WINAPI Direct3DCreate8(UINT SDKVersion)
+// -----------------------------------------------------------------
+// Direct3DCreate8: The Entry Point
+// -----------------------------------------------------------------
+IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion)
 {
-    if (!m_pDirect3DCreate8)
-    {
-        return nullptr;
+    // 1. Config Window (Only once)
+    static bool bConfigShown = false;
+    if (!bConfigShown) {
+        ShowConfigWindow(g_hWrapperModule);
+        bConfigShown = true;
     }
 
-    IDirect3D8 *pD3D8 = m_pDirect3DCreate8(SDKVersion);
+    LogLine("Direct3DCreate8 called");
 
-    if (pD3D8)
-    {
-        return new m_IDirect3D8(pD3D8);
+    // Call it here! This is safe because the loader lock is usually released 
+    // by the time the game calls an export.
+    static bool hooked = false;
+    if (!hooked) {
+        AviFfmpegHook::Install();
+        hooked = true;
+    }
+
+    // 2. Create the translation layer interface (d3d8to9)
+    // This function is provided by your d3d8to9.cpp file.
+    IDirect3D8* pD3D8to9 = Direct3D8_Create(SDKVersion);
+
+    if (pD3D8to9) {
+        // 3. Wrap the translated device in your proxy class
+        // This enables your custom EndScene/Crosshair logic.
+        return new m_IDirect3D8(pD3D8to9);
+    }
+
+    // This is a common fix for "Not Responding" hangs in wrappers
+    if (pD3D8to9 != nullptr) {
+        DisableProcessWindowsGhosting();
     }
 
     return nullptr;

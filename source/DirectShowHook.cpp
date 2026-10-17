@@ -74,7 +74,7 @@ namespace
                     // Safety exit: if the movie window is closed or the graph is destroyed
                     if (!st->pControl) break;
 
-                    Sleep(20); // 20ms is the sweet spot for input polling
+                    Sleep(15); // 20ms is the sweet spot for input polling
                 }
             }
 

@@ -131,7 +131,7 @@ typedef interface IDirect3DSurface8         IDirect3DSurface8;
 typedef interface IDirect3DVolume8          IDirect3DVolume8;
 typedef interface IDirect3DSwapChain8       IDirect3DSwapChain8;
 
-#include "d3d8types.h"
+#include "..\d3d8types.hpp"
 #include "d3d8caps.h"
 
 

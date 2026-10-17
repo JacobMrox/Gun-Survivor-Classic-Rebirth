@@ -14,6 +14,9 @@
 *   3. This notice may not be removed or altered from any source distribution.
 */
 
+#include "globals.h"
+#define D3D9_TYPES_ALLOWED
+#include <d3d9.h>
 #include "d3d8.h"
 
 // somewhere global
@@ -158,6 +161,54 @@ HRESULT m_IDirect3DDevice8::CreateRenderTarget(THIS_ UINT Width, UINT Height, D3
 
 	return hr;
 }*/
+
+
+// Move this OUT of the global area and into the member function area
+void m_IDirect3DDevice8::RenderMovie(UINT screenW, UINT screenH)
+{
+	if (!g_Video.isPlaying || !g_Video.buffer) return;
+
+	// 1. Create the texture (uses ProxyInterface member)
+	if (!g_MovieTex) {
+		ProxyInterface->CreateTexture(g_Video.pCodecCtx->width, g_Video.pCodecCtx->height,
+			1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, (IDirect3DTexture8**)&g_MovieTex);
+	}
+
+	// 2. Decode the next frame (logic from AviFfmpegHook)
+	AVPacket packet;
+	if (av_read_frame(g_Video.pFormatCtx, &packet) >= 0) {
+		if (packet.stream_index == g_Video.videoStream) {
+			avcodec_send_packet(g_Video.pCodecCtx, &packet);
+			if (avcodec_receive_frame(g_Video.pCodecCtx, g_Video.pFrame) == 0) {
+				sws_scale(g_Video.sws_ctx, (uint8_t const* const*)g_Video.pFrame->data,
+					g_Video.pFrame->linesize, 0, g_Video.pCodecCtx->height,
+					g_Video.pFrameRGB->data, g_Video.pFrameRGB->linesize);
+
+				// 3. Upload to D3D Texture
+				D3DLOCKED_RECT rect;
+				if (SUCCEEDED(g_MovieTex->LockRect(0, &rect, NULL, D3DLOCK_DISCARD))) {
+					uint8_t* dest = (uint8_t*)rect.pBits;
+					uint8_t* src = g_Video.buffer;
+					int srcStride = g_Video.pFrameRGB->linesize[0];
+
+					for (int y = 0; y < (int)g_Video.pCodecCtx->height; y++) {
+						memcpy(dest + (y * rect.Pitch), src + (y * srcStride), srcStride);
+					}
+					g_MovieTex->UnlockRect(0);
+				}
+			}
+		}
+		av_packet_unref(&packet);
+	}
+	else {
+		g_Video.isPlaying = false;
+		if (g_MovieTex) { g_MovieTex->Release(); g_MovieTex = nullptr; }
+		return;
+	}
+
+	// 4. Draw (Cast to LPDIRECT3DTEXTURE8 because DrawTexturedQuad expects DX8 pointer)
+	DrawTexturedQuad(ProxyInterface, (LPDIRECT3DTEXTURE8)g_MovieTex, 0, 0, (float)screenW, (float)screenH);
+}
 
 HRESULT m_IDirect3DDevice8::CreateVertexBuffer(THIS_ UINT Length, DWORD Usage, DWORD FVF, D3DPOOL Pool, IDirect3DVertexBuffer8** ppVertexBuffer)
 {
@@ -732,6 +783,18 @@ HRESULT m_IDirect3DDevice8::ResourceManagerDiscardBytes(THIS_ DWORD Bytes)
 {
 	return ProxyInterface->ResourceManagerDiscardBytes(Bytes);
 }
+
+/*HRESULT m_IDirect3DDevice8::CreateImageSurface(THIS_ UINT Width, UINT Height, D3DFORMAT Format, IDirect3DSurface8** ppSurface)
+{
+	HRESULT hr = ProxyInterface->CreateImageSurface(Width, Height, Format, ppSurface);
+
+	if (SUCCEEDED(hr) && ppSurface)
+	{
+		*ppSurface = new m_IDirect3DSurface8(*ppSurface, this);
+	}
+
+	return hr;
+}*/
 
 HRESULT m_IDirect3DDevice8::CreateImageSurface(THIS_ UINT Width, UINT Height, D3DFORMAT Format, IDirect3DSurface8** ppSurface)
 {

@@ -1,4 +1,6 @@
 #pragma once
+#define D3D9_TYPES_ALLOWED
+#include <d3d9.h>
 
 class m_IDirect3DDevice8 : public IDirect3DDevice8
 {
@@ -15,6 +17,8 @@ public:
 	{
 		delete ProxyAddressLookupTable;
 	}
+
+	void RenderMovie(UINT screenW, UINT screenH);
 
 	LPDIRECT3DDEVICE8 GetProxyInterface() { return ProxyInterface; }
 	AddressLookupTable<m_IDirect3DDevice8> *ProxyAddressLookupTable;

@@ -144,10 +144,17 @@
       <DeploymentContent>false</DeploymentContent>
     </ClInclude>
     <ClInclude Include="ConfigWindow.h" />
+    <ClInclude Include="d3d8.hpp" />
+    <ClInclude Include="d3d8to9.hpp" />
+    <ClInclude Include="d3d8types.hpp" />
+    <ClInclude Include="d3dx9.hpp" />
     <ClInclude Include="debug.h" />
     <ClInclude Include="dinputhook.h" />
     <ClInclude Include="DirectShowHook.h" />
+    <ClInclude Include="dxsdk\d3d8types.h" />
     <ClInclude Include="file_events.h" />
+    <ClInclude Include="globals.h" />
+    <ClInclude Include="interface_query.hpp" />
     <ClInclude Include="MciHook.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stb_image.h" />
@@ -172,9 +179,20 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="ConfigWindow.cpp" />
+    <ClCompile Include="d3d8to9.cpp" />
+    <ClCompile Include="d3d8to9_base.cpp" />
+    <ClCompile Include="d3d8to9_device.cpp" />
+    <ClCompile Include="d3d8to9_index_buffer.cpp" />
+    <ClCompile Include="d3d8to9_surface.cpp" />
+    <ClCompile Include="d3d8to9_swap_chain.cpp" />
+    <ClCompile Include="d3d8to9_texture.cpp" />
+    <ClCompile Include="d3d8to9_vertex_buffer.cpp" />
+    <ClCompile Include="d3d8to9_volume.cpp" />
+    <ClCompile Include="d3d8types.cpp" />
     <ClCompile Include="dinputhook.cpp" />
     <ClCompile Include="DirectShowHook.cpp" />
     <ClCompile Include="file_events.cpp" />
+    <ClCompile Include="interface_query.cpp" />
     <ClCompile Include="MciHook.cpp" />
   </ItemGroup>
   <ItemGroup>

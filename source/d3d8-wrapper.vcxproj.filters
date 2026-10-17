@@ -17,7 +17,7 @@
     <ClCompile Include="file_events.cpp" />
     <ClCompile Include="MciHook.cpp" />
     <ClCompile Include="ConfigWindow.cpp">
-      <Filter>Cofing Window %28User Interface%29</Filter>
+      <Filter>Config Window %28User Interface%29</Filter>
     </ClCompile>
     <ClCompile Include="alpha_fix.cpp">
       <Filter>Survivor Fixes</Filter>
@@ -33,6 +33,39 @@
     </ClCompile>
     <ClCompile Include="DirectShowHook.cpp">
       <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_base.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_device.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_index_buffer.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_surface.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_swap_chain.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_texture.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_vertex_buffer.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8to9_volume.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d8types.cpp">
+      <Filter>D3D3TO9</Filter>
+    </ClCompile>
+    <ClCompile Include="interface_query.cpp">
+      <Filter>D3D3TO9</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -56,7 +89,7 @@
     <ClInclude Include="MciHook.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="resource.h">
-      <Filter>Cofing Window %28User Interface%29</Filter>
+      <Filter>Config Window %28User Interface%29</Filter>
     </ClInclude>
     <ClInclude Include="alpha_fix.h">
       <Filter>Survivor Fixes</Filter>
@@ -77,13 +110,30 @@
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="ConfigWindow.h">
-      <Filter>Cofing Window %28User Interface%29</Filter>
+      <Filter>Config Window %28User Interface%29</Filter>
     </ClInclude>
+    <ClInclude Include="d3d8.hpp">
+      <Filter>D3D3TO9</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d8to9.hpp">
+      <Filter>D3D3TO9</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d8types.hpp">
+      <Filter>D3D3TO9</Filter>
+    </ClInclude>
+    <ClInclude Include="d3dx9.hpp">
+      <Filter>D3D3TO9</Filter>
+    </ClInclude>
+    <ClInclude Include="interface_query.hpp">
+      <Filter>D3D3TO9</Filter>
+    </ClInclude>
+    <ClInclude Include="globals.h" />
+    <ClInclude Include="dxsdk\d3d8types.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\source\VersionInfo.rc" />
     <ResourceCompile Include="Resource.rc">
-      <Filter>Cofing Window %28User Interface%29</Filter>
+      <Filter>Config Window %28User Interface%29</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
@@ -94,7 +144,10 @@
     <Filter Include="Survivor Fixes">
       <UniqueIdentifier>{88069ab2-c61b-4b33-9ae3-6d36f6b37d34}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Cofing Window %28User Interface%29">
+    <Filter Include="D3D3TO9">
+      <UniqueIdentifier>{fee33ef5-1310-4ef7-93c6-8ff24a026a4a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Config Window %28User Interface%29">
       <UniqueIdentifier>{fe10e5cf-d79b-495b-8ce4-ba55a15749a1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
