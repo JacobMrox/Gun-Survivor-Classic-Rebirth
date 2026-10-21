@@ -131,8 +131,7 @@ typedef interface IDirect3DSurface8         IDirect3DSurface8;
 typedef interface IDirect3DVolume8          IDirect3DVolume8;
 typedef interface IDirect3DSwapChain8       IDirect3DSwapChain8;
 
-#include "..\d3d8types.hpp"
-#include "d3d8caps.h"
+#include "..\d3d8types.hpp"  // D3D8 types on top of d3d9.h (d3d8to9); D3DCAPS8 is defined there
 
 
 #ifdef __cplusplus
@@ -182,7 +181,7 @@ DECLARE_INTERFACE_(IDirect3D8, IUnknown)
     STDMETHOD(CheckDepthStencilMatch)(THIS_ UINT Adapter,D3DDEVTYPE DeviceType,D3DFORMAT AdapterFormat,D3DFORMAT RenderTargetFormat,D3DFORMAT DepthStencilFormat) PURE;
     STDMETHOD(GetDeviceCaps)(THIS_ UINT Adapter,D3DDEVTYPE DeviceType,D3DCAPS8* pCaps) PURE;
     STDMETHOD_(HMONITOR, GetAdapterMonitor)(THIS_ UINT Adapter) PURE;
-    STDMETHOD(CreateDevice)(THIS_ UINT Adapter,D3DDEVTYPE DeviceType,HWND hFocusWindow,DWORD BehaviorFlags,D3DPRESENT_PARAMETERS* pPresentationParameters,IDirect3DDevice8** ppReturnedDeviceInterface) PURE;
+    STDMETHOD(CreateDevice)(THIS_ UINT Adapter,D3DDEVTYPE DeviceType,HWND hFocusWindow,DWORD BehaviorFlags,D3DPRESENT_PARAMETERS8* pPresentationParameters,IDirect3DDevice8** ppReturnedDeviceInterface) PURE;
 };
 
 typedef struct IDirect3D8 *LPDIRECT3D8, *PDIRECT3D8;
@@ -262,8 +261,8 @@ DECLARE_INTERFACE_(IDirect3DDevice8, IUnknown)
     STDMETHOD(SetCursorProperties)(THIS_ UINT XHotSpot,UINT YHotSpot,IDirect3DSurface8* pCursorBitmap) PURE;
     STDMETHOD_(void, SetCursorPosition)(THIS_ UINT XScreenSpace,UINT YScreenSpace,DWORD Flags) PURE;
     STDMETHOD_(BOOL, ShowCursor)(THIS_ BOOL bShow) PURE;
-    STDMETHOD(CreateAdditionalSwapChain)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters,IDirect3DSwapChain8** pSwapChain) PURE;
-    STDMETHOD(Reset)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters) PURE;
+    STDMETHOD(CreateAdditionalSwapChain)(THIS_ D3DPRESENT_PARAMETERS8* pPresentationParameters,IDirect3DSwapChain8** pSwapChain) PURE;
+    STDMETHOD(Reset)(THIS_ D3DPRESENT_PARAMETERS8* pPresentationParameters) PURE;
     STDMETHOD(Present)(THIS_ CONST RECT* pSourceRect,CONST RECT* pDestRect,HWND hDestWindowOverride,CONST RGNDATA* pDirtyRegion) PURE;
     STDMETHOD(GetBackBuffer)(THIS_ UINT BackBuffer,D3DBACKBUFFER_TYPE Type,IDirect3DSurface8** ppBackBuffer) PURE;
     STDMETHOD(GetRasterStatus)(THIS_ D3DRASTER_STATUS* pRasterStatus) PURE;
@@ -719,7 +718,7 @@ DECLARE_INTERFACE_(IDirect3DTexture8, IDirect3DBaseTexture8)
     STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew) PURE;
     STDMETHOD_(DWORD, GetLOD)(THIS) PURE;
     STDMETHOD_(DWORD, GetLevelCount)(THIS) PURE;
-    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DSURFACE_DESC *pDesc) PURE;
+    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DSURFACE_DESC8 *pDesc) PURE;
     STDMETHOD(GetSurfaceLevel)(THIS_ UINT Level,IDirect3DSurface8** ppSurfaceLevel) PURE;
     STDMETHOD(LockRect)(THIS_ UINT Level,D3DLOCKED_RECT* pLockedRect,CONST RECT* pRect,DWORD Flags) PURE;
     STDMETHOD(UnlockRect)(THIS_ UINT Level) PURE;
@@ -796,7 +795,7 @@ DECLARE_INTERFACE_(IDirect3DVolumeTexture8, IDirect3DBaseTexture8)
     STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew) PURE;
     STDMETHOD_(DWORD, GetLOD)(THIS) PURE;
     STDMETHOD_(DWORD, GetLevelCount)(THIS) PURE;
-    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DVOLUME_DESC *pDesc) PURE;
+    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DVOLUME_DESC8 *pDesc) PURE;
     STDMETHOD(GetVolumeLevel)(THIS_ UINT Level,IDirect3DVolume8** ppVolumeLevel) PURE;
     STDMETHOD(LockBox)(THIS_ UINT Level,D3DLOCKED_BOX* pLockedVolume,CONST D3DBOX* pBox,DWORD Flags) PURE;
     STDMETHOD(UnlockBox)(THIS_ UINT Level) PURE;
@@ -873,7 +872,7 @@ DECLARE_INTERFACE_(IDirect3DCubeTexture8, IDirect3DBaseTexture8)
     STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew) PURE;
     STDMETHOD_(DWORD, GetLOD)(THIS) PURE;
     STDMETHOD_(DWORD, GetLevelCount)(THIS) PURE;
-    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DSURFACE_DESC *pDesc) PURE;
+    STDMETHOD(GetLevelDesc)(THIS_ UINT Level,D3DSURFACE_DESC8 *pDesc) PURE;
     STDMETHOD(GetCubeMapSurface)(THIS_ D3DCUBEMAP_FACES FaceType,UINT Level,IDirect3DSurface8** ppCubeMapSurface) PURE;
     STDMETHOD(LockRect)(THIS_ D3DCUBEMAP_FACES FaceType,UINT Level,D3DLOCKED_RECT* pLockedRect,CONST RECT* pRect,DWORD Flags) PURE;
     STDMETHOD(UnlockRect)(THIS_ D3DCUBEMAP_FACES FaceType,UINT Level) PURE;
@@ -1065,7 +1064,7 @@ DECLARE_INTERFACE_(IDirect3DSurface8, IUnknown)
     STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData) PURE;
     STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid) PURE;
     STDMETHOD(GetContainer)(THIS_ REFIID riid,void** ppContainer) PURE;
-    STDMETHOD(GetDesc)(THIS_ D3DSURFACE_DESC *pDesc) PURE;
+    STDMETHOD(GetDesc)(THIS_ D3DSURFACE_DESC8 *pDesc) PURE;
     STDMETHOD(LockRect)(THIS_ D3DLOCKED_RECT* pLockedRect,CONST RECT* pRect,DWORD Flags) PURE;
     STDMETHOD(UnlockRect)(THIS) PURE;
 };
@@ -1117,7 +1116,7 @@ DECLARE_INTERFACE_(IDirect3DVolume8, IUnknown)
     STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid,void* pData,DWORD* pSizeOfData) PURE;
     STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid) PURE;
     STDMETHOD(GetContainer)(THIS_ REFIID riid,void** ppContainer) PURE;
-    STDMETHOD(GetDesc)(THIS_ D3DVOLUME_DESC *pDesc) PURE;
+    STDMETHOD(GetDesc)(THIS_ D3DVOLUME_DESC8 *pDesc) PURE;
     STDMETHOD(LockBox)(THIS_ D3DLOCKED_BOX * pLockedVolume,CONST D3DBOX* pBox,DWORD Flags) PURE;
     STDMETHOD(UnlockBox)(THIS) PURE;
 };

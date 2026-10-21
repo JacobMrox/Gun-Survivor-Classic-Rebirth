@@ -133,7 +133,7 @@ void AlphaFix_ApplyPNGToTexture(IDirect3DTexture8* tex, AlphaFixTag tag)
     const Img* img = LoadCached(tag);
     if (!img) return;
 
-    D3DSURFACE_DESC desc{};
+    D3DSURFACE_DESC8 desc{};
     if (FAILED(tex->GetLevelDesc(0, &desc)))
         return;
 

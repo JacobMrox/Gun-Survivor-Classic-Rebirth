@@ -88,7 +88,7 @@ HRESULT m_IDirect3DSurface8::GetContainer(THIS_ REFIID riid, void** ppContainer)
 	return hr;
 }
 
-HRESULT m_IDirect3DSurface8::GetDesc(THIS_ D3DSURFACE_DESC *pDesc)
+HRESULT m_IDirect3DSurface8::GetDesc(THIS_ D3DSURFACE_DESC8 *pDesc)
 {
 	return ProxyInterface->GetDesc(pDesc);
 }

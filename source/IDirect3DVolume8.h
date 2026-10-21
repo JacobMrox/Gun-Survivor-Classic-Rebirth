@@ -26,7 +26,7 @@ public:
 	STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid, void* pData, DWORD* pSizeOfData);
 	STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid);
 	STDMETHOD(GetContainer)(THIS_ REFIID riid, void** ppContainer);
-	STDMETHOD(GetDesc)(THIS_ D3DVOLUME_DESC *pDesc);
+	STDMETHOD(GetDesc)(THIS_ D3DVOLUME_DESC8 *pDesc);
 	STDMETHOD(LockBox)(THIS_ D3DLOCKED_BOX * pLockedVolume, CONST D3DBOX* pBox, DWORD Flags);
 	STDMETHOD(UnlockBox)(THIS);
 };

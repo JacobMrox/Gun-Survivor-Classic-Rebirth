@@ -40,8 +40,7 @@
 #include <string.h>
 #include <utility>
 #include <vector>
-#include "d3d8.h"
-#include "d3d8caps.h"
+#include "d3d8.h"  // D3DCAPS8 comes from d3d8types.hpp
 #include "d3dx8core.h"
 #include "d3dx8math.h"
 #include "d3dx8tex.h"
@@ -346,7 +345,7 @@ FrameLimiter::FPSLimitMode mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
 
 //Present params logger
 
-static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS* p)
+static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS8* p)
 {
     if (!p) return;
 
@@ -381,7 +380,7 @@ static void LogBackbufferOncePerChange(IDirect3DDevice8* dev)
     IDirect3DSurface8* bb = nullptr;
     if (SUCCEEDED(dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
     {
-        D3DSURFACE_DESC d{};
+        D3DSURFACE_DESC8 d{};
         bb->GetDesc(&d);
         bb->Release();
 
@@ -536,8 +535,33 @@ static void UpdateCursorClip()
     ClipCursor(&clip);
 }
 
-// Movie rendering and EndScene happen inside IDirect3DDevice8.cpp implementation.
-// Duplicate/older implementations were removed to avoid symbol conflicts.
+// -----------------------------------------------------------------
+// Modified EndScene to include overlay crosshair
+// (function header and back buffer query restored from V1.0, 9db2112)
+// -----------------------------------------------------------------
+HRESULT m_IDirect3DDevice8::EndScene()
+{
+    UpdateCursorClip();
+
+    if (bDisplayFPSCounter)
+        FrameLimiter::ShowFPS(ProxyInterface);
+
+    if (gDrawOverlayCrosshair && g_hFocusWindow)
+    {
+        // Query backbuffer size (the coordinate space that DrawPrimitiveUP uses here)
+        UINT bbW = 0, bbH = 0;
+        IDirect3DSurface8* bb = nullptr;
+        if (SUCCEEDED(ProxyInterface->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
+        {
+            D3DSURFACE_DESC8 d{};
+            if (SUCCEEDED(bb->GetDesc(&d)))
+            {
+                bbW = d.Width;
+                bbH = d.Height;
+            }
+            bb->Release();
+        }
+
         // Fallback (should rarely happen)
         if (bbW == 0 || bbH == 0)
         {
@@ -569,7 +593,7 @@ static void UpdateCursorClip()
                 if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
 
                 // --- PATCHED SCALE LOGIC ---
-                D3DSURFACE_DESC texDesc;
+                D3DSURFACE_DESC8 texDesc;
                 if (SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
                 {
                     // Use original PNG size multiplied by the scale from the Config Window
@@ -724,7 +748,7 @@ HRESULT m_IDirect3DTexture8::UnlockRect(UINT Level)
 }
 */
 
-void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
+void ForceWindowed(D3DPRESENT_PARAMETERS8* pPresentationParameters)
 {
     HWND hwnd = pPresentationParameters->hDeviceWindow ? pPresentationParameters->hDeviceWindow : g_hFocusWindow;
     HMONITOR monitor = MonitorFromWindow((!bUsePrimaryMonitor && hwnd) ? hwnd : GetDesktopWindow(), MONITOR_DEFAULTTONEAREST);
@@ -797,7 +821,7 @@ void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
     }
 }
 
-void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS* pPresentationParameters)
+void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS8* pPresentationParameters)
 {
     if (!pPresentationParameters->Windowed)
     {
@@ -830,7 +854,7 @@ void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS* pPresentationParamete
 
 HRESULT m_IDirect3D8::CreateDevice(
     UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags,
-    D3DPRESENT_PARAMETERS* p, IDirect3DDevice8** ppReturnedDeviceInterface)
+    D3DPRESENT_PARAMETERS8* p, IDirect3DDevice8** ppReturnedDeviceInterface)
 {
     // --- 1. Fix Window Handle ---
     HWND actualWnd = hFocusWindow;
@@ -888,7 +912,7 @@ HRESULT m_IDirect3D8::CreateDevice(
     return hr;
 }
 
-HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
+HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8* p)
 {
     LogPP("Reset IN:", p);
 

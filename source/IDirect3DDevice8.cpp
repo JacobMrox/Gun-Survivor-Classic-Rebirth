@@ -60,7 +60,7 @@ ULONG m_IDirect3DDevice8::Release()
 	return ref;
 }
 
-//HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS *pPresentationParameters)
+//HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8 *pPresentationParameters)
 //{
 //	return ProxyInterface->Reset(pPresentationParameters);
 //}
@@ -90,7 +90,7 @@ BOOL m_IDirect3DDevice8::ShowCursor(BOOL bShow)
 	return ProxyInterface->ShowCursor(bShow);
 }
 
-HRESULT m_IDirect3DDevice8::CreateAdditionalSwapChain(D3DPRESENT_PARAMETERS *pPresentationParameters, IDirect3DSwapChain8 **ppSwapChain)
+HRESULT m_IDirect3DDevice8::CreateAdditionalSwapChain(D3DPRESENT_PARAMETERS8 *pPresentationParameters, IDirect3DSwapChain8 **ppSwapChain)
 {
 	HRESULT hr = ProxyInterface->CreateAdditionalSwapChain(pPresentationParameters, ppSwapChain);
 

@@ -32,7 +32,7 @@ public:
 	STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew);
 	STDMETHOD_(DWORD, GetLOD)(THIS);
 	STDMETHOD_(DWORD, GetLevelCount)(THIS);
-	STDMETHOD(GetLevelDesc)(THIS_ UINT Level, D3DVOLUME_DESC *pDesc);
+	STDMETHOD(GetLevelDesc)(THIS_ UINT Level, D3DVOLUME_DESC8 *pDesc);
 	STDMETHOD(GetVolumeLevel)(THIS_ UINT Level, IDirect3DVolume8** ppVolumeLevel);
 	STDMETHOD(LockBox)(THIS_ UINT Level, D3DLOCKED_BOX* pLockedVolume, CONST D3DBOX* pBox, DWORD Flags);
 	STDMETHOD(UnlockBox)(THIS_ UINT Level);

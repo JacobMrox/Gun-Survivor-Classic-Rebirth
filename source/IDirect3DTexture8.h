@@ -36,7 +36,7 @@ public:
 	STDMETHOD_(DWORD, SetLOD)(THIS_ DWORD LODNew);
 	STDMETHOD_(DWORD, GetLOD)(THIS);
 	STDMETHOD_(DWORD, GetLevelCount)(THIS);
-	STDMETHOD(GetLevelDesc)(THIS_ UINT Level, D3DSURFACE_DESC *pDesc);
+	STDMETHOD(GetLevelDesc)(THIS_ UINT Level, D3DSURFACE_DESC8 *pDesc);
 	STDMETHOD(GetSurfaceLevel)(THIS_ UINT Level, IDirect3DSurface8** ppSurfaceLevel);
 	STDMETHOD(LockRect)(THIS_ UINT Level, D3DLOCKED_RECT* pLockedRect, CONST RECT* pRect, DWORD Flags);
 	STDMETHOD(UnlockRect)(THIS_ UINT Level);

@@ -39,8 +39,8 @@ public:
 	STDMETHOD(SetCursorProperties)(THIS_ UINT XHotSpot, UINT YHotSpot, IDirect3DSurface8* pCursorBitmap);
 	STDMETHOD_(void, SetCursorPosition)(THIS_ UINT XScreenSpace, UINT YScreenSpace, DWORD Flags);
 	STDMETHOD_(BOOL, ShowCursor)(THIS_ BOOL bShow);
-	STDMETHOD(CreateAdditionalSwapChain)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters, IDirect3DSwapChain8** pSwapChain);
-	STDMETHOD(Reset)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters);
+	STDMETHOD(CreateAdditionalSwapChain)(THIS_ D3DPRESENT_PARAMETERS8* pPresentationParameters, IDirect3DSwapChain8** pSwapChain);
+	STDMETHOD(Reset)(THIS_ D3DPRESENT_PARAMETERS8* pPresentationParameters);
 	HRESULT SetScissorRect(const RECT* pRect);// Custom method not in original interface; for Resident Evil Survivor Crosshair fix
 	STDMETHOD(Present)(THIS_ CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion);
 	STDMETHOD(GetBackBuffer)(THIS_ UINT BackBuffer, D3DBACKBUFFER_TYPE Type, IDirect3DSurface8** ppBackBuffer);

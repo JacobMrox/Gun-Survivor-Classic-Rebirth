@@ -23,12 +23,8 @@ struct VideoState {
 // Declare the global instance (defined in AviFfmpegHook.cpp)
 extern VideoState g_Video;
 
-// Forward-declare D3D9 texture type and locked rect to avoid including d3d9.h in this header
+// D3DLOCKED_RECT comes from d3d9types.h (d3d8.h -> d3d8types.hpp -> d3d9.h).
 struct IDirect3DTexture9;
-typedef struct _D3DLOCKED_RECT {
-	int Pitch;
-	void* pBits;
-} D3DLOCKED_RECT;
 extern IDirect3DTexture9* g_MovieTex;
 
 // Draw helper used across translation units

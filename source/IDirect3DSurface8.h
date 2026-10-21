@@ -26,7 +26,7 @@ public:
 	STDMETHOD(GetPrivateData)(THIS_ REFGUID refguid, void* pData, DWORD* pSizeOfData);
 	STDMETHOD(FreePrivateData)(THIS_ REFGUID refguid);
 	STDMETHOD(GetContainer)(THIS_ REFIID riid, void** ppContainer);
-	STDMETHOD(GetDesc)(THIS_ D3DSURFACE_DESC *pDesc);
+	STDMETHOD(GetDesc)(THIS_ D3DSURFACE_DESC8 *pDesc);
 	STDMETHOD(LockRect)(THIS_ D3DLOCKED_RECT* pLockedRect, CONST RECT* pRect, DWORD Flags);
 	STDMETHOD(UnlockRect)(THIS);
 };
