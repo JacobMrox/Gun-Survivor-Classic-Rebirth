@@ -137,7 +137,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessage(hRes, CB_SETCURSEL, sel, 0);
 
         HWND hCross = GetDlgItem(h, IDC_CROSS_COMBO);
-        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PC (Red)");
+        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PC (Default Red)");
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PC (Yellow Old)");
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PSX (Classic)");
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Umbrella Chronicles");
