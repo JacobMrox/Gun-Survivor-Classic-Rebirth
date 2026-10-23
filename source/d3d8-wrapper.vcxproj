@@ -150,6 +150,7 @@
     <ClInclude Include="d3dx9.hpp" />
     <ClInclude Include="debug.h" />
     <ClInclude Include="dinputhook.h" />
+    <ClInclude Include="survivor_pc.h" />
     <ClInclude Include="DirectShowHook.h" />
     <ClInclude Include="dxsdk\d3d8types.h" />
     <ClInclude Include="file_events.h" />
@@ -190,6 +191,7 @@
     <ClCompile Include="d3d8to9_volume.cpp" />
     <ClCompile Include="d3d8types.cpp" />
     <ClCompile Include="dinputhook.cpp" />
+    <ClCompile Include="survivor_pc.cpp" />
     <ClCompile Include="DirectShowHook.cpp" />
     <ClCompile Include="file_events.cpp" />
     <ClCompile Include="interface_query.cpp" />

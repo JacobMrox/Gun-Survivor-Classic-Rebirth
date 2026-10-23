@@ -8,6 +8,7 @@
 #include "MinHook.h"
 #include "aim_shared.h"
 #include "debug.h"
+#include "survivor_pc.h"
 
 // ---- shared globals we already use in EndScene ----
 extern HWND  g_hFocusWindow;
@@ -16,8 +17,9 @@ extern float gAimY;
 extern bool gAimInit;
 
 // Optional tuning
-static float gMouseMulX = 1.0f;
-static float gMouseMulY = 1.0f;
+// MouseSensitivity and EqualMouseAxes ([SurvivorFix] in config.ini, survivor_pc.cpp).
+#define gMouseMulX SurvivorPc_MouseMulX()
+#define gMouseMulY SurvivorPc_MouseMulY()
 static bool  gInvertY = false;
 bool gUseRelativeDIForCrosshair = false;
 
@@ -47,6 +49,32 @@ static DI_CreateDevice_t Real_DI_CreateDevice = nullptr;
 // -------------------- GetDeviceData detour --------------------
 using DID_GetDeviceData_t = HRESULT(STDMETHODCALLTYPE*)(LPDIRECTINPUTDEVICEA, DWORD, LPDIDEVICEOBJECTDATA, LPDWORD, DWORD);
 static DID_GetDeviceData_t Real_GetDeviceData = nullptr;
+
+// -------------------- SetProperty detour (MouseBufferSize, survivor_pc.cpp) --------------------
+// The game asks for a 16-event mouse buffer (gun_bio 004069F1) and reads 16 events per frame: a modern
+// mouse sends far more, the rest is lost and the speed depends on the frame rate. Survivor Fix makes the
+// game read the whole buffer every frame; here the buffer itself gets bigger.
+static constexpr int VTI_DID_SetProperty = 6;
+using DID_SetProperty_t = HRESULT(STDMETHODCALLTYPE*)(LPDIRECTINPUTDEVICEA, REFGUID, LPCDIPROPHEADER);
+static DID_SetProperty_t Real_SetProperty = nullptr;
+static LPDIRECTINPUTDEVICEA gMouseDevice = nullptr;
+
+static HRESULT STDMETHODCALLTYPE Hook_SetProperty(LPDIRECTINPUTDEVICEA This, REFGUID rguidProp, LPCDIPROPHEADER pdiph)
+{
+    const DWORD wanted = SurvivorPc_MouseBufferSize();
+    if (This == gMouseDevice && wanted && reinterpret_cast<uintptr_t>(&rguidProp) == 1 /* DIPROP_BUFFERSIZE */ && pdiph &&
+        pdiph->dwSize == sizeof(DIPROPDWORD))
+    {
+        DIPROPDWORD prop = *reinterpret_cast<const DIPROPDWORD*>(pdiph);
+        if (prop.dwData < wanted)
+        {
+            LogLine("[DI] Mouse buffer %lu -> %lu events", prop.dwData, wanted);
+            prop.dwData = wanted;
+            return Real_SetProperty(This, rguidProp, &prop.diph);
+        }
+    }
+    return Real_SetProperty(This, rguidProp, pdiph);
+}
 
 #pragma pack(push, 1)
 struct DIOBJECTDATA_SMALL
@@ -132,6 +160,15 @@ static void HookMouseDevice(LPDIRECTINPUTDEVICEA dev)
 
     void** vtbl = *(void***)dev;
     if (!vtbl) return;
+
+    gMouseDevice = dev;
+    if (!Real_SetProperty && SurvivorPc_MouseBufferSize())
+    {
+        void* pSetProperty = vtbl[VTI_DID_SetProperty];
+        if (MH_CreateHook(pSetProperty, Hook_SetProperty, (void**)&Real_SetProperty) == MH_OK &&
+            MH_EnableHook(pSetProperty) == MH_OK)
+            LogLine("[DI] Hooked IDirectInputDeviceA::SetProperty");
+    }
 
     // Hook GetDeviceData once per process
     if (!Real_GetDeviceData)

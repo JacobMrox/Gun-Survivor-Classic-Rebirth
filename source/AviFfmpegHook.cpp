@@ -6,6 +6,7 @@
 #include "AviFfmpegHook.h"
 #include "globals.h"
 #include "debug.h"
+#include "survivor_pc.h"
 #include <mmsystem.h>
 #include <string>
 
@@ -160,7 +161,10 @@ namespace {
     }
 
     static HRESULT WINAPI Hook_CoCreateInstance(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID* ppv) {
-        if (rclsid.Data1 == 0xE436EBB3 || rclsid.Data1 == 0x6B6D0800) {
+        // Resident Evil Survivor (gun_bio.exe) plays its movies through DirectShow, not MCI: D3D_Movie.cpp
+        // initGraphBuilder creates CLSID_FilterGraph. Blocking it left the opening without text.avi and
+        // Opening.avi and the title frozen for ~23 s; DirectShowHook.cpp still honours SkipMovies for it.
+        if ((rclsid.Data1 == 0xE436EBB3 || rclsid.Data1 == 0x6B6D0800) && !SurvivorPc_IsSurvivorExe()) {
             LogLine("AviFfmpegHook: Blocking COM Video Object Creation");
             return E_FAIL;
         }

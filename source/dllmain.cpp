@@ -26,6 +26,7 @@
 #include "cd_bypass.h"
 #include "aim_shared.h"
 #include "debug.h"
+#include "survivor_pc.h"
 #include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
@@ -133,6 +134,11 @@ char WinDir[MAX_PATH + 1];
         }
 
         HRESULT hr = D3DXCreateTextureFromFileA(dev, sCrosshairPath.c_str(), &gCrossTex);
+        if (FAILED(hr)) {
+            // The skins offered by the config window (crosshair_psx/pc/old/uc_big.png) are not shipped
+            // in FIXRES: without this the crosshair disappears after choosing one. Use the stock one.
+            hr = D3DXCreateTextureFromFileA(dev, "FIXRES/crosshair.png", &gCrossTex);
+        }
         if (SUCCEEDED(hr)) {
             lastLoadedPath = sCrosshairPath;
             gCrossLoaded = true;
@@ -583,6 +589,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
             }
 
             EnsureCrosshairTexture(ProxyInterface);
+            const bool drawCross = SurvivorPc_UpdateCrosshair(g_hFocusWindow, &gAimX, &gAimY, (int)bbW, (int)bbH);
 
             if (gCrossTex)
             {
@@ -591,10 +598,11 @@ HRESULT m_IDirect3DDevice8::EndScene()
                 if (gAimY < 0) gAimY = 0;
                 if (gAimX > (float)bbW - 1) gAimX = (float)bbW - 1;
                 if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
+                SurvivorPc_SyncGameAim(gAimX, gAimY);//the game's aim follows the crosshair
 
                 // --- PATCHED SCALE LOGIC ---
                 D3DSURFACE_DESC8 texDesc;
-                if (SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
+                if (drawCross && SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
                 {
                     // Use original PNG size multiplied by the scale from the Config Window
                     float finalW = (float)texDesc.Width * fCrosshairScale;
@@ -904,6 +912,7 @@ HRESULT m_IDirect3D8::CreateDevice(
         if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
         {
             ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+            SurvivorPc_OnDevice(g_hFocusWindow, p->BackBufferWidth, p->BackBufferHeight, ForceWidth, ForceHeight);
         }
 
         ApplyWindowTitle(g_hFocusWindow);
@@ -953,6 +962,7 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8* p)
         if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
         {
             ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+            SurvivorPc_OnDevice(g_hFocusWindow, p->BackBufferWidth, p->BackBufferHeight, ForceWidth, ForceHeight);
             ApplyWindowTitle(g_hFocusWindow);
         }
     }
@@ -1468,6 +1478,11 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 
         // --- DEBUG ---
         gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
+
+        // --- SURVIVOR FIX (PC options, survivor_pc.cpp) ---
+        SurvivorPc_LoadConfig(path);
+        SurvivorPc_ApplyDpiAware();//before the game creates its window
+        SurvivorPc_InstallGameHooks();//HudAspect: game function 0042ABE0
 
         // Initialize Limiter
         if (fFPSLimit > 0.0f) {
