@@ -298,7 +298,8 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CreateTexture(UINT Width, UINT Height
 		// If the game didn't ask for DYNAMIC, we should probably give it 
 		// DYNAMIC anyway if it's in the DEFAULT pool, because D3D8 
 		// default pool textures were often locked.
-		if ((Usage & D3DUSAGE_DYNAMIC) == 0)
+		// Render targets and depth buffers cannot be DYNAMIC in D3D9 (CreateTexture fails with INVALIDCALL).
+		if ((Usage & (D3DUSAGE_DYNAMIC | D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL)) == 0)
 		{
 			Usage |= D3DUSAGE_DYNAMIC;
 		}
@@ -519,7 +520,35 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CopyRects(IDirect3DSurface8 *pSourceS
 			DestinationRect = SourceRect;
 		}
 
-		if (SourceDesc.Pool == D3DPOOL_MANAGED || DestinationDesc.Pool != D3DPOOL_DEFAULT)
+		if (SourceDesc.Pool == D3DPOOL_DEFAULT && (SourceDesc.Usage & D3DUSAGE_RENDERTARGET) &&
+			DestinationDesc.Pool == D3DPOOL_SYSTEMMEM)
+		{
+			// D3D8 CopyRects reads a render target into system memory; D3D9 needs GetRenderTargetData
+			// (D3DXLoadSurfaceFromSurface cannot lock a non-lockable render target). Survivor saves the screen
+			// this way (log: "[1024x768, 22, 0, 1, 0] to [1024x768, 22, 0, 0, 2]").
+			const bool whole = SourceRect.left == 0 && SourceRect.top == 0 &&
+				UINT(SourceRect.right) == SourceDesc.Width && UINT(SourceRect.bottom) == SourceDesc.Height &&
+				DestinationRect.left == 0 && DestinationRect.top == 0 &&
+				SourceDesc.Width == DestinationDesc.Width && SourceDesc.Height == DestinationDesc.Height;
+			if (whole)
+			{
+				hr = ProxyInterface->GetRenderTargetData(pSourceSurfaceImpl->GetProxyInterface(), pDestinationSurfaceImpl->GetProxyInterface());
+			}
+			else
+			{
+				IDirect3DSurface9 *Copy = nullptr;
+				hr = ProxyInterface->CreateOffscreenPlainSurface(SourceDesc.Width, SourceDesc.Height, SourceDesc.Format, D3DPOOL_SYSTEMMEM, &Copy, nullptr);
+				if (SUCCEEDED(hr))
+					hr = ProxyInterface->GetRenderTargetData(pSourceSurfaceImpl->GetProxyInterface(), Copy);
+				if (SUCCEEDED(hr) && D3DXLoadSurfaceFromSurface != nullptr)
+					hr = D3DXLoadSurfaceFromSurface(pDestinationSurfaceImpl->GetProxyInterface(), nullptr, &DestinationRect, Copy, nullptr, &SourceRect, D3DX_FILTER_NONE, 0);
+				else if (SUCCEEDED(hr))
+					hr = D3DERR_INVALIDCALL;
+				if (Copy)
+					Copy->Release();
+			}
+		}
+		else if (SourceDesc.Pool == D3DPOOL_MANAGED || DestinationDesc.Pool != D3DPOOL_DEFAULT)
 		{
 			hr = D3DERR_INVALIDCALL;
 			if (D3DXLoadSurfaceFromSurface != nullptr)
@@ -554,9 +583,9 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CopyRects(IDirect3DSurface8 *pSourceS
 //#ifndef D3D8TO9NOLOG
 			//LOG << "Failed to translate 'IDirect3DDevice8::CopyRects' call from '[" << SourceDesc.Width << "x" << SourceDesc.Height << ", " << SourceDesc.Format << ", " << SourceDesc.MultiSampleType << ", " << SourceDesc.Usage << ", " << SourceDesc.Pool << "]' to '[" << DestinationDesc.Width << "x" << DestinationDesc.Height << ", " << DestinationDesc.Format << ", " << DestinationDesc.MultiSampleType << ", " << DestinationDesc.Usage << ", " << DestinationDesc.Pool << "]'!" << std::endl;
 //#endif
-			LogLine("Failed to translate 'IDirect3DDevice8::CopyRects' call from '[%ux%u, %u, %u, %u, %u]' to '[%ux%u, %u, %u, %u, %u]'!",
+			LogLine("Failed to translate 'IDirect3DDevice8::CopyRects' call from '[%ux%u, %u, %u, %u, %u]' to '[%ux%u, %u, %u, %u, %u]' (hr 0x%X)!",
 				SourceDesc.Width, SourceDesc.Height, SourceDesc.Format, SourceDesc.MultiSampleType, SourceDesc.Usage, SourceDesc.Pool,
-				DestinationDesc.Width, DestinationDesc.Height, DestinationDesc.Format, DestinationDesc.MultiSampleType, DestinationDesc.Usage, DestinationDesc.Pool);
+				DestinationDesc.Width, DestinationDesc.Height, DestinationDesc.Format, DestinationDesc.MultiSampleType, DestinationDesc.Usage, DestinationDesc.Pool, hr);
 			break;
 		}
 	}
