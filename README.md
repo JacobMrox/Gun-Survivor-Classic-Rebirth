@@ -106,7 +106,7 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 * Fix Zombie footstep sound.
 * Fix NPC/enemy lighting/shader.
 * Add shooting screen flash (gun con flash simulation) effect.
-* Fix enemy AI/Animations.
+* Fix enemy behaviour and animations.
 * Add Xinput and Raw Input support, in addition to Dinput.
 * Mod Support
 

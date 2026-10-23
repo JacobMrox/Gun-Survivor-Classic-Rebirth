@@ -1,5 +1,5 @@
 // PC-side fixes ported from Survivor Fix (github.com/Trigger117, MIT licence).
-// Options live in config.ini, section [SurvivorFix]; every option defaults to off.
+// Fixes default to on; diagnostic overrides live in config.ini, section [SurvivorFix].
 #pragma once
 #include <windows.h>
 
@@ -22,6 +22,9 @@ float SurvivorPc_MouseMulY();
 
 // MouseBufferSize: minimum DirectInput buffer for the mouse (0 = leave the game's 16).
 unsigned long SurvivorPc_MouseBufferSize();
+// Movement events seen by the existing DirectInput bridge in one native device read.
+void SurvivorPc_ResetMouseRead();
+unsigned SurvivorPc_MouseMotionEvents();
 
 // From EndScene, before the overlay crosshair is clamped and drawn. MenuWindowsCursor: in menus the crosshair
 // position (and so the game's aim) comes from the Windows pointer, in back buffer space. Returns false when the
@@ -45,8 +48,8 @@ bool SurvivorPc_IsSurvivorExe();
 
 // ---- PS1 screen effects ----------------------------------------------------------------------------------
 // Screen effects of the PS1 version of Resident Evil Survivor (fades, the blurred view, the death zoom, the red
-// flash), drawn over the finished frame just before Present. Survivor Fix (dsound.dll) runs the PS1 timing and
-// sets the state through the exported SurvivorPc_SetScreenFx; without it nothing is drawn.
+// flash), drawn over the finished frame just before Present. survivor_fix/features/screen_fx.cpp runs the PS1 timing
+// and sets the state through SurvivorPc_SetScreenFx; nothing is drawn while it is off.
 // PS1 references (SLUS_010.87, TEST.BIN loaded at 0x8006C118):
 //   fade     80090D4C: box fill with attribute 0x60000000 (subtract) and colour = level (80090C90, 0..255).
 //   trail 1  80085418: the previous frame as GsSPRITE 0x42000000 (blend 50/50), colour 0x80, scale 1.
@@ -71,11 +74,11 @@ struct SurvivorScreenFx {
                    // the game composes them once, so the picture without them fades out over them.
 };
 
-extern "C" __declspec(dllexport) void __cdecl SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx);
+void SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx);
 // Shows the last kept frame again, with the current effects over it, and presents it. For the PS1 fade
 // before a door (8009016C step 1: 80090BF0(0, 0x10) over the room) once the game has left the room.
 // Returns 0 when there is no kept frame or no device.
-extern "C" __declspec(dllexport) int __cdecl SurvivorPc_PresentHeldFrame();
+int SurvivorPc_PresentHeldFrame();
 
 // From Present, before the swap: `wrapper` is the device the game uses (for SurvivorPc_PresentHeldFrame),
 // `dev` the one to draw with. Keeps a copy of the frame while a trail is on or `keep` is set.

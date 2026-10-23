@@ -27,6 +27,7 @@
 #include "aim_shared.h"
 #include "debug.h"
 #include "survivor_pc.h"
+#include "survivor_fix/survivor_fix.h"
 #include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
@@ -68,6 +69,7 @@ DebugSetMuteProc m_pDebugSetMute;
 Direct3DCreate8Proc m_pDirect3DCreate8;
 
 HMODULE g_hWrapperModule = NULL;
+char gConfigPath[MAX_PATH] = {};//config.ini next to d3d8.dll (Survivor Fix reads it again after the config window)
 
 HMODULE d3d8dll = NULL;
 
@@ -1484,10 +1486,11 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         // --- DEBUG ---
         gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
 
-        // --- SURVIVOR FIX (PC options, survivor_pc.cpp) ---
+        // --- SURVIVOR FIX (survivor_pc.cpp, survivor_fix/) ---
+        strcpy(gConfigPath, path);
         SurvivorPc_LoadConfig(path);
         SurvivorPc_ApplyDpiAware();//before the game creates its window
-        SurvivorPc_InstallGameHooks();//HudAspect: game function 0042ABE0
+        SurvivorFix_Attach(hModule, path);//start-up fixes, before the game's code runs
 
         // Initialize Limiter
         if (fFPSLimit > 0.0f) {
@@ -1754,6 +1757,10 @@ IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion)
     if (!bConfigShown) {
         ShowConfigWindow(g_hWrapperModule);
         bConfigShown = true;
+        // Survivor Fix: the options as saved by the window
+        SurvivorPc_LoadConfig(gConfigPath);
+        SurvivorPc_InstallGameHooks();//HudAspect: game function 0042ABE0
+        SurvivorFix_Start(gConfigPath, gEnableLogging);//PS1 behaviour: zombies, player, camera, death, doors
     }
 
     LogLine("Direct3DCreate8 called");

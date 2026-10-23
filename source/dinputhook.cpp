@@ -58,6 +58,10 @@ static constexpr int VTI_DID_SetProperty = 6;
 using DID_SetProperty_t = HRESULT(STDMETHODCALLTYPE*)(LPDIRECTINPUTDEVICEA, REFGUID, LPCDIPROPHEADER);
 static DID_SetProperty_t Real_SetProperty = nullptr;
 static LPDIRECTINPUTDEVICEA gMouseDevice = nullptr;
+static thread_local unsigned gMouseMotionEvents = 0;
+void SurvivorPc_ResetMouseRead() { gMouseMotionEvents = 0; }
+unsigned SurvivorPc_MouseMotionEvents() { return gMouseMotionEvents; }
+
 
 static HRESULT STDMETHODCALLTYPE Hook_SetProperty(LPDIRECTINPUTDEVICEA This, REFGUID rguidProp, LPCDIPROPHEADER pdiph)
 {
@@ -107,6 +111,18 @@ static HRESULT STDMETHODCALLTYPE Hook_GetDeviceData(
     HRESULT hr = Real_GetDeviceData(This, cbObjectData, rgdod, pdwInOut, dwFlags);
     if (FAILED(hr) || !rgdod || !pdwInOut || *pdwInOut == 0)
         return hr;
+
+    // The method implementation may be shared by keyboard devices; only consume actual mouse data.
+    // A peek must not move the overlay or count the same movement twice.
+    if (This != gMouseDevice || (dwFlags & DIGDD_PEEK)) return hr;
+    if (cbObjectData == 16 || cbObjectData == sizeof(DIDEVICEOBJECTDATA)) {
+        const auto* data = reinterpret_cast<const unsigned char*>(rgdod);
+        for (DWORD i = 0; i < *pdwInOut; ++i) {
+            DWORD offset = 0;
+            std::memcpy(&offset, data + i * cbObjectData, sizeof(offset));
+            if (offset == DIMOFS_X || offset == DIMOFS_Y) ++gMouseMotionEvents;
+        }
+    }
 
     if (!IsOurWindowFocused())
         return hr;

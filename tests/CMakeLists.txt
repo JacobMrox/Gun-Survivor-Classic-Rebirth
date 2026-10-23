@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(survivor_fix_regressions LANGUAGES CXX)
+enable_testing()
+foreach(name IN ITEMS mouse_drain movie_skip)
+  add_executable(${name}_test ${name}_test.cpp)
+  target_compile_features(${name}_test PRIVATE cxx_std_17)
+  add_test(NAME ${name} COMMAND ${name}_test)
+endforeach()

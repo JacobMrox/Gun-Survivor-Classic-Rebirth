@@ -196,19 +196,19 @@ void HookWindow(HWND hwnd) {
 }  // namespace
 
 void SurvivorPc_LoadConfig(const char* ini) {
-  gDpiAware = GetPrivateProfileIntA("SurvivorFix", "DpiAware", 0, ini) != 0;
-  gKeepAspect = GetPrivateProfileIntA("SurvivorFix", "KeepAspect", 0, ini) != 0;
-  gSyncGameAim = GetPrivateProfileIntA("SurvivorFix", "SyncGameAim", 0, ini) != 0;
-  gEqualMouseAxes = GetPrivateProfileIntA("SurvivorFix", "EqualMouseAxes", 0, ini) != 0;
+  gDpiAware = GetPrivateProfileIntA("SurvivorFix", "DpiAware", 1, ini) != 0;
+  gKeepAspect = GetPrivateProfileIntA("SurvivorFix", "KeepAspect", 1, ini) != 0;
+  gSyncGameAim = GetPrivateProfileIntA("SurvivorFix", "SyncGameAim", 1, ini) != 0;
+  gEqualMouseAxes = GetPrivateProfileIntA("SurvivorFix", "EqualMouseAxes", 1, ini) != 0;
   char buf[32] = {};
   GetPrivateProfileStringA("SurvivorFix", "MouseSensitivity", "1.0", buf, sizeof buf, ini);
   const float s = static_cast<float>(atof(buf));
   gSensitivity = (s > 0.0f && s < 20.0f) ? s : 1.0f;
-  gMenuWindowsCursor = GetPrivateProfileIntA("SurvivorFix", "MenuWindowsCursor", 0, ini) != 0;
-  gHideCrosshairInMenus = GetPrivateProfileIntA("SurvivorFix", "HideCrosshairInMenus", 0, ini) != 0;
-  gHudAspect = GetPrivateProfileIntA("SurvivorFix", "HudAspect", 0, ini) != 0;
-  gPs1ShadowBlend = GetPrivateProfileIntA("SurvivorFix", "Ps1ShadowBlend", 0, ini) != 0;
-  const UINT buffer = GetPrivateProfileIntA("SurvivorFix", "MouseBufferSize", 0, ini);
+  gMenuWindowsCursor = GetPrivateProfileIntA("SurvivorFix", "MenuWindowsCursor", 1, ini) != 0;
+  gHideCrosshairInMenus = GetPrivateProfileIntA("SurvivorFix", "HideCrosshairInMenus", 1, ini) != 0;
+  gHudAspect = GetPrivateProfileIntA("SurvivorFix", "HudAspect", 1, ini) != 0;
+  gPs1ShadowBlend = GetPrivateProfileIntA("SurvivorFix", "Ps1ShadowBlend", 1, ini) != 0;
+  const UINT buffer = GetPrivateProfileIntA("SurvivorFix", "MouseBufferSize", 1024, ini);
   gMouseBufferSize = buffer > 65536 ? 65536 : buffer;
 }
 
@@ -474,7 +474,7 @@ bool BackBuffer(IDirect3DDevice8* dev, IDirect3DSurface8** back, D3DSURFACE_DESC
 
 }  // namespace
 
-extern "C" __declspec(dllexport) void __cdecl SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx) {
+void SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx) {
   if (!fx || fx->size != static_cast<int>(sizeof(SurvivorScreenFx))) return;
   // A new trail starts from the frame shown before it; a held frame stays while it is blended.
   if (fx->trail == 0 && !fx->keep && fx->heldBlend <= 0) gFrameValid = false;
@@ -568,7 +568,7 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
   back->Release();
 }
 
-extern "C" __declspec(dllexport) int __cdecl SurvivorPc_PresentHeldFrame() {
+int SurvivorPc_PresentHeldFrame() {
   IDirect3DDevice8* dev = gDev;
   if (!dev || !gWrapper || !gFrame || !gFrameValid) return 0;
   IDirect3DSurface8* back = nullptr;

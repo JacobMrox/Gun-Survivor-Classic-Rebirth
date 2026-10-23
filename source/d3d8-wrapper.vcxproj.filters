@@ -141,6 +141,248 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="survivor_pc.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\config.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\bite_from_behind.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\exit_fix.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\hud_condition.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\input_device_fix.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\movie_skip.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\mouse_input.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\player.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\ps1_cadence.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\room_walls.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\screen_fx.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_bite.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_blood.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_common.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_death.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_fall.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_hit.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_nav.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_pose.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_push.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_walk.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_world_pc.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie_life.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie_shadow.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\game.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\hooks.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\log.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\backfall_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\bite_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\blend_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\blood_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\damage_view_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\death_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\headbob_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\hit_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\lunge_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\nav_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\player_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\pose_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\screen_fx_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\speed_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\stumble_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\wake_view_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\wall_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\ps1\zombie_world.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\survivor_fix.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClInclude Include="survivor_pc.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\config.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\features\features.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\features\zombie\zombie_shared.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\game.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\hooks.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\hud_condition_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\log.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\movie_skip_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\mouse_drain_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\backfall_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\bite_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\blend_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\blood_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\cadence_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\damage_view_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\death_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\headbob_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\hit_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\lunge_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\nav_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\player_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\pose_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\screen_fx_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\shadow_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\speed_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\stumble_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\wake_view_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\wall_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\zombie_profile.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\zombie_world.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\roomenv_index.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\survivor_fix.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
     <Filter Include="Survivor Fixes">
       <UniqueIdentifier>{88069ab2-c61b-4b33-9ae3-6d36f6b37d34}</UniqueIdentifier>
     </Filter>

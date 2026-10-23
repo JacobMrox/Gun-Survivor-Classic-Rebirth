@@ -23,6 +23,7 @@ workspace "d3d8-wrapper"
    defines { "rsc_UpdateUrl=\"https://github.com/ThirteenAG/%{prj.name}\"" }
    
    files { "source/*.h", "source/*.cpp" }
+   files { "source/survivor_fix/**.h", "source/survivor_fix/**.cpp" }
    files { "source/*.def" }
    files { "source/*.rc" }
    includedirs { "source/dxsdk" }
