@@ -137,16 +137,16 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessage(hRes, CB_SETCURSEL, sel, 0);
 
         HWND hCross = GetDlgItem(h, IDC_CROSS_COMBO);
-        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PSX Style");
-        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Original (Red)");
-        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Classic (Yellow)");
+        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PC (Red)");
+        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PC (Yellow Old)");
+        SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"PSX (Classic)");
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Umbrella Chronicles");
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Custom...");
 
         if (sCrosshairPath.find("crosshair_pc.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 1, 0);
         else if (sCrosshairPath.find("crosshair_old.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 2, 0);
-        else if (sCrosshairPath.find("crosshair_uc_big.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 3, 0);
-        else if (sCrosshairPath.find("crosshair_psx.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 0, 0);
+        else if (sCrosshairPath.find("crosshair_psx.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 3, 0);
+        else if (sCrosshairPath.find("crosshair_uc_big.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 0, 0);
         else SendMessage(hCross, CB_SETCURSEL, 4, 0);
 
         HWND hTrack = GetDlgItem(h, IDC_CROSS_SCALE);
@@ -210,8 +210,8 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         else if (LOWORD(w) == IDC_CROSS_COMBO && HIWORD(w) == CBN_SELCHANGE) {
             int sel = (int)SendMessage((HWND)l, CB_GETCURSEL, 0, 0);
-            if (sel == 0) sCrosshairPath = "FIXRES/crosshair.png";
-            else if (sel == 1) sCrosshairPath = "FIXRES/crosshair_pc.png";
+            if (sel == 0) sCrosshairPath = "FIXRES/crosshair_pc.png";
+            else if (sel == 1) sCrosshairPath = "FIXRES/crosshair_old.png";
             else if (sel == 2) sCrosshairPath = "FIXRES/crosshair_psx.png";
             else if (sel == 3) sCrosshairPath = "FIXRES/crosshair_uc_big.png";
             InvalidateRect(GetDlgItem(h, IDC_CROSS_PREVIEW), NULL, TRUE);
