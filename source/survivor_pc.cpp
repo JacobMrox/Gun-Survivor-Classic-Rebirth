@@ -35,6 +35,9 @@
 //                     0x40 (TEXTUREFACTOR 0x80404040). The alpha test keeps the colour-keyed edge.
 #include "survivor_pc.h"
 
+#include "d3d8types.hpp"  // D3DSURFACE_DESC8, as in dllmain.cpp
+#include "d3d8.h"
+
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -356,4 +359,242 @@ bool SurvivorPc_TakeShadowDraw() {
   const bool pending = gShadowPending;
   gShadowPending = false;
   return pending;
+}
+
+// ---- PS1 screen effects (requested by Survivor Fix, see survivor_pc.h) -----------------------------------
+namespace {
+
+SurvivorScreenFx gFx{};
+IDirect3DDevice8* gWrapper = nullptr;  // the device the game presents with
+IDirect3DDevice8* gDev = nullptr;      // the device that draws (d3d8to9)
+IDirect3DTexture8* gFrame = nullptr;   // copy of the previous frame (trails, held frame)
+bool gFrameValid = false;
+bool gHolding = false;  // inside SurvivorPc_PresentHeldFrame: the held frame is not copied again
+UINT gFrameW = 0, gFrameH = 0;
+D3DFORMAT gFrameFormat = D3DFMT_UNKNOWN;
+
+struct Vertex {
+  float x, y, z, rhw;
+  DWORD color;
+  float u, v;
+};
+constexpr DWORD kFvf = D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1;
+
+int Clamp255(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+void Quad(IDirect3DDevice8* dev, float x0, float y0, float x1, float y1, DWORD color) {
+  // Pixel centres: D3D8 samples texel centres half a pixel off.
+  x0 -= 0.5f;
+  y0 -= 0.5f;
+  x1 -= 0.5f;
+  y1 -= 0.5f;
+  const Vertex v[4] = {
+      {x0, y0, 0.0f, 1.0f, color, 0.0f, 0.0f},
+      {x1, y0, 0.0f, 1.0f, color, 1.0f, 0.0f},
+      {x0, y1, 0.0f, 1.0f, color, 0.0f, 1.0f},
+      {x1, y1, 0.0f, 1.0f, color, 1.0f, 1.0f},
+  };
+  dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(Vertex));
+}
+
+// Untextured box: dest + colour (add) or dest - colour (subtract), per channel, clamped like the PS1 GPU.
+void Box(IDirect3DDevice8* dev, float w, float h, DWORD color, bool subtract) {
+  dev->SetTexture(0, nullptr);
+  dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+  dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+  dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+  dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+  dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+  dev->SetRenderState(D3DRS_BLENDOP, subtract ? D3DBLENDOP_REVSUBTRACT : D3DBLENDOP_ADD);
+  Quad(dev, 0.0f, 0.0f, w, h, color);
+}
+
+void SetSampler(IDirect3DDevice8* dev, DWORD type, DWORD value) {
+  dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(type), value);
+}
+
+// States shared by every draw here; the caller restores the game's with a state block.
+void BeginDraw(IDirect3DDevice8* dev, UINT w, UINT h) {
+  D3DVIEWPORT8 full{0, 0, w, h, 0.0f, 1.0f};
+  dev->SetViewport(&full);
+  dev->SetVertexShader(kFvf);
+  dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+  dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+  dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+  dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+  dev->SetRenderState(D3DRS_FOGENABLE, FALSE);
+  dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+  dev->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+  dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+  dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+  // PS1 sprites are not filtered.
+  SetSampler(dev, D3DTSS_MAGFILTER, D3DTEXF_POINT);
+  SetSampler(dev, D3DTSS_MINFILTER, D3DTEXF_POINT);
+  SetSampler(dev, D3DTSS_MIPFILTER, D3DTEXF_NONE);
+  SetSampler(dev, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+  SetSampler(dev, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+  dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+  dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+  dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+  dev->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+}
+
+bool EnsureFrame(IDirect3DDevice8* dev, UINT w, UINT h, D3DFORMAT format) {
+  if (gFrame && gFrameW == w && gFrameH == h && gFrameFormat == format) return true;
+  SurvivorPc_ReleaseScreenFx();
+  if (FAILED(dev->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, format, D3DPOOL_DEFAULT, &gFrame))) {
+    gFrame = nullptr;
+    return false;
+  }
+  gFrameW = w;
+  gFrameH = h;
+  gFrameFormat = format;
+  return true;
+}
+
+void CopyFrame(IDirect3DDevice8* dev, IDirect3DSurface8* back) {
+  IDirect3DSurface8* level = nullptr;
+  gFrameValid = false;
+  if (gFrame && SUCCEEDED(gFrame->GetSurfaceLevel(0, &level)) && level) {
+    gFrameValid = SUCCEEDED(dev->CopyRects(back, nullptr, 0, level, nullptr));
+    level->Release();
+  }
+}
+
+bool BackBuffer(IDirect3DDevice8* dev, IDirect3DSurface8** back, D3DSURFACE_DESC8* desc) {
+  *back = nullptr;
+  if (FAILED(dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, back)) || !*back) return false;
+  if (FAILED((*back)->GetDesc(desc))) {
+    (*back)->Release();
+    *back = nullptr;
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+extern "C" __declspec(dllexport) void __cdecl SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx) {
+  if (!fx || fx->size != static_cast<int>(sizeof(SurvivorScreenFx))) return;
+  // A new trail starts from the frame shown before it; a held frame stays while it is blended.
+  if (fx->trail == 0 && !fx->keep && fx->heldBlend <= 0) gFrameValid = false;
+  gFx = *fx;
+}
+
+bool SurvivorPc_ScreenFxHidesCrosshair() { return gFx.noCrosshair != 0; }
+
+
+void SurvivorPc_ReleaseScreenFx() {
+  if (gFrame) gFrame->Release();
+  gFrame = nullptr;
+  gFrameValid = false;
+  gFrameW = gFrameH = 0;
+}
+
+void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
+  gWrapper = wrapper;
+  gDev = dev;
+  const SurvivorScreenFx fx = gFx;
+  const bool trail = fx.trail == 1 || fx.trail == 2;
+  const bool held = fx.heldBlend > 0 && gFrameValid && gFrame;
+  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.subtract > 0;
+  const bool copy = (trail || fx.keep) && !gHolding;
+  if (!dev || (!draw && !copy)) return;
+  IDirect3DSurface8* back = nullptr;
+  D3DSURFACE_DESC8 desc{};
+  if (!BackBuffer(dev, &back, &desc)) return;
+  const float w = static_cast<float>(desc.Width), h = static_cast<float>(desc.Height);
+
+  if (draw) {
+    DWORD block = 0;
+    const bool saved = SUCCEEDED(dev->CreateStateBlock(D3DSBT_ALL, &block));
+    D3DVIEWPORT8 oldViewport{};
+    dev->GetViewport(&oldViewport);
+    if (SUCCEEDED(dev->BeginScene())) {
+      BeginDraw(dev, desc.Width, desc.Height);
+      dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+      if (held) {
+        dev->SetTexture(0, gFrame);
+        dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);  // ALPHAARG1 = diffuse
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        Quad(dev, 0.0f, 0.0f, w, h, D3DCOLOR_ARGB(Clamp255(fx.heldBlend), 0xFF, 0xFF, 0xFF));
+      }
+      // 80085814 sorts the subtract box into the same ordering table slot after the two sprites, so the GPU
+      // draws it first: the zoomed frame is added over the darkened scene (the PS1 stays white while it runs).
+      if (fx.subtract > 0) {
+        const int v = Clamp255(fx.subtract);
+        Box(dev, w, h, D3DCOLOR_ARGB(0xFF, v, v, v), true);
+        dev->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+      }
+      if (trail && gFrameValid && gFrame) {
+        dev->SetTexture(0, gFrame);
+        if (fx.trail == 1) {
+          // 0x42000000: background / 2 + texel / 2.
+          dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+          dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+          dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+          dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+          Quad(dev, 0.0f, 0.0f, w, h, D3DCOLOR_ARGB(0x80, 0xFF, 0xFF, 0xFF));
+        } else {
+          // 0x52000000: background + texel * colour / 0x80, the sprite scaled around the screen centre.
+          const int c = Clamp255(fx.trailColor * 2);
+          const float s = fx.trailScale / 4096.0f;
+          dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+          dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+          dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+          dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+          Quad(dev, w * 0.5f * (1.0f - s), h * 0.5f * (1.0f - s), w * 0.5f * (1.0f + s), h * 0.5f * (1.0f + s),
+               D3DCOLOR_ARGB(0xFF, c, c, c));
+        }
+      }
+      if (fx.redFlash) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0x40, 0, 0), false);  // 0x70000000: + (FF, 0, 0) / 4
+      if (fx.fade > 0) {
+        const int v = Clamp255(fx.fade);
+        Box(dev, w, h, D3DCOLOR_ARGB(0xFF, v, v, v), true);
+      }
+      dev->EndScene();
+    }
+    if (saved) {
+      dev->ApplyStateBlock(block);
+      dev->DeleteStateBlock(block);
+    }
+    dev->SetViewport(&oldViewport);
+  }
+
+  // The PS1 sprites read the frame shown before: keep this one for the next Present.
+  if (copy && EnsureFrame(dev, desc.Width, desc.Height, desc.Format)) CopyFrame(dev, back);
+  back->Release();
+}
+
+extern "C" __declspec(dllexport) int __cdecl SurvivorPc_PresentHeldFrame() {
+  IDirect3DDevice8* dev = gDev;
+  if (!dev || !gWrapper || !gFrame || !gFrameValid) return 0;
+  IDirect3DSurface8* back = nullptr;
+  D3DSURFACE_DESC8 desc{};
+  if (!BackBuffer(dev, &back, &desc)) return 0;
+  back->Release();
+  DWORD block = 0;
+  const bool saved = SUCCEEDED(dev->CreateStateBlock(D3DSBT_ALL, &block));
+  D3DVIEWPORT8 oldViewport{};
+  dev->GetViewport(&oldViewport);
+  if (SUCCEEDED(dev->BeginScene())) {
+    BeginDraw(dev, desc.Width, desc.Height);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    dev->SetTexture(0, gFrame);
+    dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+    Quad(dev, 0.0f, 0.0f, static_cast<float>(desc.Width), static_cast<float>(desc.Height), 0xFFFFFFFF);
+    dev->EndScene();
+  }
+  if (saved) {
+    dev->ApplyStateBlock(block);
+    dev->DeleteStateBlock(block);
+  }
+  dev->SetViewport(&oldViewport);
+  gHolding = true;  // the game's Present path draws the effects over it but does not copy it again
+  gWrapper->Present(nullptr, nullptr, nullptr, nullptr);
+  gHolding = false;
+  return 1;
 }

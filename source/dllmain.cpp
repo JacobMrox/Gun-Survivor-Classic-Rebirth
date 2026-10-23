@@ -491,6 +491,8 @@ HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRe
 
     LogBackbufferOncePerChange(ProxyInterface); // debug
 
+    SurvivorPc_DrawScreenFx(this, ProxyInterface); // PS1 fades and screen effects requested by Survivor Fix
+
     // Call the actual DX9-backed Present
     HRESULT hr = ProxyInterface->Present(pSourceRect, pDestRect, targetWnd, pDirtyRegion);
 
@@ -589,7 +591,8 @@ HRESULT m_IDirect3DDevice8::EndScene()
             }
 
             EnsureCrosshairTexture(ProxyInterface);
-            const bool drawCross = SurvivorPc_UpdateCrosshair(g_hFocusWindow, &gAimX, &gAimY, (int)bbW, (int)bbH);
+            const bool drawCross = SurvivorPc_UpdateCrosshair(g_hFocusWindow, &gAimX, &gAimY, (int)bbW, (int)bbH) &&
+                                   !SurvivorPc_ScreenFxHidesCrosshair();
 
             if (gCrossTex)
             {
@@ -951,6 +954,8 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8* p)
         FrameLimiter::pFPSFont = nullptr;
         FrameLimiter::pTimeFont = nullptr;
     }
+
+    SurvivorPc_ReleaseScreenFx(); // its frame copy is in D3DPOOL_DEFAULT
 
     // Call the actual DX9 Reset
     HRESULT hr = ProxyInterface->Reset(p);
