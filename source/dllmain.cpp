@@ -26,6 +26,8 @@
 #include "cd_bypass.h"
 #include "aim_shared.h"
 #include "debug.h"
+#include "survivor_pc.h"
+#include "survivor_fix/survivor_fix.h"
 #include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
@@ -40,8 +42,7 @@
 #include <string.h>
 #include <utility>
 #include <vector>
-#include "d3d8.h"
-#include "d3d8caps.h"
+#include "d3d8.h"  // D3DCAPS8 comes from d3d8types.hpp
 #include "d3dx8core.h"
 #include "d3dx8math.h"
 #include "d3dx8tex.h"
@@ -68,6 +69,7 @@ DebugSetMuteProc m_pDebugSetMute;
 Direct3DCreate8Proc m_pDirect3DCreate8;
 
 HMODULE g_hWrapperModule = NULL;
+char gConfigPath[MAX_PATH] = {};//config.ini next to d3d8.dll (Survivor Fix reads it again after the config window)
 
 HMODULE d3d8dll = NULL;
 
@@ -134,6 +136,11 @@ char WinDir[MAX_PATH + 1];
         }
 
         HRESULT hr = D3DXCreateTextureFromFileA(dev, sCrosshairPath.c_str(), &gCrossTex);
+        if (FAILED(hr)) {
+            // The skins offered by the config window (crosshair_psx/pc/old/uc_big.png) are not shipped
+            // in FIXRES: without this the crosshair disappears after choosing one. Use the stock one.
+            hr = D3DXCreateTextureFromFileA(dev, "FIXRES/crosshair.png", &gCrossTex);
+        }
         if (SUCCEEDED(hr)) {
             lastLoadedPath = sCrosshairPath;
             gCrossLoaded = true;
@@ -346,7 +353,7 @@ FrameLimiter::FPSLimitMode mFPSLimitMode = FrameLimiter::FPSLimitMode::FPS_NONE;
 
 //Present params logger
 
-static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS* p)
+static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS8* p)
 {
     if (!p) return;
 
@@ -381,7 +388,7 @@ static void LogBackbufferOncePerChange(IDirect3DDevice8* dev)
     IDirect3DSurface8* bb = nullptr;
     if (SUCCEEDED(dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
     {
-        D3DSURFACE_DESC d{};
+        D3DSURFACE_DESC8 d{};
         bb->GetDesc(&d);
         bb->Release();
 
@@ -486,6 +493,8 @@ HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRe
 
     LogBackbufferOncePerChange(ProxyInterface); // debug
 
+    SurvivorPc_DrawScreenFx(this, ProxyInterface); // PS1 fades and screen effects requested by Survivor Fix
+
     // Call the actual DX9-backed Present
     HRESULT hr = ProxyInterface->Present(pSourceRect, pDestRect, targetWnd, pDirtyRegion);
 
@@ -536,8 +545,33 @@ static void UpdateCursorClip()
     ClipCursor(&clip);
 }
 
-// Movie rendering and EndScene happen inside IDirect3DDevice8.cpp implementation.
-// Duplicate/older implementations were removed to avoid symbol conflicts.
+// -----------------------------------------------------------------
+// Modified EndScene to include overlay crosshair
+// (function header and back buffer query restored from V1.0, 9db2112)
+// -----------------------------------------------------------------
+HRESULT m_IDirect3DDevice8::EndScene()
+{
+    UpdateCursorClip();
+
+    if (bDisplayFPSCounter)
+        FrameLimiter::ShowFPS(ProxyInterface);
+
+    if (gDrawOverlayCrosshair && g_hFocusWindow)
+    {
+        // Query backbuffer size (the coordinate space that DrawPrimitiveUP uses here)
+        UINT bbW = 0, bbH = 0;
+        IDirect3DSurface8* bb = nullptr;
+        if (SUCCEEDED(ProxyInterface->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
+        {
+            D3DSURFACE_DESC8 d{};
+            if (SUCCEEDED(bb->GetDesc(&d)))
+            {
+                bbW = d.Width;
+                bbH = d.Height;
+            }
+            bb->Release();
+        }
+
         // Fallback (should rarely happen)
         if (bbW == 0 || bbH == 0)
         {
@@ -559,6 +593,8 @@ static void UpdateCursorClip()
             }
 
             EnsureCrosshairTexture(ProxyInterface);
+            const bool drawCross = SurvivorPc_UpdateCrosshair(g_hFocusWindow, &gAimX, &gAimY, (int)bbW, (int)bbH) &&
+                                   !SurvivorPc_ScreenFxHidesCrosshair();
 
             if (gCrossTex)
             {
@@ -567,10 +603,11 @@ static void UpdateCursorClip()
                 if (gAimY < 0) gAimY = 0;
                 if (gAimX > (float)bbW - 1) gAimX = (float)bbW - 1;
                 if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
+                SurvivorPc_SyncGameAim(gAimX, gAimY);//the game's aim follows the crosshair
 
                 // --- PATCHED SCALE LOGIC ---
-                D3DSURFACE_DESC texDesc;
-                if (SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
+                D3DSURFACE_DESC8 texDesc;
+                if (drawCross && SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
                 {
                     // Use original PNG size multiplied by the scale from the Config Window
                     float finalW = (float)texDesc.Width * fCrosshairScale;
@@ -724,7 +761,7 @@ HRESULT m_IDirect3DTexture8::UnlockRect(UINT Level)
 }
 */
 
-void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
+void ForceWindowed(D3DPRESENT_PARAMETERS8* pPresentationParameters)
 {
     HWND hwnd = pPresentationParameters->hDeviceWindow ? pPresentationParameters->hDeviceWindow : g_hFocusWindow;
     HMONITOR monitor = MonitorFromWindow((!bUsePrimaryMonitor && hwnd) ? hwnd : GetDesktopWindow(), MONITOR_DEFAULTTONEAREST);
@@ -797,7 +834,7 @@ void ForceWindowed(D3DPRESENT_PARAMETERS* pPresentationParameters)
     }
 }
 
-void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS* pPresentationParameters)
+void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS8* pPresentationParameters)
 {
     if (!pPresentationParameters->Windowed)
     {
@@ -830,7 +867,7 @@ void ForceFullScreenRefreshRateInHz(D3DPRESENT_PARAMETERS* pPresentationParamete
 
 HRESULT m_IDirect3D8::CreateDevice(
     UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags,
-    D3DPRESENT_PARAMETERS* p, IDirect3DDevice8** ppReturnedDeviceInterface)
+    D3DPRESENT_PARAMETERS8* p, IDirect3DDevice8** ppReturnedDeviceInterface)
 {
     // --- 1. Fix Window Handle ---
     HWND actualWnd = hFocusWindow;
@@ -880,6 +917,7 @@ HRESULT m_IDirect3D8::CreateDevice(
         if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
         {
             ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+            SurvivorPc_OnDevice(g_hFocusWindow, p->BackBufferWidth, p->BackBufferHeight, ForceWidth, ForceHeight);
         }
 
         ApplyWindowTitle(g_hFocusWindow);
@@ -888,7 +926,7 @@ HRESULT m_IDirect3D8::CreateDevice(
     return hr;
 }
 
-HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
+HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8* p)
 {
     LogPP("Reset IN:", p);
 
@@ -919,6 +957,8 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
         FrameLimiter::pTimeFont = nullptr;
     }
 
+    SurvivorPc_ReleaseScreenFx(); // its frame copy is in D3DPOOL_DEFAULT
+
     // Call the actual DX9 Reset
     HRESULT hr = ProxyInterface->Reset(p);
 
@@ -929,6 +969,7 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS* p)
         if (p && p->Windowed && g_hFocusWindow && ForceWidth > 0 && ForceHeight > 0)
         {
             ResizeClient(g_hFocusWindow, ForceWidth, ForceHeight);
+            SurvivorPc_OnDevice(g_hFocusWindow, p->BackBufferWidth, p->BackBufferHeight, ForceWidth, ForceHeight);
             ApplyWindowTitle(g_hFocusWindow);
         }
     }
@@ -1445,6 +1486,12 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         // --- DEBUG ---
         gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
 
+        // --- SURVIVOR FIX (survivor_pc.cpp, survivor_fix/) ---
+        strcpy(gConfigPath, path);
+        SurvivorPc_LoadConfig(path);
+        SurvivorPc_ApplyDpiAware();//before the game creates its window
+        SurvivorFix_Attach(hModule, path);//start-up fixes, before the game's code runs
+
         // Initialize Limiter
         if (fFPSLimit > 0.0f) {
             FrameLimiter::Init(FrameLimiter::FPS_REALTIME);
@@ -1710,6 +1757,10 @@ IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion)
     if (!bConfigShown) {
         ShowConfigWindow(g_hWrapperModule);
         bConfigShown = true;
+        // Survivor Fix: the options as saved by the window
+        SurvivorPc_LoadConfig(gConfigPath);
+        SurvivorPc_InstallGameHooks();//HudAspect: game function 0042ABE0
+        SurvivorFix_Start(gConfigPath, gEnableLogging);//PS1 behaviour: zombies, player, camera, death, doors
     }
 
     LogLine("Direct3DCreate8 called");

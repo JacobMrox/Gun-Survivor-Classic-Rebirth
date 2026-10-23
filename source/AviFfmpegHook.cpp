@@ -6,6 +6,7 @@
 #include "AviFfmpegHook.h"
 #include "globals.h"
 #include "debug.h"
+#include "survivor_pc.h"
 #include <mmsystem.h>
 #include <string>
 
@@ -160,7 +161,10 @@ namespace {
     }
 
     static HRESULT WINAPI Hook_CoCreateInstance(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID* ppv) {
-        if (rclsid.Data1 == 0xE436EBB3 || rclsid.Data1 == 0x6B6D0800) {
+        // Resident Evil Survivor (gun_bio.exe) plays its movies through DirectShow, not MCI: D3D_Movie.cpp
+        // initGraphBuilder creates CLSID_FilterGraph. Blocking it left the opening without text.avi and
+        // Opening.avi and the title frozen for ~23 s; DirectShowHook.cpp still honours SkipMovies for it.
+        if ((rclsid.Data1 == 0xE436EBB3 || rclsid.Data1 == 0x6B6D0800) && !SurvivorPc_IsSurvivorExe()) {
             LogLine("AviFfmpegHook: Blocking COM Video Object Creation");
             return E_FAIL;
         }
@@ -177,6 +181,16 @@ namespace {
         return hMod;
     }
 
+    // IAT entries usually live in read-only memory (.rdata): unprotect the single entry before writing,
+    // otherwise the first write is an access violation (0xC0000005 at startup).
+    static void SetThunk(PIMAGE_THUNK_DATA thunk, ULONG_PTR fn) {
+        DWORD old = 0;
+        if (VirtualProtect(&thunk->u1.Function, sizeof(thunk->u1.Function), PAGE_READWRITE, &old)) {
+            thunk->u1.Function = fn;
+            VirtualProtect(&thunk->u1.Function, sizeof(thunk->u1.Function), old, &old);
+        }
+    }
+
     void PatchIAT(HMODULE mod) {
         if (!mod || mod == GetModuleHandleA("kernel32.dll")) return;
         if (g_IsPatching) return;
@@ -186,9 +200,10 @@ namespace {
         auto* imp = (PIMAGE_IMPORT_DESCRIPTOR)ImageDirectoryEntryToData(mod, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &sz);
         if (imp) {
             for (; imp->Name; imp++) {
+                // Without OriginalFirstThunk (old bound imports) "orig" would point at the PE header.
+                if (!imp->OriginalFirstThunk || !imp->FirstThunk) continue;
                 auto* thunk = (PIMAGE_THUNK_DATA)((BYTE*)mod + imp->FirstThunk);
                 auto* orig = (PIMAGE_THUNK_DATA)((BYTE*)mod + imp->OriginalFirstThunk);
-                if (!orig || !thunk) continue;
 
                 for (; orig->u1.AddressOfData; thunk++, orig++) {
                     if (orig->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
@@ -198,15 +213,15 @@ namespace {
 
                     if (strcmp(name, "AVIFileOpenA") == 0) {
                         Real_AVIFileOpenA = (AVIFileOpenA_t)thunk->u1.Function;
-                        thunk->u1.Function = (ULONG_PTR)Hook_AVIFileOpenA;
+                        SetThunk(thunk, (ULONG_PTR)Hook_AVIFileOpenA);
                     }
                     else if (strcmp(name, "mciSendStringA") == 0) {
                         Real_mciSendStringA = (mciSendStringA_t)thunk->u1.Function;
-                        thunk->u1.Function = (ULONG_PTR)Hook_mciSendStringA;
+                        SetThunk(thunk, (ULONG_PTR)Hook_mciSendStringA);
                     }
                     else if (strcmp(name, "CoCreateInstance") == 0) {
                         Real_CoCreateInstance = (CoCreateInstance_t)thunk->u1.Function;
-                        thunk->u1.Function = (ULONG_PTR)Hook_CoCreateInstance;
+                        SetThunk(thunk, (ULONG_PTR)Hook_CoCreateInstance);
                     }
                 }
             }

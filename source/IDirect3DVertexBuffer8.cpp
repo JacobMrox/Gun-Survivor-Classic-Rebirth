@@ -15,6 +15,7 @@
 */
 
 #include "d3d8.h"
+#include "survivor_pc.h"
 
 HRESULT m_IDirect3DVertexBuffer8::QueryInterface(THIS_ REFIID riid, void** ppvObj)
 {
@@ -98,11 +99,19 @@ D3DRESOURCETYPE m_IDirect3DVertexBuffer8::GetType(THIS)
 
 HRESULT m_IDirect3DVertexBuffer8::Lock(THIS_ UINT OffsetToLock, UINT SizeToLock, BYTE** ppbData, DWORD Flags)
 {
-	return ProxyInterface->Lock(OffsetToLock, SizeToLock, ppbData, Flags);
+	HRESULT hr = ProxyInterface->Lock(OffsetToLock, SizeToLock, ppbData, Flags);
+	if (SUCCEEDED(hr) && ppbData && SurvivorPc_HudBuilding())
+	{
+		D3DVERTEXBUFFER_DESC desc{};
+		if (SUCCEEDED(ProxyInterface->GetDesc(&desc)))
+			SurvivorPc_OnHudVertexLock(this, *ppbData, OffsetToLock, SizeToLock, desc.Size, desc.FVF);
+	}
+	return hr;
 }
 
 HRESULT m_IDirect3DVertexBuffer8::Unlock(THIS)
 {
+	SurvivorPc_OnHudVertexUnlock(this);//HudAspect: squeeze the HUD quad the game has just written
 	return ProxyInterface->Unlock();
 }
 

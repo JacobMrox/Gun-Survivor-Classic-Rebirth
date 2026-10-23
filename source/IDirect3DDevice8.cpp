@@ -17,7 +17,9 @@
 #include "globals.h"
 #define D3D9_TYPES_ALLOWED
 #include <d3d9.h>
+#include <intrin.h>
 #include "d3d8.h"
+#include "survivor_pc.h"
 
 // somewhere global
 
@@ -60,7 +62,7 @@ ULONG m_IDirect3DDevice8::Release()
 	return ref;
 }
 
-//HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS *pPresentationParameters)
+//HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8 *pPresentationParameters)
 //{
 //	return ProxyInterface->Reset(pPresentationParameters);
 //}
@@ -90,7 +92,7 @@ BOOL m_IDirect3DDevice8::ShowCursor(BOOL bShow)
 	return ProxyInterface->ShowCursor(bShow);
 }
 
-HRESULT m_IDirect3DDevice8::CreateAdditionalSwapChain(D3DPRESENT_PARAMETERS *pPresentationParameters, IDirect3DSwapChain8 **ppSwapChain)
+HRESULT m_IDirect3DDevice8::CreateAdditionalSwapChain(D3DPRESENT_PARAMETERS8 *pPresentationParameters, IDirect3DSwapChain8 **ppSwapChain)
 {
 	HRESULT hr = ProxyInterface->CreateAdditionalSwapChain(pPresentationParameters, ppSwapChain);
 
@@ -303,6 +305,7 @@ HRESULT m_IDirect3DDevice8::SetClipStatus(CONST D3DCLIPSTATUS8 *pClipStatus)
 
 HRESULT m_IDirect3DDevice8::SetRenderState(D3DRENDERSTATETYPE State, DWORD Value)
 {
+	SurvivorPc_OnSetRenderState(_ReturnAddress(), State, Value);
 	return ProxyInterface->SetRenderState(State, Value);
 }
 
@@ -520,6 +523,43 @@ HRESULT m_IDirect3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveTyp
 
 HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
 {
+	if (SurvivorPc_TakeShadowDraw())
+	{
+		// PS1 semi-transparency mode 0 for the enemy shadow (survivor_pc.cpp, Ps1ShadowBlend).
+		DWORD blend, src, dst, factor, cop, carg1, carg2, aop, aarg1, aarg2;
+		ProxyInterface->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+		ProxyInterface->GetRenderState(D3DRS_SRCBLEND, &src);
+		ProxyInterface->GetRenderState(D3DRS_DESTBLEND, &dst);
+		ProxyInterface->GetRenderState(D3DRS_TEXTUREFACTOR, &factor);
+		ProxyInterface->GetTextureStageState(0, D3DTSS_COLOROP, &cop);
+		ProxyInterface->GetTextureStageState(0, D3DTSS_COLORARG1, &carg1);
+		ProxyInterface->GetTextureStageState(0, D3DTSS_COLORARG2, &carg2);
+		ProxyInterface->GetTextureStageState(0, D3DTSS_ALPHAOP, &aop);
+		ProxyInterface->GetTextureStageState(0, D3DTSS_ALPHAARG1, &aarg1);
+		ProxyInterface->GetTextureStageState(0, D3DTSS_ALPHAARG2, &aarg2);
+		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0x80404040);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+		const HRESULT hr = ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
+		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, blend);
+		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, src);
+		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, dst);
+		ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, factor);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, cop);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, carg1);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, carg2);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAOP, aop);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG1, aarg1);
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG2, aarg2);
+		return hr;
+	}
 	return ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
 }
 

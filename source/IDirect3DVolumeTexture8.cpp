@@ -111,7 +111,7 @@ DWORD m_IDirect3DVolumeTexture8::GetLevelCount(THIS)
 	return ProxyInterface->GetLevelCount();
 }
 
-HRESULT m_IDirect3DVolumeTexture8::GetLevelDesc(THIS_ UINT Level, D3DVOLUME_DESC *pDesc)
+HRESULT m_IDirect3DVolumeTexture8::GetLevelDesc(THIS_ UINT Level, D3DVOLUME_DESC8 *pDesc)
 {
 	return ProxyInterface->GetLevelDesc(Level, pDesc);
 }

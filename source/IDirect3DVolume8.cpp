@@ -88,7 +88,7 @@ HRESULT m_IDirect3DVolume8::GetContainer(THIS_ REFIID riid, void** ppContainer)
 	return hr;
 }
 
-HRESULT m_IDirect3DVolume8::GetDesc(THIS_ D3DVOLUME_DESC *pDesc)
+HRESULT m_IDirect3DVolume8::GetDesc(THIS_ D3DVOLUME_DESC8 *pDesc)
 {
 	return ProxyInterface->GetDesc(pDesc);
 }
