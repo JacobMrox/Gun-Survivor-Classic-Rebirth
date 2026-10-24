@@ -66,7 +66,7 @@ Inspirado no Classic Rebirth, este projeto busca modernizar e preservar a versã
 
 Também tem um significado pessoal para mim, pois foi o primeiro jogo de Resident Evil que tive e guardo ótimas lembranças dele.
 
-# Project Status
+# Changelog
 
 ## V 1.0 (Current Public Build)
 
@@ -220,7 +220,7 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/793b4e39-4cec-4d35-8959-f73e13b9c4d8" />
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/c996912e-d21a-44c6-bed0-29a7f9ef2bf6" />
 
-## Project Status & To-do
+# Project Status & To-do
 * Fix movie player by replacing DirectShow with ffmpeg (In progress...): Redirect avifil32.dll (Microsoft AVI File support library) and quartz.dll (DirectShow Runtime) to use FFMPEG.
 * Remove old log printing shipped with the original game (debug.txt).
 * Remove the need for the game to have GBIO.CFG in the directory to launch.
