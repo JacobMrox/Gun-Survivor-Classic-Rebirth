@@ -95,19 +95,141 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 * ✅ ~~Add 320x240, 1280x960, and 960x720 resolution options.~~ DONE
 * ✅ ~~Redirect D3D8 calls to D3D9 (enabling modern alphas and reshade to work).~~ DONE
 
+### Zombie AI & Behavior ([Trigger](https://github.com/Trigger117))
+* Improved zombie pathfinding around walls and obstacles.
+* Restored PS1-style zombie pursuit and turning behavior.
+* Fixed zombies getting stuck or behaving incorrectly near walls.
+* Restored the original PS1 zombie walking speeds.
+* Restored distance-based variations in zombie movement speed.
+* Fixed jerky walking caused by constantly restarting animations.
+* Restored consistent walking animation selection for individual zombies.
+* Corrected zombie walking animation playback speeds.
+* Restored the PS1-style arms-forward walking behavior.
+* Fixed unwanted zombie rotation during falls, attacks, and recovery animations.
+* Restored PS1-style zombie stumbling and forward falls.
+* Improved the timing of falling and getting-up animations.
+* Prevented unintended movement while zombies are lying on the ground.
+* Improved zombie lunging and attack behavior.
+* Corrected zombie attack distance, direction, and timing.
+* Restored the PS1 attack delay before a zombie can bite.
+* Prevented multiple zombies from initiating bites simultaneously.
+* Restored zombie grabs and attacks from behind.
+* Improved zombie biting animation selection and playback speed.
+* Improved synchronization between zombie attacks and player reactions.
+* Restored zombie knockback behavior following bite sequences.
+* Improved zombie reactions to gunshots.
+* Restored PS1-style hit reaction probabilities.
+* Improved zombie knockback animations and transitions.
+* Restored head tracking toward the player.
+* Restored torso reactions when zombies are hit.
+* Improved blending between zombie animations.
+* Fixed zombie death animation selection based on hit location.
+* Improved death animation playback and transitions.
+* Fixed animation tracks ending at different times during zombie deaths.
+* Prevented dead zombies from briefly returning to standing poses.
+* Improved preservation of final death poses.
+* Restored blood pool behavior following zombie deaths.
+* Improved zombie feeding behavior after lethal bites.
+* Prevented unwanted zombie movement and attacks during certain cutscenes.
+
+### Collisions & Physics ([Trigger](https://github.com/Trigger117))
+* Improved zombie collisions with walls and environmental obstacles.
+* Restored PS1-style collision handling for zombie movement.
+* Improved physical separation between zombies and the player.
+* Corrected the distance zombies maintain when approaching the player.
+* Fixed unwanted zombie knockdowns caused by player contact.
+* Improved collision handling during attacks and lunges.
+* Improved zombie movement restrictions during falling and recovery.
+* Restored PS1-derived room collision geometry.
+* Improved player collisions against walls and corners.
+* Reduced incorrect collision distances caused by the original PC collision system.
+* Improved wall interaction and movement in narrow passages.
+* Fixed door access issues caused by differences between PC and PS1 collision boundaries.
+* Improved collision handling around room transitions.
+
+### Player Movement & Camera ([Trigger](https://github.com/Trigger117))
+* Restored original PS1 walking, running, and backward movement speeds.
+* Restored PS1-style player turning and rotation behavior.
+* Improved movement acceleration and stopping behavior.
+* Removed unwanted horizontal movement caused by native PC physics.
+* Restored PS1-style camera field of view and viewing angle.
+* Restored camera head bobbing during movement.
+* Improved the opening wake-up camera behavior.
+* Restored camera jolts when the player is bitten.
+* Improved camera rotation toward attacking zombies.
+* Prevented unwanted player movement during zombie grabs.
+* Restored PS1-style player death camera movement.
+* Improved synchronization between player animations and gameplay logic.
+* Restored the original PS1 gameplay update cadence of approximately 29.91 Hz.
+
+### Visual Effects & Animations ([Trigger](https://github.com/Trigger117))
+* Restored PS1-style zombie shadow size.
+* Restored semi-transparent zombie shadows.
+* Improved blood effect duration and animation timing.
+* Corrected blood effect positioning when zombies are shot.
+* Improved blood particle growth and visual progression.
+* Restored PS1-style screen fades during room transitions.
+* Restored red screen flashes during the player death sequence.
+* Added PS1-style screen darkening and frame blending effects.
+* Restored previous-frame effects during death animations.
+* Improved the YOU DIED screen transition.
+* Improved Continue and Game Over screen transitions.
+* Restored PS1-inspired death screen zoom effects.
+
+### Mouse, Controls & HUD ([Trigger](https://github.com/Trigger117))
+* Fixed crosshair and actual aiming position becoming misaligned.
+* Fixed crosshair desynchronization after Alt+Tab.
+* Corrected inconsistent horizontal and vertical mouse sensitivity.
+* Added adjustable mouse sensitivity.
+* Improved mouse responsiveness during gameplay.
+* Fixed delayed mouse movement caused by queued DirectInput events.
+* Increased mouse input buffering to better handle modern gaming mice.
+* Restored proper processing of accumulated mouse input events.
+* Improved Windows cursor behavior in game menus.
+* Prevented the gameplay crosshair from appearing in menus.
+* Fixed missing crosshairs when a custom crosshair file cannot be found.
+* Corrected HUD proportions on widescreen resolutions.
+* Fixed out-of-bounds animation frame selection in the health condition HUD.
+
+### Display & Graphics Compatibility ([Trigger](https://github.com/Trigger117))
+* Fixed Windows DPI scaling issues.
+* Improved window positioning on high-DPI displays.
+* Preserved the correct aspect ratio when resizing or maximizing the window.
+* Fixed Direct3D 8 to Direct3D 9 compatibility issues.
+* Corrected Direct3D structure mismatches affecting display configuration.
+* Fixed backbuffer and device initialization handling.
+* Fixed render target copying to system memory.
+* Corrected render target and texture usage flags.
+* Fixed graphics initialization crashes related to protected memory writes.
+* Improved compatibility with the updated Direct3D wrapper.
+
+### Movies & Stability ([Trigger](https://github.com/Trigger117))
+* Fixed DirectShow initialization issues affecting the opening movies.
+* Fixed an issue that could leave the title screen unresponsive while movies were blocked.
+* Improved movie skipping through the game's native completion system.
+* Added support for skipping movies using Enter or Space.
+* Prevented title-screen confirmation inputs from unintentionally skipping movies.
+* Improved compatibility with unrecognized DirectInput devices.
+* Added protection against crashes caused by input device enumeration.
+* Added a fix for crashes when closing the game during a frame.
+* Improved protection against invalid zombie references during room transitions.
+* Improved safety checks before installing gameplay hooks.
+* Preserved compatibility with Classic Rebirth's existing configuration system.
+
+
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/793b4e39-4cec-4d35-8959-f73e13b9c4d8" />
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/c996912e-d21a-44c6-bed0-29a7f9ef2bf6" />
 
+## Project Status & To-do
 * Fix movie player by replacing DirectShow with ffmpeg (In progress...): Redirect avifil32.dll (Microsoft AVI File support library) and quartz.dll (DirectShow Runtime) to use FFMPEG.
-* Fix shadow/blood pool under enemies/npcs (In progress...).
-* Add widescreen 3d aspect ratio option and 4:3 display (to prevent stretched ratio).
 * Remove old log printing shipped with the original game (debug.txt).
 * Remove the need for the game to have GBIO.CFG in the directory to launch.
 * Fix Zombie footstep sound.
 * Fix NPC/enemy lighting/shader.
 * Add shooting screen flash (gun con flash simulation) effect.
-* Fix enemy behaviour and animations.
+* Fix enemy behaviour and animations (partially done).
 * Add Xinput and Raw Input support, in addition to Dinput.
+* Add key bindings
 * Mod Support
 
 # Progress Videos
