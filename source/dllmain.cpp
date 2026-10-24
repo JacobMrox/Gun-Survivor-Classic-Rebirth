@@ -28,7 +28,7 @@
 #include "debug.h"
 #include "survivor_pc.h"
 #include "survivor_fix/survivor_fix.h"
-#include "alpha_fix.h"
+//#include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
 #include "AviFfmpegHook.h" // Access to g_Video
@@ -88,7 +88,7 @@ bool bShowWindowBorder;//Survivor Exclusive
 bool bLockCursorToWindow;//Survivor Exclusive
 int ForceWidth;//Survivor Exclusive
 int ForceHeight;//Survivor Exclusive
-bool bAlphaFix;//Survivor Exclusive; whether to use PNG shadows reminiscent of PS1 shadows or not
+//bool bAlphaFix;//Survivor Exclusive; whether to use PNG shadows reminiscent of PS1 shadows or not
 bool bSkipMovies;//Survivor Exclusive; skip movies
 bool gEnableLogging;//Survivor Exclusive; whether to log to file or not
 float fFPSLimit;
@@ -116,7 +116,7 @@ char WinDir[MAX_PATH + 1];
 
     LPDIRECT3DTEXTURE8 gCrossTex = nullptr;
     bool gCrossLoaded = false;
-    bool gStage0IsAlphaFix = false;
+    //bool gStage0IsAlphaFix = false;
 
     // Forward declarations (prevents "undefined" if order changes)
     void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev);
@@ -641,110 +641,14 @@ HRESULT m_IDirect3DDevice8::CreateTexture(
     if (!ProxyInterface)
         return D3DERR_INVALIDCALL;
 
-    // Default: no tag, no format change
-    AlphaFixTag tag = AFT_None;
-
-	// Check if alpha-fix is enabled in Config/INI
-    if (bAlphaFix)
-    {
-        tag = AlphaFix_ConsumeNextTag();
-        if (tag != AFT_None)
-        {
-            if (Format == D3DFMT_A1R5G5B5 || Format == D3DFMT_X1R5G5B5 || Format == D3DFMT_R5G6B5)
-                Format = D3DFMT_A4R4G4B4;
-
-            if (Format == D3DFMT_X8R8G8B8)
-                Format = D3DFMT_A8R8G8B8;
-        }
-    }
-
-    // Always create the texture
     HRESULT hr = ProxyInterface->CreateTexture(Width, Height, Levels, Usage, Format, Pool, ppTexture);
     if (FAILED(hr) || !ppTexture || !*ppTexture)
         return hr;
 
-    // Always wrap (recommended for wrappers), regardless of bAlphaFix
-    auto* wrapped = new m_IDirect3DTexture8(*ppTexture, this);
-    wrapped->alphaFixTag = tag; // AFT_None if disabled
-    *ppTexture = wrapped;
+    *ppTexture = new m_IDirect3DTexture8(*ppTexture, this);
 
     return hr;
 }
-
-HRESULT m_IDirect3DTexture8::UnlockRect(UINT Level)
-{
-    HRESULT hr = ProxyInterface->UnlockRect(Level);
-
-    if (SUCCEEDED(hr) && Level == 0 && alphaFixTag != AFT_None)
-    {
-        AlphaFix_ApplyPNGToTexture(ProxyInterface, alphaFixTag);
-        isAlphaFixTexture = true;
-        alphaFixTag = AFT_None;
-    }
-
-    return hr;
-}
-
-HRESULT m_IDirect3DDevice8::DrawPrimitiveUP(
-    D3DPRIMITIVETYPE PrimitiveType,
-    UINT PrimitiveCount,
-    const void* pVertexStreamZeroData,
-    UINT VertexStreamZeroStride)
-{
-    DWORD oldAlpha = 0, oldSrc = 0, oldDst = 0, oldATest = 0;
-
-    if (gStage0IsAlphaFix)
-        LogLine("[ALPHA] Drawing alpha-fix texture -> enabling premultiplied blend");
-    ApplyAlphaFixBlendState(ProxyInterface, oldAlpha, oldSrc, oldDst, oldATest);
-        
-
-    HRESULT hr = ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
-
-    if (gStage0IsAlphaFix)
-        LogLine("[ALPHA] Drawing alpha-fix texture -> enabling premultiplied blend");
-        RestoreAlphaFixBlendState(ProxyInterface, oldAlpha, oldSrc, oldDst, oldATest);
-
-    return hr;
-}
-
-HRESULT m_IDirect3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8* pTexture)
-{
-    // ---- Alpha-fix detection MUST happen on the WRAPPER pointer ----
-    if (Stage == 0)
-    {
-        gStage0IsAlphaFix = false;
-
-        if (pTexture && pTexture->GetType() == D3DRTYPE_TEXTURE)
-        {
-            // pTexture at this point is our wrapper object (m_IDirect3DTexture8*)
-            m_IDirect3DTexture8* w = static_cast<m_IDirect3DTexture8*>(pTexture);
-            if (w && w->isAlphaFixTexture)
-                gStage0IsAlphaFix = true;
-        }
-    }
-
-    // ---- Now unwrap to real D3D8 object for the proxy call ----
-    if (pTexture)
-    {
-        switch (pTexture->GetType())
-        {
-        case D3DRTYPE_TEXTURE:
-            pTexture = static_cast<m_IDirect3DTexture8*>(pTexture)->GetProxyInterface();
-            break;
-        case D3DRTYPE_VOLUMETEXTURE:
-            pTexture = static_cast<m_IDirect3DVolumeTexture8*>(pTexture)->GetProxyInterface();
-            break;
-        case D3DRTYPE_CUBETEXTURE:
-            pTexture = static_cast<m_IDirect3DCubeTexture8*>(pTexture)->GetProxyInterface();
-            break;
-        default:
-            return D3DERR_INVALIDCALL;
-        }
-    }
-
-    return ProxyInterface->SetTexture(Stage, pTexture);
-}
-
 
 /*
 HRESULT m_IDirect3DTexture8::UnlockRect(UINT Level)
@@ -1479,7 +1383,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         //bDoNotNotifyOnTaskSwitch = GetPrivateProfileInt("Window", "DoNotNotifyOnTaskSwitch", 0, path) != 0;
 
         // --- FIXES ---
-        bAlphaFix = GetPrivateProfileInt("Fixes", "AlphaFix", 0, path) != 0;
+        //bAlphaFix = GetPrivateProfileInt("Fixes", "AlphaFix", 0, path) != 0;
         bSkipMovies = GetPrivateProfileInt("Fixes", "SkipMovies", 0, path) != 0;
         //bDirect3D8DisableMaximizedWindowedModeShim = GetPrivateProfileInt("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0, path) != 0;
 

@@ -2,8 +2,7 @@
 #include <commctrl.h>
 #include "resource.h"
 
-// Increased height from 260 to 315 to fit the new groupbox and buttons
-IDD_CONFIG_DIALOG DIALOGEX 0, 0, 280, 315
+IDD_CONFIG_DIALOG DIALOGEX 0, 0, 280, 345
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Resident Evil: Survivor - Classic Rebirth 1.1"
 FONT 9, "Segoe UI"
@@ -25,27 +24,28 @@ CONTROL         "Always On Top", IDC_ALWAYS_ONTOP, "Button", BS_AUTOCHECKBOX | W
 CONTROL         "Lock Cursor", IDC_LOCK_CURSOR, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 120, 80, 10
 CONTROL         "Primary Monitor Only", IDC_PRIMARY_MON, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 120, 100, 10
 
-GROUPBOX        "Fixes and Debug", IDC_STATIC, 7, 145, 266, 60
-CONTROL         "Alpha Fix (PS1 Shadows)", IDC_ALPHA_FIX, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 160, 100, 10
-CONTROL         "Skip FMV Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 125, 160, 100, 10
-CONTROL         "Enable Logging", IDC_ENABLE_LOG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 175, 100, 10
-//CONTROL         "Disable D3D8 Shim", IDC_DISABLE_SHIM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 125, 175, 100, 10
-CONTROL         "Show Config on Launch", IDC_SHOW_CONFIG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 190, 100, 10
+GROUPBOX        "Fixes and Debug", IDC_STATIC, 7, 145, 266, 75
+CONTROL         "Keep Aspect Ratio", IDC_KEEP_ASPECT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 160, 100, 10
+CONTROL         "Skip FMV Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 140, 160, 100, 10
+LTEXT           "Mouse Sensitivity:", IDC_STATIC, 15, 178, 75, 8
+CONTROL         "", IDC_MOUSE_SENSITIVITY, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 90, 175, 100, 15
+LTEXT           "100%", IDC_MOUSE_SENSITIVITY_LABEL, 195, 178, 35, 8
+CONTROL         "Enable Logging", IDC_ENABLE_LOG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 198, 100, 10
+CONTROL         "Show Config on Launch", IDC_SHOW_CONFIG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 140, 198, 110, 10
 
-GROUPBOX        "Crosshair Settings", IDC_STATIC, 7, 210, 266, 75
-LTEXT           "Type:", IDC_STATIC, 15, 225, 20, 8
-COMBOBOX        IDC_CROSS_COMBO, 40, 223, 100, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-PUSHBUTTON      "Browse...", IDC_CROSS_BROWSE, 145, 223, 40, 12
+GROUPBOX        "Crosshair Settings", IDC_STATIC, 7, 225, 266, 75
+LTEXT           "Type:", IDC_STATIC, 15, 240, 20, 8
+COMBOBOX        IDC_CROSS_COMBO, 40, 238, 100, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+PUSHBUTTON      "Browse...", IDC_CROSS_BROWSE, 145, 238, 40, 12
 
-LTEXT           "Scale:", IDC_STATIC, 15, 245, 20, 8
-CONTROL         "", IDC_CROSS_SCALE, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 40, 243, 100, 15
-LTEXT           "100%", IDC_CROSS_SCALE_LABEL, 145, 245, 30, 8
+LTEXT           "Scale:", IDC_STATIC, 15, 260, 20, 8
+CONTROL         "", IDC_CROSS_SCALE, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 40, 258, 100, 15
+LTEXT           "100%", IDC_CROSS_SCALE_LABEL, 145, 260, 30, 8
 
-CONTROL         "", IDC_CROSS_PREVIEW, "Static", SS_BITMAP | SS_REALSIZECONTROL | SS_CENTERIMAGE | WS_BORDER, 220, 218, 40, 40
+CONTROL         "", IDC_CROSS_PREVIEW, "Static", SS_BITMAP | SS_REALSIZECONTROL | SS_CENTERIMAGE | WS_BORDER, 220, 233, 40, 40
 
-CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1 © Jacob Karuni @Mehrqarox", IDC_STATIC, 7, 275, 266, 8, WS_DISABLED
+CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1 © Jacob Karuni @Mehrqarox", IDC_STATIC, 7, 305, 266, 8, WS_DISABLED
 
-// Buttons moved to Y-coordinate 290
-DEFPUSHBUTTON   "Save and Launch", IDOK, 80, 290, 55, 14
-PUSHBUTTON      "Cancel", IDCANCEL, 145, 290, 55, 14
+DEFPUSHBUTTON   "Save and Launch", IDOK, 80, 320, 55, 14
+PUSHBUTTON      "Cancel", IDCANCEL, 145, 320, 55, 14
 END

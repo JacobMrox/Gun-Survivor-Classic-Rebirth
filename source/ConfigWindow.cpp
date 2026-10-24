@@ -2,6 +2,8 @@
 #include "resource.h"
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cstdlib>
 #include <commdlg.h>
 #include <commctrl.h>
 #include <shlwapi.h>
@@ -16,11 +18,14 @@ using namespace Gdiplus;
 // External variables from dllmain.cpp
 extern bool bForceWindowedMode, bDirect3D8DisableMaximizedWindowedModeShim, bUsePrimaryMonitor;
 extern bool bCenterWindow, bBorderlessFullscreen, bAlwaysOnTop, bDisplayFPSCounter;
-extern bool bLockCursorToWindow, bAlphaFix, bSkipMovies, gEnableLogging;
+extern bool bLockCursorToWindow, bSkipMovies, gEnableLogging;
 extern int ForceWidth, ForceHeight, nFullScreenRefreshRateInHz;
 extern float fFPSLimit;
 extern std::string sCrosshairPath;
 extern float fCrosshairScale;
+
+static int mouseSensitivityPercent = 100;
+static bool keepAspect = true;
 
 static char cfgPath[MAX_PATH];
 bool bShowConfigOnLaunch = true;
@@ -87,9 +92,11 @@ void SyncConfig(bool save) {
         SetI("Window", "AlwaysOnTop", bAlwaysOnTop);
         SetI("Window", "LockCursorToWindow", bLockCursorToWindow);
         SetI("Window", "UsePrimaryMonitor", bUsePrimaryMonitor);
-        SetI("Fixes", "AlphaFix", bAlphaFix);
         SetI("Fixes", "SkipMovies", bSkipMovies);
         SetI("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", bDirect3D8DisableMaximizedWindowedModeShim);
+        SetI("SurvivorFix", "KeepAspect", keepAspect);
+        const std::string sensitivity = std::to_string(static_cast<float>(mouseSensitivityPercent) / 100.0f);
+        WritePrivateProfileStringA("SurvivorFix", "MouseSensitivity", sensitivity.c_str(), cfgPath);
         SetI("Debug", "EnableLogging", gEnableLogging);
         SetI("Debug", "ShowConfig", bShowConfigOnLaunch);
         WritePrivateProfileStringA("Fixes", "CrosshairPath", sCrosshairPath.c_str(), cfgPath);
@@ -107,7 +114,6 @@ void SyncConfig(bool save) {
         bAlwaysOnTop = GetI("Window", "AlwaysOnTop", 0) != 0;
         bLockCursorToWindow = GetI("Window", "LockCursorToWindow", 1) != 0;
         bUsePrimaryMonitor = GetI("Window", "UsePrimaryMonitor", 0) != 0;
-        bAlphaFix = GetI("Fixes", "AlphaFix", 0) != 0;
         bSkipMovies = GetI("Fixes", "SkipMovies", 0) != 0;
         //bDirect3D8DisableMaximizedWindowedModeShim = GetI("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0) != 0;
         gEnableLogging = GetI("Debug", "EnableLogging", 0) != 0;
@@ -117,6 +123,9 @@ void SyncConfig(bool save) {
         GetPrivateProfileStringA("Fixes", "CrosshairPath", "FIXRES/crosshair_psx.png", temp, MAX_PATH, cfgPath);
         sCrosshairPath = temp;
         fCrosshairScale = (float)GetI("Fixes", "CrosshairScale", 100) / 100.0f;
+        keepAspect = GetI("SurvivorFix", "KeepAspect", 1) != 0;
+        GetPrivateProfileStringA("SurvivorFix", "MouseSensitivity", "1.0", temp, MAX_PATH, cfgPath);
+        mouseSensitivityPercent = std::clamp(static_cast<int>(std::atof(temp) * 100.0 + 0.5), 10, 500);
     }
 }
 
@@ -154,6 +163,11 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessage(hTrack, TBM_SETPOS, TRUE, (LPARAM)(fCrosshairScale * 100.0f));
         SetDlgItemTextA(h, IDC_CROSS_SCALE_LABEL, (std::to_string((int)(fCrosshairScale * 100)) + "%").c_str());
 
+        HWND hMouseSensitivity = GetDlgItem(h, IDC_MOUSE_SENSITIVITY);
+        SendMessage(hMouseSensitivity, TBM_SETRANGE, TRUE, MAKELONG(10, 500));
+        SendMessage(hMouseSensitivity, TBM_SETPOS, TRUE, mouseSensitivityPercent);
+        SetDlgItemTextA(h, IDC_MOUSE_SENSITIVITY_LABEL, (std::to_string(mouseSensitivityPercent) + "%").c_str());
+
         SetDlgItemInt(h, IDC_REFRESH, nFullScreenRefreshRateInHz, FALSE);
         CheckDlgButton(h, IDC_FPS_COUNTER, bDisplayFPSCounter);
         CheckDlgButton(h, IDC_WINDOWED, bForceWindowedMode);
@@ -162,7 +176,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_ALWAYS_ONTOP, bAlwaysOnTop);
         CheckDlgButton(h, IDC_LOCK_CURSOR, bLockCursorToWindow);
         CheckDlgButton(h, IDC_PRIMARY_MON, bUsePrimaryMonitor);
-        CheckDlgButton(h, IDC_ALPHA_FIX, bAlphaFix);
+        CheckDlgButton(h, IDC_KEEP_ASPECT, keepAspect);
         CheckDlgButton(h, IDC_SKIP_MOVIES, bSkipMovies);
         CheckDlgButton(h, IDC_ENABLE_LOG, gEnableLogging);
         //CheckDlgButton(h, IDC_DISABLE_SHIM, bDirect3D8DisableMaximizedWindowedModeShim);
@@ -179,6 +193,10 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             fCrosshairScale = (float)pos / 100.0f;
             SetDlgItemTextA(h, IDC_CROSS_SCALE_LABEL, (std::to_string(pos) + "%").c_str());
             InvalidateRect(GetDlgItem(h, IDC_CROSS_PREVIEW), NULL, TRUE);
+        }
+        else if ((HWND)l == GetDlgItem(h, IDC_MOUSE_SENSITIVITY)) {
+            mouseSensitivityPercent = (int)SendMessage((HWND)l, TBM_GETPOS, 0, 0);
+            SetDlgItemTextA(h, IDC_MOUSE_SENSITIVITY_LABEL, (std::to_string(mouseSensitivityPercent) + "%").c_str());
         }
         break;
     }
@@ -197,7 +215,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             bAlwaysOnTop = IsDlgButtonChecked(h, IDC_ALWAYS_ONTOP);
             bLockCursorToWindow = IsDlgButtonChecked(h, IDC_LOCK_CURSOR);
             bUsePrimaryMonitor = IsDlgButtonChecked(h, IDC_PRIMARY_MON);
-            bAlphaFix = IsDlgButtonChecked(h, IDC_ALPHA_FIX);
+            keepAspect = IsDlgButtonChecked(h, IDC_KEEP_ASPECT);
             bSkipMovies = IsDlgButtonChecked(h, IDC_SKIP_MOVIES);
             gEnableLogging = IsDlgButtonChecked(h, IDC_ENABLE_LOG);
             //bDirect3D8DisableMaximizedWindowedModeShim = IsDlgButtonChecked(h, IDC_DISABLE_SHIM);

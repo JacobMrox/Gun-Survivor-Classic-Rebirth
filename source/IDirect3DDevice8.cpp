@@ -526,10 +526,13 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 	if (SurvivorPc_TakeShadowDraw())
 	{
 		// PS1 semi-transparency mode 0 for the enemy shadow (survivor_pc.cpp, Ps1ShadowBlend).
-		DWORD blend, src, dst, factor, cop, carg1, carg2, aop, aarg1, aarg2;
+		DWORD blend, src, dst, alphaTest, alphaFunc, alphaRef, factor, cop, carg1, carg2, aop, aarg1, aarg2;
 		ProxyInterface->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
 		ProxyInterface->GetRenderState(D3DRS_SRCBLEND, &src);
 		ProxyInterface->GetRenderState(D3DRS_DESTBLEND, &dst);
+		ProxyInterface->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
+		ProxyInterface->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
+		ProxyInterface->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
 		ProxyInterface->GetRenderState(D3DRS_TEXTUREFACTOR, &factor);
 		ProxyInterface->GetTextureStageState(0, D3DTSS_COLOROP, &cop);
 		ProxyInterface->GetTextureStageState(0, D3DTSS_COLORARG1, &carg1);
@@ -540,6 +543,9 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		ProxyInterface->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+		ProxyInterface->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
+		ProxyInterface->SetRenderState(D3DRS_ALPHAREF, 1);
 		ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0x80404040);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
@@ -551,6 +557,9 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, blend);
 		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, src);
 		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, dst);
+		ProxyInterface->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
+		ProxyInterface->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
+		ProxyInterface->SetRenderState(D3DRS_ALPHAREF, alphaRef);
 		ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, factor);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, cop);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, carg1);
@@ -563,12 +572,12 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 	return ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
 }
 
-/*
+
 HRESULT m_IDirect3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, CONST void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
 	return ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
 }
-*/
+
 HRESULT m_IDirect3DDevice8::BeginScene()
 {
 	return ProxyInterface->BeginScene();
@@ -649,7 +658,8 @@ HRESULT m_IDirect3DDevice8::GetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTA
 {
 	return ProxyInterface->GetTextureStageState(Stage, Type, pValue);
 }
-/*
+
+
 HRESULT m_IDirect3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pTexture)
 {
 	if (pTexture)
@@ -669,31 +679,10 @@ HRESULT m_IDirect3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pText
 			return D3DERR_INVALIDCALL;
 		}
 	}
-	//Alpha fix
-	if (Stage == 0)
-	{
-		gStage0IsAlphaFix = false;
-
-		// If this is one of OUR wrapped textures, we can read our flag
-		if (pTexture)
-		{
-			// Your wrapper type might differ: m_IDirect3DTexture8 or m_IDirect3DBaseTexture8 etc.
-			// If you only wrap IDirect3DTexture8, then cast carefully:
-			m_IDirect3DTexture8* w = (m_IDirect3DTexture8*)pTexture;
-			__try {
-				if (w && w->isAlphaFixTexture)
-					gStage0IsAlphaFix = true;
-			}
-			__except (EXCEPTION_EXECUTE_HANDLER) {
-				gStage0IsAlphaFix = false;
-			}
-		}
-	}
 
 	return ProxyInterface->SetTexture(Stage, pTexture);
-
 }
-*/
+
 HRESULT m_IDirect3DDevice8::SetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTATETYPE Type, DWORD Value)
 {
 	return ProxyInterface->SetTextureStageState(Stage, Type, Value);

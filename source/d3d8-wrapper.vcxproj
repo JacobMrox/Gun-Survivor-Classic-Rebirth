@@ -138,7 +138,6 @@
     <ClInclude Include="..\source\helpers.h" />
     <ClInclude Include="..\source\iathook.h" />
     <ClInclude Include="aim_shared.h" />
-    <ClInclude Include="alpha_fix.h" />
     <ClInclude Include="AviFfmpegHook.h" />
     <ClInclude Include="cd_bypass.h">
       <DeploymentContent>false</DeploymentContent>
@@ -206,7 +205,6 @@
     <ClCompile Include="..\source\InterfaceQuery.cpp" />
     <ClCompile Include="..\source\dllmain.cpp" />
     <ClCompile Include="aim_shared.cpp" />
-    <ClCompile Include="alpha_fix.cpp" />
     <ClCompile Include="AviFfmpegHook.cpp" />
     <ClCompile Include="cd_bypass.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>

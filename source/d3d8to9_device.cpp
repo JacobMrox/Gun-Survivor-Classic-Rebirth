@@ -1607,7 +1607,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CreateVertexShader(const DWORD *pDecl
 #ifndef D3D8TO9NOLOG
 				//LOG << "> Failed to reassemble shader:" << std::endl << std::endl << static_cast<const char *>(ErrorBuffer->GetBufferPointer()) << std::endl;
 #endif
-				LogLine("> Failed to reassemble shader:\n\n%s\n", static_cast<const char*>(ErrorBuffer->GetBufferPointer()));
+				LogLine("> Failed to reassemble shader:\n\n%s", static_cast<const char*>(ErrorBuffer->GetBufferPointer()));
 				ErrorBuffer->Release();
 			}
 			else
@@ -1888,7 +1888,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CreatePixelShader(const DWORD *pFunct
 #ifndef D3D8TO9NOLOG
 		//LOG << "> Failed because of version mismatch ('" << std::showbase << std::hex << *pFunction << std::dec << std::noshowbase << "')! Only 'ps_1_x' shaders are supported." << std::endl;
 #endif
-		LogLine("> Failed because of version mismatch ('%#x')! Only 'ps_1_x' shaders are supported.", *pFunction);
+		LogLine("> Failed because of version mismatch ('%#x')! Only 'ps_1_x'Shaders are supported.", *pFunction);
 		return D3DERR_INVALIDCALL;
 	}
 
@@ -1940,8 +1940,8 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CreatePixelShader(const DWORD *pFunct
 
 	// Fix '-' modifier for constant values when using 'add' arithmetic by changing it to use 'sub'
 	SourceCode = std::regex_replace(SourceCode,
-		std::regex("(add)([_satxd248]*) (r[0-9][\\.wxyz]*), ((1-|)[crtv][0-9][\\.wxyz_abdis2]*), (-)(c[0-9][\\.wxyz]*)(_bx2|_bias|_x2|_d[zbwa]|)(?![_\\.wxyz])"),
-		"sub$2 $3, $4, $7$8 /* changed 'add' to 'sub' removed modifier $6 */");
+		std::regex("(add)([_satxd248]*) (r[0-9][\\.wxyz]*), (1-|)[crtv][0-9][\\.wxyz_abdis2]*, (-)(c[0-9][\\.wxyz]*)(_bx2|_bias|_x2|_d[zbwa]|)(?![_\\.wxyz])"),
+		"sub$2 $3, $4, $7$8 /* changed 'add' to 'sub' removed modifier $5 */");
 
 	// Create temporary varables for ps_1_4
 	std::string SourceCode14 = SourceCode;
