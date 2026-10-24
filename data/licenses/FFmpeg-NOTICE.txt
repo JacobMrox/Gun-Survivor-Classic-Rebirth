@@ -1,0 +1,16 @@
+FFmpeg shared runtime libraries
+
+This package includes x86 builds of libavcodec 61, libavformat 61,
+libavutil 59, libswscale 8 and libswresample 5. They are required by
+Classic Rebirth's movie playback code. Keep all five DLLs together
+beside d3d8.dll and gun_bio.exe.
+
+These libraries identify their license as GNU Lesser General Public
+License version 2.1 or later. The license text is in FFmpeg-LGPL-2.1.txt.
+
+The repository includes the FFmpeg source and vcpkg build material under:
+source/vcpkg_installed/x86-windows/vcpkg/blds/ffmpeg/
+The upstream project is https://ffmpeg.org/ .
+
+These MSVC builds also require the Microsoft Visual C++ x86 runtime.
+FFmpeg-runtime.sha256 records the hashes of the supplied DLLs.

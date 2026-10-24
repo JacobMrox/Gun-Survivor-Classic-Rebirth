@@ -7,7 +7,8 @@ build:
   project: build/d3d8-wrapper.sln
   verbosity: minimal
 after_build:
-- cmd: 7z a d3d8.zip %APPVEYOR_BUILD_FOLDER%\data\d3d8.dll %APPVEYOR_BUILD_FOLDER%\data\d3d8.ini
+- ps: .\scripts\verify-runtime.ps1
+- ps: Compress-Archive -Path "$env:APPVEYOR_BUILD_FOLDER\data\*" -DestinationPath "$env:APPVEYOR_BUILD_FOLDER\d3d8.zip" -Force
 artifacts:
 - path: d3d8.zip
   name: d3d8

@@ -304,3 +304,13 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Redistributed FFmpeg runtime used by the release package.
+!data/avcodec-61.dll
+!data/avformat-61.dll
+!data/avutil-59.dll
+!data/swscale-8.dll
+!data/swresample-5.dll
+!data/FFmpeg-runtime.sha256
+!data/licenses/FFmpeg-LGPL-2.1.txt
+!data/licenses/FFmpeg-NOTICE.txt
