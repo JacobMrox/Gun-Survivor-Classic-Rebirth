@@ -246,7 +246,7 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 # Installation
 
-1) Click <> Code → Download ZIP
+1) Head over to the [releases section](https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth/releases) and get the latest release.
 2) Extract all files into your game installation directory, replacing any files when prompted.
 3) The game requires every included file to run correctly, including GBIO.CFG (a dummy file the original game expects at startup).
 4) This requirement will be automated by the DLL in the next version
@@ -260,6 +260,8 @@ An English patch already exists for this title, created by Reikaz. You can find 
 https://www.legendsworld.net/webroot/phpBB3/viewtopic.php?p=86314
 
 Because a translation is already available, I have no plans to recreate that work from scratch. My focus is on restoring and improving the PC experience.
+
+A version with the English patch is provided (courtesy of Reikaz).
 
 ***2) The patch didn’t work / I don’t like it / I want to complain***
 
