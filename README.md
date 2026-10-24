@@ -252,6 +252,20 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 4) This requirement will be automated by the DLL in the next version
 5) This project is provided free, as-is, without warranty, and will continue improving over time
 
+The release includes the x86 FFmpeg runtime required for movie playback:
+`avcodec-61.dll`, `avformat-61.dll`, `avutil-59.dll`, `swscale-8.dll` and
+`swresample-5.dll`. Keep all five beside `d3d8.dll` and `gun_bio.exe`.
+They are dependencies of Classic Rebirth and are not supplied by the original
+game. These builds also require the Microsoft Visual C++ x86 runtime.
+See `licenses/FFmpeg-NOTICE.txt` in the release for the FFmpeg license and source
+information.
+
+For maintainers: distribute the complete contents of `data/`, including `FIXRES/`,
+the runtime DLLs, their hash manifest and `licenses/`. Run
+`powershell -NoProfile -File scripts/verify-runtime.ps1` before packaging.
+The AppVeyor packaging step checks the runtimes and archives the complete
+`data/` payload.
+
 # F.A.Q.
 
 ***1) Will you translate this game?***
