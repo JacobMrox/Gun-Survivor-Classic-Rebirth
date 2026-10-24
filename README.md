@@ -1,4 +1,4 @@
-> This project is provided as-is, free of charge and without warranty. Development is done in my own time, and while I do my best to provide updates and fixes, I can’t treat this as a full-time job.
+> This project is provided as-is, free of charge and without warranty. Development is done in our own time, and while we do our best to provide updates and fixes, we can’t treat this as a full-time job.
 
 # Why
 
@@ -68,7 +68,7 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 # Changelog
 
-## V 1.0 (Current Public Build)
+## V 1.0
 
 <img width="496" height="517" alt="image" src="https://github.com/user-attachments/assets/3ba34689-a19e-474c-98e7-34a9b0903d25" />
 
