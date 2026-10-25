@@ -69,6 +69,7 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
   InstallRoomWalls();
   InstallMovieSkip();
   InstallMouseInput();
+  InstallTitleFade(); // Verify native frame helpers before InstallScreenFx hooks EndFrame.
   if (c.biteFromBehind) InstallBiteFromBehind();
   if (c.ps1PlayerMove || c.ps1HeadBob || c.ps1DamageView || c.ps1PlayerWalls || c.ps1View || c.ps1WakeView ||
       c.ps1ZombieWorld || c.ps1PlayerDeath) {

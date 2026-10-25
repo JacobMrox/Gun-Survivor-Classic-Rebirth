@@ -20,4 +20,6 @@ ctest --test-dir build/survivor-fix-tests -C Release --output-on-failure
 
 These tests cover mouse batch draining and movie skip input gating. They do not prove physical mouse latency or visual fidelity. The mouse response was also confirmed in gameplay after installing the integrated build.
 
-The title-to-New Game fade and the wake-up camera trail still require their own PS1 comparison and implementation. The room-entry fade in this change is separate from the title transition. Manual movie skipping and the complete Alt+Tab control sequence still need gameplay validation.
+The opt-in title-to-New Game candidate (`Ps1TitleFade=1`) follows the original PS1 flash and multiplicative fade; see `../../docs/title-new-game-fade.md` for evidence and pending validation. The wake-up camera trail remains incomplete. The room-entry fade in this change is separate from the title transition. Manual movie skipping and the complete Alt+Tab control sequence still need gameplay validation.
+
+The opt-in zombie locomotion audio candidate and its validation limits are documented in `../../docs/zombie-walk-audio.md`. It uses the original sound bank already present in the PC data; no audio assets are bundled.

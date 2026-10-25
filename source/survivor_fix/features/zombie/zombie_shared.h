@@ -71,6 +71,7 @@ constexpr int kFeedClip = 0x17;
 struct Entry {
   ps1::StumbleState state;
   int prevRequest = -1;
+  uint32_t walkAudioTick = UINT32_MAX;
   Phase phase = Phase::Idle;
   int updates = 0;
   bool applied = false;
@@ -251,6 +252,11 @@ void SeparateZombie(void* s);
 
 // zombie_nav.cpp
 int UpdateWithNavigation(void* s, void* edx);
+
+// zombie_audio.cpp
+bool InstallZombieWalkAudio();
+void WalkAudioBefore(void* s);
+void WalkAudioAfter(void* s);
 
 // zombie_walk.cpp
 int ApplyWalkHold(void* s, int request, int result);

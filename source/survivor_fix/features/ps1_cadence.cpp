@@ -19,8 +19,11 @@ void* g_afterWait = reinterpret_cast<void*>(game::kPcCadenceAfterWait);
 ps1::NtscVBlankCadence g_timeline;
 void* g_context = nullptr;
 int64_t g_frequency = 0;
+uint32_t g_logicFrame = 0;
+bool g_cadenceReady = false;
 
 bool __cdecl WaitPs1Cadence(void* context) {
+  if (context && game::Read<uint8_t>(context,0x41)==3) ++g_logicFrame;
   if (!g_config.ps1Cadence || !context || game::Read<uint8_t>(context, 0x41) != 3) {
     g_timeline.Reset();
     g_context = nullptr;
@@ -76,6 +79,11 @@ __declspec(naked) void CadenceWaitDetour() {
 
 }  // namespace
 
+bool Ps1LogicFrame(uint32_t* tick) {
+  if(tick)*tick=g_logicFrame;
+  return g_cadenceReady && g_config.ps1Cadence;
+}
+
 bool InstallPs1Cadence() {
   const game::ByteSignature checks[] = {
       {game::kPcCadenceWait, game::kPcCadenceWaitBytes, sizeof(game::kPcCadenceWaitBytes)},
@@ -92,7 +100,8 @@ bool InstallPs1Cadence() {
     return false;
   }
   g_frequency = f.QuadPart;
-  return Hook("Ps1CadenceWait", game::kPcCadenceWait, reinterpret_cast<void*>(&CadenceWaitDetour), &g_nativeWait);
+  g_cadenceReady = Hook("Ps1CadenceWait", game::kPcCadenceWait, reinterpret_cast<void*>(&CadenceWaitDetour), &g_nativeWait);
+  return g_cadenceReady;
 }
 
 }  // namespace sf::features

@@ -178,6 +178,8 @@
     <ClInclude Include="survivor_fix\ps1\stumble_logic.h" />
     <ClInclude Include="survivor_fix\ps1\wake_view_logic.h" />
     <ClInclude Include="survivor_fix\ps1\wall_logic.h" />
+    <ClInclude Include="survivor_fix\ps1\title_fade_logic.h" />
+    <ClInclude Include="survivor_fix\ps1\zombie_audio_logic.h" />
     <ClInclude Include="survivor_fix\ps1\zombie_profile.h" />
     <ClInclude Include="survivor_fix\ps1\zombie_world.h" />
     <ClInclude Include="survivor_fix\roomenv_index.h" />
@@ -227,6 +229,7 @@
     <ClCompile Include="survivor_fix\features\exit_fix.cpp" />
     <ClCompile Include="survivor_fix\features\hud_condition.cpp" />
     <ClCompile Include="survivor_fix\features\input_device_fix.cpp" />
+    <ClCompile Include="survivor_fix\features\title_fade.cpp" />
     <ClCompile Include="survivor_fix\features\movie_skip.cpp" />
     <ClCompile Include="survivor_fix\features\mouse_input.cpp" />
     <ClCompile Include="survivor_fix\features\player.cpp" />
@@ -242,6 +245,7 @@
     <ClCompile Include="survivor_fix\features\zombie\zombie_nav.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_pose.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_push.cpp" />
+    <ClCompile Include="survivor_fix\features\zombie\zombie_audio.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_walk.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_world_pc.cpp" />
     <ClCompile Include="survivor_fix\features\zombie_life.cpp" />

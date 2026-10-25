@@ -19,6 +19,8 @@ struct Config {
   bool ps1ZombieBackFall = false;
   // One walk per zombie (02 or 03) like on the PS1, without the PC's jerky switches.
   bool ps1ZombieWalk = true;
+  // Original locomotion audio, opt-in pending broader regression coverage.
+  bool ps1ZombieWalkAudio = false;
   // PS1 walk speed: random base 13..25 units/frame per zombie, growing with the distance from the player
   // (801047B4, 80104D5C).
   bool ps1ZombieSpeed = true;
@@ -75,6 +77,8 @@ struct Config {
   // PS1 door fades (8009016C): the room goes to black in 16 frames, the door comes out of it in 16, the
   // new room in 2.
   bool ps1DoorFade = true;
+  // Original title flash/fade, opt-in pending broader regression coverage.
+  bool ps1TitleFade = false;
   // The game runs at the PS1 rate: two NTSC vertical blanks per frame, about 29.91 logic updates/s (VSync(2)).
   bool ps1Cadence = true;
 
