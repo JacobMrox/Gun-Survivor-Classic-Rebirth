@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <cstdint>
 
 #include "../ps1/nav_logic.h"
 #include "../ps1/wall_logic.h"
@@ -32,8 +33,11 @@ void ApplyInputDeviceFix();
 // Native CONDITION FLC array bound; keeps the native timing and D3D.
 bool InstallHudConditionBounds();
 bool InstallMovieSkip();
+bool InstallTitleFade();
 bool InstallMouseInput();
 bool InstallPs1Cadence();
+// One stamp per native gameplay loop; not a render frame or per-actor update.
+bool Ps1LogicFrame(uint32_t* tick);
 bool InstallPs1ZombieShadowSize();
 // ExitCrashFix (exit_fix.cpp): no crash at 00466D61 when the game closes in the middle of a frame (0046FEC0).
 bool InstallExitCrashFix();

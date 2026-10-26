@@ -497,6 +497,7 @@ HRESULT m_IDirect3DDevice8::Present(CONST RECT* pSourceRect, CONST RECT* pDestRe
 
     // Call the actual DX9-backed Present
     HRESULT hr = ProxyInterface->Present(pSourceRect, pDestRect, targetWnd, pDirtyRegion);
+    SurvivorPc_OnPresentResult(hr);
 
     // --- DX9 COMPATIBILITY: Device State Management ---
     // If Present returns an error, the game engine usually panics and shuts down.

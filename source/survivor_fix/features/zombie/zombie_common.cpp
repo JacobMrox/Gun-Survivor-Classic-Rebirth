@@ -388,6 +388,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
     }
   }
   const HitGate hit = HitBefore(s);
+  WalkAudioBefore(s);
   const int result = UpdateWithNavigation(s, edx);
   HitAfter(s, hit);
   if (partner) *partner = savedPartner;
@@ -400,6 +401,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
     auto pose = g_entries.find(s);
     UpdatePose(s, pose != g_entries.end() ? pose->second : kNoEntry);
   }
+  WalkAudioAfter(s);
   if (!g_config.ps1ZombieStumble && !g_config.ps1ZombieBackFall && !g_config.ps1ZombieNavigation &&
       !g_config.ps1ZombieBite && !g_config.ps1ZombieDeath) {
     g_entries.clear();
@@ -483,6 +485,7 @@ bool InstallZombies() {
   if (ready) InstallZombiePose();
   if (ready) InstallZombieBlood();
   if (ready) InstallZombieDeath();
+  if (ready) InstallZombieWalkAudio();
   if (ready && g_config.ps1ZombieBlend) {
     if (!game::CheckBytes({game::kApplySequence, game::kApplySequencePrologue,
                            sizeof(game::kApplySequencePrologue)}) ||

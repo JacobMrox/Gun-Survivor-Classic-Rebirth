@@ -34,6 +34,7 @@
 //                     that draw gets src*a + dst*(1-a) with a = texture alpha * 0x80 and colour = texture *
 //                     0x40 (TEXTUREFACTOR 0x80404040). The alpha test keeps the colour-keyed edge.
 #include "survivor_pc.h"
+#include "survivor_fix/ps1/title_fade_logic.h"
 
 #include "d3d8types.hpp"  // D3DSURFACE_DESC8, as in dllmain.cpp
 #include "d3d8.h"
@@ -365,10 +366,14 @@ bool SurvivorPc_TakeShadowDraw() {
 namespace {
 
 SurvivorScreenFx gFx{};
+bool gScreenFxDrawSucceeded = true;
+HRESULT gLastPresentResult = E_FAIL;
 IDirect3DDevice8* gWrapper = nullptr;  // the device the game presents with
 IDirect3DDevice8* gDev = nullptr;      // the device that draws (d3d8to9)
 IDirect3DTexture8* gFrame = nullptr;   // copy of the previous frame (trails, held frame)
 bool gFrameValid = false;
+bool gTitleActive = false;
+int gTitleBrightness = 128, gTitleFlash = 0;
 bool gHolding = false;  // inside SurvivorPc_PresentHeldFrame: the held frame is not copied again
 UINT gFrameW = 0, gFrameH = 0;
 D3DFORMAT gFrameFormat = D3DFMT_UNKNOWN;
@@ -382,7 +387,7 @@ constexpr DWORD kFvf = D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1;
 
 int Clamp255(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
 
-void Quad(IDirect3DDevice8* dev, float x0, float y0, float x1, float y1, DWORD color) {
+HRESULT Quad(IDirect3DDevice8* dev, float x0, float y0, float x1, float y1, DWORD color) {
   // Pixel centres: D3D8 samples texel centres half a pixel off.
   x0 -= 0.5f;
   y0 -= 0.5f;
@@ -394,7 +399,9 @@ void Quad(IDirect3DDevice8* dev, float x0, float y0, float x1, float y1, DWORD c
       {x0, y1, 0.0f, 1.0f, color, 0.0f, 1.0f},
       {x1, y1, 0.0f, 1.0f, color, 1.0f, 1.0f},
   };
-  dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(Vertex));
+  const HRESULT result=dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(Vertex));
+  if(FAILED(result))gScreenFxDrawSucceeded=false;
+  return result;
 }
 
 // Untextured box: dest + colour (add) or dest - colour (subtract), per channel, clamped like the PS1 GPU.
@@ -477,11 +484,11 @@ bool BackBuffer(IDirect3DDevice8* dev, IDirect3DSurface8** back, D3DSURFACE_DESC
 void SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx) {
   if (!fx || fx->size != static_cast<int>(sizeof(SurvivorScreenFx))) return;
   // A new trail starts from the frame shown before it; a held frame stays while it is blended.
-  if (fx->trail == 0 && !fx->keep && fx->heldBlend <= 0) gFrameValid = false;
+  if (!gTitleActive && fx->trail == 0 && !fx->keep && fx->heldBlend <= 0) gFrameValid = false;
   gFx = *fx;
 }
 
-bool SurvivorPc_ScreenFxHidesCrosshair() { return gFx.noCrosshair != 0; }
+bool SurvivorPc_ScreenFxHidesCrosshair() { return gTitleActive || gFx.noCrosshair != 0; }
 
 
 void SurvivorPc_ReleaseScreenFx() {
@@ -492,22 +499,25 @@ void SurvivorPc_ReleaseScreenFx() {
 }
 
 void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
+  gScreenFxDrawSucceeded=true;
   gWrapper = wrapper;
   gDev = dev;
-  const SurvivorScreenFx fx = gFx;
+  const SurvivorScreenFx fx = gTitleActive ? SurvivorScreenFx{} : gFx;
   const bool trail = fx.trail == 1 || fx.trail == 2;
   const bool held = fx.heldBlend > 0 && gFrameValid && gFrame;
-  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.subtract > 0;
-  const bool copy = (trail || fx.keep) && !gHolding;
+  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.subtract > 0 ||
+                    (gTitleActive && (gTitleBrightness < 128 || gTitleFlash > 0));
+  const bool copy = (trail || fx.keep || gTitleActive) && !gHolding;
   if (!dev || (!draw && !copy)) return;
   IDirect3DSurface8* back = nullptr;
   D3DSURFACE_DESC8 desc{};
-  if (!BackBuffer(dev, &back, &desc)) return;
+  if (!BackBuffer(dev, &back, &desc)) {gScreenFxDrawSucceeded=false;return;}
   const float w = static_cast<float>(desc.Width), h = static_cast<float>(desc.Height);
 
   if (draw) {
     DWORD block = 0;
     const bool saved = SUCCEEDED(dev->CreateStateBlock(D3DSBT_ALL, &block));
+    if(!saved) {gScreenFxDrawSucceeded=false;if(gTitleActive){back->Release();return;}}
     D3DVIEWPORT8 oldViewport{};
     dev->GetViewport(&oldViewport);
     if (SUCCEEDED(dev->BeginScene())) {
@@ -549,22 +559,40 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
                D3DCOLOR_ARGB(0xFF, c, c, c));
         }
       }
+      if (gTitleActive && gTitleBrightness < 128) {
+        const int color=ps1::TitleShadeColor(gTitleBrightness);
+        dev->SetTexture(0,nullptr);
+        dev->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);
+        dev->SetTextureStageState(0,D3DTSS_COLORARG1,D3DTA_DIFFUSE);
+        dev->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_DISABLE);
+        dev->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_ZERO);
+        dev->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_SRCCOLOR);
+        dev->SetRenderState(D3DRS_BLENDOP,D3DBLENDOP_ADD);
+        Quad(dev,0,0,w,h,D3DCOLOR_ARGB(255,color,color,color));
+      }
+      if (gTitleActive && gTitleFlash > 0)
+        Box(dev,w,h,D3DCOLOR_ARGB(255,gTitleFlash,gTitleFlash,gTitleFlash),false);
       if (fx.redFlash) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0x40, 0, 0), false);  // 0x70000000: + (FF, 0, 0) / 4
       if (fx.fade > 0) {
         const int v = Clamp255(fx.fade);
         Box(dev, w, h, D3DCOLOR_ARGB(0xFF, v, v, v), true);
       }
-      dev->EndScene();
+      if(FAILED(dev->EndScene()))gScreenFxDrawSucceeded=false;
+    } else {
+      gScreenFxDrawSucceeded=false;
     }
     if (saved) {
-      dev->ApplyStateBlock(block);
+      if(FAILED(dev->ApplyStateBlock(block)))gScreenFxDrawSucceeded=false;
       dev->DeleteStateBlock(block);
     }
     dev->SetViewport(&oldViewport);
   }
 
   // The PS1 sprites read the frame shown before: keep this one for the next Present.
-  if (copy && EnsureFrame(dev, desc.Width, desc.Height, desc.Format)) CopyFrame(dev, back);
+  if(copy){
+    if(EnsureFrame(dev,desc.Width,desc.Height,desc.Format))CopyFrame(dev,back);
+    if(!gFrameValid)gScreenFxDrawSucceeded=false;
+  }
   back->Release();
 }
 
@@ -577,24 +605,46 @@ int SurvivorPc_PresentHeldFrame() {
   back->Release();
   DWORD block = 0;
   const bool saved = SUCCEEDED(dev->CreateStateBlock(D3DSBT_ALL, &block));
+  if(!saved)return 0;
   D3DVIEWPORT8 oldViewport{};
   dev->GetViewport(&oldViewport);
+  bool drawn=false;
   if (SUCCEEDED(dev->BeginScene())) {
     BeginDraw(dev, desc.Width, desc.Height);
     dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
     dev->SetTexture(0, gFrame);
     dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
     dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-    Quad(dev, 0.0f, 0.0f, static_cast<float>(desc.Width), static_cast<float>(desc.Height), 0xFFFFFFFF);
-    dev->EndScene();
+    const HRESULT draw=Quad(dev,0.0f,0.0f,static_cast<float>(desc.Width),static_cast<float>(desc.Height),0xFFFFFFFF);
+    const HRESULT end=dev->EndScene();
+    drawn=SUCCEEDED(draw)&&SUCCEEDED(end);
   }
-  if (saved) {
-    dev->ApplyStateBlock(block);
-    dev->DeleteStateBlock(block);
-  }
+  const bool restored=SUCCEEDED(dev->ApplyStateBlock(block));
+  dev->DeleteStateBlock(block);
   dev->SetViewport(&oldViewport);
-  gHolding = true;  // the game's Present path draws the effects over it but does not copy it again
-  gWrapper->Present(nullptr, nullptr, nullptr, nullptr);
+  if(!drawn||!restored)return 0;
+  gHolding = true;
+  gLastPresentResult=E_FAIL;
+  const HRESULT shown=gWrapper->Present(nullptr,nullptr,nullptr,nullptr);
   gHolding = false;
-  return 1;
+  // Classic Rebirth masks failed native Presents to keep the game alive. Use
+  // the result reported before that mask, together with both draw passes.
+  return SUCCEEDED(shown)&&SUCCEEDED(gLastPresentResult)&&gScreenFxDrawSucceeded ? 1 : 0;
 }
+
+bool SurvivorPc_BeginTitleTransition() {
+  if(!gDev || !gWrapper || FAILED(gDev->TestCooperativeLevel())) return false;
+  gTitleActive=true;gTitleBrightness=128;gTitleFlash=0;
+  return true;
+}
+void SurvivorPc_SetTitleTransition(int brightness,int flash) {
+  gTitleBrightness=(std::clamp)(brightness,0,128);gTitleFlash=Clamp255(flash);
+}
+bool SurvivorPc_TitleFrameReady() {
+  return gTitleActive && gFrameValid && gFrame && gDev && gWrapper && SUCCEEDED(gDev->TestCooperativeLevel());
+}
+void SurvivorPc_EndTitleTransition() {
+  gTitleActive=false;gTitleBrightness=128;gTitleFlash=0;gFrameValid=false;
+}
+
+void SurvivorPc_OnPresentResult(HRESULT result) { gLastPresentResult=result; }

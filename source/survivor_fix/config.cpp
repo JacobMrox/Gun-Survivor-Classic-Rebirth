@@ -24,6 +24,7 @@ void LoadConfig(const char* iniPath) {
   const bool zombies = Read("Ps1Zombies", true);
   c.ps1ZombieStumble = Read("Ps1ZombieStumble", zombies);
   c.ps1ZombieWalk = Read("Ps1ZombieWalk", zombies);
+  c.ps1ZombieWalkAudio = Read("Ps1ZombieWalkAudio", false);
   c.ps1ZombieSpeed = Read("Ps1ZombieSpeed", zombies);
   c.ps1ZombieWalkAnim = Read("Ps1ZombieWalkAnim", zombies);
   c.ps1ZombieBite = Read("Ps1ZombieBite", zombies);
@@ -54,6 +55,7 @@ void LoadConfig(const char* iniPath) {
 
   c.ps1PlayerDeath = Read("Ps1PlayerDeath", true);
   c.ps1DoorFade = Read("Ps1DoorFade", true);
+  c.ps1TitleFade = Read("Ps1TitleFade", false);
   c.ps1Cadence = Read("Ps1FrameRate", true);
 
   c.inputDeviceFix = Read("InputDeviceFix", true);

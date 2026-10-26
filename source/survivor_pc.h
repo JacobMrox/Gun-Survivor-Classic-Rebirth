@@ -87,3 +87,13 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev);
 bool SurvivorPc_ScreenFxHidesCrosshair();
 // Before Reset: the frame copy lives in D3DPOOL_DEFAULT.
 void SurvivorPc_ReleaseScreenFx();
+
+// Scoped title-only rendering. The native confirmation scene is finished once,
+// then its kept frame is modulated by TITLE.BIN brightness/128 and flashed white.
+bool SurvivorPc_BeginTitleTransition();
+void SurvivorPc_SetTitleTransition(int brightness,int flash);
+bool SurvivorPc_TitleFrameReady();
+void SurvivorPc_EndTitleTransition();
+
+// Raw backend result before the wrapper masks failures for the native game.
+void SurvivorPc_OnPresentResult(HRESULT result);
