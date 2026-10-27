@@ -284,6 +284,7 @@
   <ItemGroup>
     <ResourceCompile Include="..\source\VersionInfo.rc" />
     <ResourceCompile Include="Resource.rc" />
+    <None Include="Fluent.manifest" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
