@@ -49,6 +49,9 @@ bool __cdecl RunTitleFade(){
     ++presented;
   }
   SurvivorPc_EndTitleTransition();
+  // Carry the final black frame across the beginning of the native load instead of exposing
+  // its first bright frames immediately after the title fade.
+  if(ok) SurvivorPc_HoldTitleBlackForLoading(24);
   // The interrupted caller expects an open native scene and will finish it
   // before leaving its menu loop. Restore that contract even on capture failure.
   if(ContextAlive(context))beginFrame(context,nullptr,0,0,0);else ok=false;

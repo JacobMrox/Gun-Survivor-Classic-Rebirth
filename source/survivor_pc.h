@@ -97,6 +97,8 @@ bool SurvivorPc_BeginTitleTransition();
 void SurvivorPc_SetTitleTransition(int brightness,int flash);
 bool SurvivorPc_TitleFrameReady();
 void SurvivorPc_EndTitleTransition();
+// Keeps the native loading frames black after the title confirmation has completed its fade.
+void SurvivorPc_HoldTitleBlackForLoading(int presents);
 
 // Raw backend result before the wrapper masks failures for the native game.
 void SurvivorPc_OnPresentResult(HRESULT result);

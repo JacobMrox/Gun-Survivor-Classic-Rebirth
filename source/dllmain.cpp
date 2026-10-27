@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdint>
+#include <cmath>
 #include <excpt.h>
 #include <list>
 #include <string.h>
@@ -91,8 +92,18 @@ int ForceHeight;//Survivor Exclusive
 //bool bAlphaFix;//Survivor Exclusive; whether to use PNG shadows reminiscent of PS1 shadows or not
 bool bSkipMovies;//Survivor Exclusive; skip movies
 bool gEnableLogging;//Survivor Exclusive; whether to log to file or not
+bool bLaserTrail = false;//Optional fading dot trail behind the overlay crosshair
 float fFPSLimit;
 int nFullScreenRefreshRateInHz;
+
+int ReadIniIntWithFallback(const char* path, const char* section, const char* key,
+                           const char* oldSection, const char* oldKey, int fallback)
+{
+    char probe[2] = {};
+    if (GetPrivateProfileStringA(section, key, nullptr, probe, sizeof probe, path) != 0)
+        return GetPrivateProfileIntA(section, key, fallback, path);
+    return GetPrivateProfileIntA(oldSection, oldKey, fallback, path);
+}
 
 char WinDir[MAX_PATH + 1];
 
@@ -121,6 +132,50 @@ char WinDir[MAX_PATH + 1];
     // Forward declarations (prevents "undefined" if order changes)
     void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev);
     void DrawTexturedQuad(LPDIRECT3DDEVICE8 dev, LPDIRECT3DTEXTURE8 tex, float x, float y, float w, float h);
+
+    struct TrailPoint { float x, y; };
+    std::vector<TrailPoint> gLaserTrailPoints;
+
+    void DrawLaserTrail(LPDIRECT3DDEVICE8 dev, float x, float y)
+    {
+        gLaserTrailPoints.push_back({x, y});
+        if (gLaserTrailPoints.size() > 18) gLaserTrailPoints.erase(gLaserTrailPoints.begin());
+        if (!bLaserTrail || gLaserTrailPoints.size() < 2) return;
+
+        DWORD state = 0;
+        if (FAILED(dev->CreateStateBlock(D3DSBT_ALL, &state))) return;
+        dev->SetTexture(0, nullptr);
+        dev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+        dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+        dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+
+        struct DotVertex { float x, y, z, rhw; DWORD color; };
+        for (size_t i = 0; i + 1 < gLaserTrailPoints.size(); ++i) {
+            const auto& a = gLaserTrailPoints[i];
+            const auto& b = gLaserTrailPoints[i + 1];
+            float dx = b.x - a.x, dy = b.y - a.y;
+            const float length = sqrtf(dx * dx + dy * dy);
+            if (length < 0.01f) continue;
+            dx /= length; dy /= length;
+            const float half = 0.7f + 1.8f * static_cast<float>(i + 1) / gLaserTrailPoints.size();
+            const float nx = -dy * half, ny = dx * half;
+            const BYTE alpha = static_cast<BYTE>(20 + 180 * (i + 1) / gLaserTrailPoints.size());
+            const DWORD color = D3DCOLOR_ARGB(alpha, 255, 35, 20);
+            DotVertex v[4] = {{a.x + nx, a.y + ny, 0, 1, color}, {a.x - nx, a.y - ny, 0, 1, color},
+                              {b.x + nx, b.y + ny, 0, 1, color}, {b.x - nx, b.y - ny, 0, 1, color}};
+            dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(DotVertex));
+        }
+        dev->ApplyStateBlock(state);
+        dev->DeleteStateBlock(state);
+    }
 
 
     std::string lastLoadedPath = "";
@@ -610,6 +665,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
             EnsureCrosshairTexture(ProxyInterface);
             const bool drawCross = SurvivorPc_UpdateCrosshair(g_hFocusWindow, &gAimX, &gAimY, (int)bbW, (int)bbH) &&
                                    !SurvivorPc_ScreenFxHidesCrosshair();
+            if (!drawCross || !bLaserTrail) gLaserTrailPoints.clear();
 
             if (gCrossTex)
             {
@@ -619,6 +675,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
                 if (gAimX > (float)bbW - 1) gAimX = (float)bbW - 1;
                 if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
                 SurvivorPc_SyncGameAim(gAimX, gAimY);//the game's aim follows the crosshair
+                if (drawCross && bLaserTrail) DrawLaserTrail(ProxyInterface, gAimX, gAimY);
 
                 // --- PATCHED SCALE LOGIC ---
                 D3DSURFACE_DESC8 texDesc;
@@ -1403,7 +1460,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         //bDirect3D8DisableMaximizedWindowedModeShim = GetPrivateProfileInt("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0, path) != 0;
 
         // --- DEBUG ---
-        gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
+        gEnableLogging = ReadIniIntWithFallback(path, "Application", "EnableLogging", "Debug", "EnableLogging", 0) != 0;
 
         // --- SURVIVOR FIX (survivor_pc.cpp, survivor_fix/) ---
         strcpy(gConfigPath, path);
@@ -1507,7 +1564,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         bDirect3D8DisableMaximizedWindowedModeShim = GetPrivateProfileInt("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0, path) != 0;
 
         // --- DEBUG ---
-        gEnableLogging = GetPrivateProfileInt("Debug", "EnableLogging", 0, path) != 0;
+        gEnableLogging = ReadIniIntWithFallback(path, "Application", "EnableLogging", "Debug", "EnableLogging", 0) != 0;
 
         // ---- FPS limiter ----
         if (fFPSLimit > 0.0f)

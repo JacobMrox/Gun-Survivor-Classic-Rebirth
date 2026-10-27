@@ -198,19 +198,26 @@ void HookWindow(HWND hwnd) {
 }  // namespace
 
 void SurvivorPc_LoadConfig(const char* ini) {
+  auto has = [&](const char* section, const char* key) {
+    char value[2] = {};
+    return GetPrivateProfileStringA(section, key, nullptr, value, sizeof value, ini) != 0;
+  };
   gDpiAware = GetPrivateProfileIntA("SurvivorFix", "DpiAware", 1, ini) != 0;
-  gKeepAspect = GetPrivateProfileIntA("SurvivorFix", "KeepAspect", 1, ini) != 0;
+  gKeepAspect = GetPrivateProfileIntA(has("Window", "KeepAspectRatio") ? "Window" : "SurvivorFix",
+                                      has("Window", "KeepAspectRatio") ? "KeepAspectRatio" : "KeepAspect", 1, ini) != 0;
   gSyncGameAim = GetPrivateProfileIntA("SurvivorFix", "SyncGameAim", 1, ini) != 0;
   gEqualMouseAxes = GetPrivateProfileIntA("SurvivorFix", "EqualMouseAxes", 1, ini) != 0;
   char buf[32] = {};
-  GetPrivateProfileStringA("SurvivorFix", "MouseSensitivity", "1.0", buf, sizeof buf, ini);
+  GetPrivateProfileStringA(has("Crosshair", "MouseSensitivity") ? "Crosshair" : "SurvivorFix",
+                           "MouseSensitivity", "1.0", buf, sizeof buf, ini);
   const float s = static_cast<float>(atof(buf));
   gSensitivity = (s > 0.0f && s < 20.0f) ? s : 1.0f;
   gMenuWindowsCursor = GetPrivateProfileIntA("SurvivorFix", "MenuWindowsCursor", 1, ini) != 0;
   gHideCrosshairInMenus = GetPrivateProfileIntA("SurvivorFix", "HideCrosshairInMenus", 1, ini) != 0;
   gHudAspect = GetPrivateProfileIntA("SurvivorFix", "HudAspect", 1, ini) != 0;
   gPs1ShadowBlend = GetPrivateProfileIntA("SurvivorFix", "Ps1ShadowBlend", 1, ini) != 0;
-  gSmoothModelLighting = GetPrivateProfileIntA("SurvivorFix", "SmoothModelLighting", 1, ini) != 0;
+  gSmoothModelLighting = GetPrivateProfileIntA(has("Fixes", "SmoothModelLighting") ? "Fixes" : "SurvivorFix",
+                                               "SmoothModelLighting", 1, ini) != 0;
   const UINT buffer = GetPrivateProfileIntA("SurvivorFix", "MouseBufferSize", 1024, ini);
   gMouseBufferSize = buffer > 65536 ? 65536 : buffer;
 }
@@ -377,6 +384,7 @@ IDirect3DDevice8* gDev = nullptr;      // the device that draws (d3d8to9)
 IDirect3DTexture8* gFrame = nullptr;   // copy of the previous frame (trails, held frame)
 bool gFrameValid = false;
 bool gTitleActive = false;
+int gTitleLoadingBlackFrames = 0;
 int gTitleBrightness = 128, gTitleFlash = 0;
 bool gHolding = false;  // inside SurvivorPc_PresentHeldFrame: the held frame is not copied again
 UINT gFrameW = 0, gFrameH = 0;
@@ -509,7 +517,8 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
   const SurvivorScreenFx fx = gTitleActive ? SurvivorScreenFx{} : gFx;
   const bool trail = fx.trail == 1 || fx.trail == 2;
   const bool held = fx.heldBlend > 0 && gFrameValid && gFrame;
-  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.subtract > 0 ||
+  const bool loadingBlack = gTitleLoadingBlackFrames > 0;
+  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.subtract > 0 || loadingBlack ||
                     (gTitleActive && (gTitleBrightness < 128 || gTitleFlash > 0));
   const bool copy = (trail || fx.keep || gTitleActive) && !gHolding;
   if (!dev || (!draw && !copy)) return;
@@ -576,6 +585,7 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
       }
       if (gTitleActive && gTitleFlash > 0)
         Box(dev,w,h,D3DCOLOR_ARGB(255,gTitleFlash,gTitleFlash,gTitleFlash),false);
+      if (loadingBlack) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0xFF, 0xFF, 0xFF), true);
       if (fx.redFlash) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0x40, 0, 0), false);  // 0x70000000: + (FF, 0, 0) / 4
       if (fx.fade > 0) {
         const int v = Clamp255(fx.fade);
@@ -598,6 +608,7 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
     if(!gFrameValid)gScreenFxDrawSucceeded=false;
   }
   back->Release();
+  if (loadingBlack) --gTitleLoadingBlackFrames;
 }
 
 int SurvivorPc_PresentHeldFrame() {
@@ -649,6 +660,9 @@ bool SurvivorPc_TitleFrameReady() {
 }
 void SurvivorPc_EndTitleTransition() {
   gTitleActive=false;gTitleBrightness=128;gTitleFlash=0;gFrameValid=false;
+}
+void SurvivorPc_HoldTitleBlackForLoading(int presents) {
+  gTitleLoadingBlackFrames = (std::max)(0, presents);
 }
 
 void SurvivorPc_OnPresentResult(HRESULT result) { gLastPresentResult=result; }
