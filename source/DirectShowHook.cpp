@@ -7,6 +7,7 @@
 #include <cwchar>
 #include "MinHook.h"
 #include "DirectShowHook.h"
+#include "AviFfmpegHook.h"
 #include "debug.h"
 
 #pragma comment(lib, "ole32.lib")
@@ -16,9 +17,25 @@ namespace
 {
     static bool gSkipMovies = false;
 
+    static bool IsMovieFile(const wchar_t* path) {
+        if (!path) return false;
+        const wchar_t* dot = wcsrchr(path, L'.');
+        return dot && (_wcsicmp(dot, L".avi") == 0 || _wcsicmp(dot, L".mpg") == 0 || _wcsicmp(dot, L".mpeg") == 0);
+    }
+
+    static void HideDirectShowVideo(IGraphBuilder* graph) {
+        IVideoWindow* video = nullptr;
+        if (graph && SUCCEEDED(graph->QueryInterface(IID_IVideoWindow, reinterpret_cast<void**>(&video))) && video) {
+            video->put_AutoShow(OAFALSE);
+            video->put_Visible(OAFALSE);
+            video->Release();
+        }
+    }
+
     struct GraphState
     {
         bool skipTriggered = false;
+        bool ffmpegVideo = false;
         HWND gameHWnd = NULL;
         IGraphBuilder* pGraph = nullptr;
         IMediaControl* pControl = nullptr;
@@ -99,6 +116,7 @@ namespace
         }
 
         HRESULT STDMETHODCALLTYPE Run() override {
+            if (st->ffmpegVideo) HideDirectShowVideo(st->pGraph);
             if (!st->skipTriggered) {
                 if (!st->gameHWnd) st->gameHWnd = GetActiveWindow();
                 st->pControl = real;
@@ -110,7 +128,11 @@ namespace
 
         // Other methods...
         HRESULT STDMETHODCALLTYPE Pause() override { return real->Pause(); }
-        HRESULT STDMETHODCALLTYPE Stop() override { st->skipTriggered = true; return real->Stop(); }
+        HRESULT STDMETHODCALLTYPE Stop() override {
+            st->skipTriggered = true;
+            if (st->ffmpegVideo) AviFfmpegHook::StopForDirectShow();
+            return real->Stop();
+        }
         HRESULT STDMETHODCALLTYPE GetState(LONG ms, OAFilterState* pfs) override { return real->GetState(ms, pfs); }
         HRESULT STDMETHODCALLTYPE RenderFile(BSTR str) override { return real->RenderFile(str); }
         HRESULT STDMETHODCALLTYPE AddSourceFilter(BSTR str, IDispatch** pp) override { return real->AddSourceFilter(str, pp); }
@@ -126,9 +148,19 @@ namespace
         GraphState st{};
 
         GraphBuilderProxy(IGraphBuilder* r) : real(r) { if (real) real->AddRef(); st.pGraph = r; }
-        ~GraphBuilderProxy() { if (real) real->Release(); if (st.pEvent) st.pEvent->Release(); }
+        ~GraphBuilderProxy() {
+            if (st.ffmpegVideo) AviFfmpegHook::StopForDirectShow();
+            if (real) real->Release();
+            if (st.pEvent) st.pEvent->Release();
+        }
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+            if (!ppv) return E_POINTER;
+            if (riid == IID_IUnknown || riid == IID_IGraphBuilder) {
+                *ppv = static_cast<IGraphBuilder*>(this);
+                AddRef();
+                return S_OK;
+            }
             HRESULT hr = real->QueryInterface(riid, ppv);
             if (SUCCEEDED(hr) && riid == IID_IMediaControl) {
                 IMediaControl* mc = (IMediaControl*)*ppv;
@@ -153,7 +185,19 @@ namespace
         HRESULT STDMETHODCALLTYPE SetDefaultSyncSource() override { return real->SetDefaultSyncSource(); }
         HRESULT STDMETHODCALLTYPE Connect(IPin* p1, IPin* p2) override { return real->Connect(p1, p2); }
         HRESULT STDMETHODCALLTYPE Render(IPin* p) override { return real->Render(p); }
-        HRESULT STDMETHODCALLTYPE RenderFile(LPCWSTR f, LPCWSTR p) override { return real->RenderFile(f, p); }
+        HRESULT STDMETHODCALLTYPE RenderFile(LPCWSTR f, LPCWSTR p) override {
+            const HRESULT hr = real->RenderFile(f, p);
+            if (SUCCEEDED(hr) && IsMovieFile(f)) {
+                st.ffmpegVideo = AviFfmpegHook::StartForDirectShow(f);
+                if (st.ffmpegVideo) {
+                    HideDirectShowVideo(real);
+                    LogLine("[MOVIE] FFmpeg display replacing DirectShow video: %S", f);
+                } else {
+                    LogLine("[MOVIE] FFmpeg could not open DirectShow video, keeping native renderer: %S", f);
+                }
+            }
+            return hr;
+        }
         HRESULT STDMETHODCALLTYPE AddSourceFilter(LPCWSTR f, LPCWSTR n, IBaseFilter** p) override { return real->AddSourceFilter(f, n, p); }
         HRESULT STDMETHODCALLTYPE SetLogFile(DWORD_PTR h) override { return real->SetLogFile(h); }
         HRESULT STDMETHODCALLTYPE Abort() override { return real->Abort(); }
@@ -190,7 +234,6 @@ namespace
         if (f) {
             std::string n = f;
             if (n.find("debug.txt") != std::string::npos) return Real_CreateFileA(DebugLogPathA().c_str(), a, s, sa, c, fl, h);
-            if (n.find("GBIO.CFG") != std::string::npos) return Real_CreateFileA("NUL", a, s, sa, OPEN_EXISTING, fl, h);
         }
         return Real_CreateFileA(f, a, s, sa, c, fl, h);
     }
@@ -199,18 +242,15 @@ namespace
         if (f) {
             std::wstring n = f;
             if (n.find(L"debug.txt") != std::wstring::npos) return Real_CreateFileW(DebugLogPathW().c_str(), a, s, sa, c, fl, h);
-            if (n.find(L"GBIO.CFG") != std::wstring::npos) return Real_CreateFileW(L"NUL", a, s, sa, OPEN_EXISTING, fl, h);
         }
         return Real_CreateFileW(f, a, s, sa, c, fl, h);
     }
 
     static DWORD WINAPI Hook_GetFileAttributesA(LPCSTR f) {
-        if (f && std::string(f).find("GBIO.CFG") != std::string::npos) return FILE_ATTRIBUTE_NORMAL;
         return Real_GetFileAttributesA(f);
     }
 
     static DWORD WINAPI Hook_GetFileAttributesW(LPCWSTR f) {
-        if (f && std::wstring(f).find(L"GBIO.CFG") != std::wstring::npos) return FILE_ATTRIBUTE_NORMAL;
         return Real_GetFileAttributesW(f);
     }
 
@@ -225,10 +265,6 @@ namespace
     HFILE WINAPI Hook_lopen(LPCSTR lpPathName, int iReadWrite) {
         if (lpPathName) {
             if (strstr(lpPathName, "debug.txt")) return Real_lopen(DebugLogPathA().c_str(), iReadWrite);
-            if (strstr(lpPathName, "GBIO.CFG")) {
-                LogLine("[FILE] _lopen redirecting GBIO.CFG");
-                return Real_lopen("NUL", iReadWrite);
-            }
         }
         return Real_lopen(lpPathName, iReadWrite);
     }
@@ -243,10 +279,17 @@ namespace
     static CoCreateInstance_t Real_CoCreateInstance = nullptr;
     static HRESULT WINAPI Hook_CoCreateInstance(REFCLSID rclsid, LPUNKNOWN pUnk, DWORD dwCtx, REFIID riid, LPVOID* ppv) {
         HRESULT hr = Real_CoCreateInstance(rclsid, pUnk, dwCtx, riid, ppv);
-        if (SUCCEEDED(hr) && IsEqualCLSID(rclsid, CLSID_FilterGraph) && riid == IID_IGraphBuilder) {
-            IGraphBuilder* gb = (IGraphBuilder*)*ppv;
-            *ppv = new GraphBuilderProxy(gb);
-            gb->Release();
+        if (SUCCEEDED(hr) && ppv && *ppv && IsEqualCLSID(rclsid, CLSID_FilterGraph)) {
+            // D3D_Movie.cpp creates the graph as IUnknown, then queries IGraphBuilder.
+            // Wrapping only a direct IID_IGraphBuilder request therefore missed every movie.
+            IGraphBuilder* gb = nullptr;
+            IUnknown* unknown = static_cast<IUnknown*>(*ppv);
+            if (SUCCEEDED(unknown->QueryInterface(IID_IGraphBuilder, reinterpret_cast<void**>(&gb))) && gb) {
+                unknown->Release();
+                *ppv = static_cast<IGraphBuilder*>(new GraphBuilderProxy(gb));
+                gb->Release();
+                LogLine("[MOVIE] DirectShow FilterGraph proxy installed");
+            }
         }
         return hr;
     }

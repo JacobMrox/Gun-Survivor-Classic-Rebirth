@@ -557,7 +557,21 @@ HRESULT m_IDirect3DDevice8::EndScene()
     if (bDisplayFPSCounter)
         FrameLimiter::ShowFPS(ProxyInterface);
 
-    if (gDrawOverlayCrosshair && g_hFocusWindow)
+    const bool movieWasPlaying = g_Video.isPlaying;
+    if (g_hFocusWindow && g_Video.isPlaying)
+    {
+        UINT bbW = 0, bbH = 0;
+        IDirect3DSurface8* bb = nullptr;
+        if (SUCCEEDED(ProxyInterface->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb)
+        {
+            D3DSURFACE_DESC8 d{};
+            if (SUCCEEDED(bb->GetDesc(&d))) { bbW = d.Width; bbH = d.Height; }
+            bb->Release();
+        }
+        if (bbW && bbH) RenderMovie(bbW, bbH);
+    }
+
+    if (gDrawOverlayCrosshair && g_hFocusWindow && !movieWasPlaying)
     {
         // Query backbuffer size (the coordinate space that DrawPrimitiveUP uses here)
         UINT bbW = 0, bbH = 0;
@@ -1674,6 +1688,8 @@ IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion)
     // by the time the game calls an export.
     static bool hooked = false;
     if (!hooked) {
+        DirectShowHook::Install();
+        DirectShowHook::SetSkipMovies(bSkipMovies != 0);
         AviFfmpegHook::Install();
         hooked = true;
     }

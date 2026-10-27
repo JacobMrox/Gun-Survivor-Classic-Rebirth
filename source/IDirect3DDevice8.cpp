@@ -169,19 +169,37 @@ HRESULT m_IDirect3DDevice8::CreateRenderTarget(THIS_ UINT Width, UINT Height, D3
 void m_IDirect3DDevice8::RenderMovie(UINT screenW, UINT screenH)
 {
 	if (!g_Video.isPlaying || !g_Video.buffer) return;
+	if (!g_Video.pCodecCtx || !g_Video.pFormatCtx) return;
 
 	// 1. Create the texture (uses ProxyInterface member)
+	if (g_Video.resetTexture && g_MovieTex) {
+		g_MovieTex->Release();
+		g_MovieTex = nullptr;
+		g_Video.resetTexture = false;
+	}
 	if (!g_MovieTex) {
 		ProxyInterface->CreateTexture(g_Video.pCodecCtx->width, g_Video.pCodecCtx->height,
-			1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, (IDirect3DTexture8**)&g_MovieTex);
+			1, D3DUSAGE_DYNAMIC, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, (IDirect3DTexture8**)&g_MovieTex);
 	}
 
-	// 2. Decode the next frame (logic from AviFfmpegHook)
-	AVPacket packet;
-	if (av_read_frame(g_Video.pFormatCtx, &packet) >= 0) {
-		if (packet.stream_index == g_Video.videoStream) {
-			avcodec_send_packet(g_Video.pCodecCtx, &packet);
-			if (avcodec_receive_frame(g_Video.pCodecCtx, g_Video.pFrame) == 0) {
+	// 2. Decode at the source frame rate. The old code decoded every EndScene,
+	// which made 30/38 fps movies run at the display rate.
+	const double elapsedMs = static_cast<double>(GetTickCount64() - g_Video.playbackStartedAtMs);
+	for (int updates = 0; !g_Video.eof && elapsedMs + 0.1 >= g_Video.nextFrameAtMs && updates < 4; ++updates) {
+		AVPacket packet{};
+		bool gotFrame = false;
+		while (!gotFrame) {
+			if (av_read_frame(g_Video.pFormatCtx, &packet) < 0) {
+				g_Video.eof = true;
+				break;
+			}
+			if (packet.stream_index == g_Video.videoStream) {
+				avcodec_send_packet(g_Video.pCodecCtx, &packet);
+				gotFrame = avcodec_receive_frame(g_Video.pCodecCtx, g_Video.pFrame) == 0;
+			}
+			av_packet_unref(&packet);
+		}
+		if (!gotFrame) break;
 				sws_scale(g_Video.sws_ctx, (uint8_t const* const*)g_Video.pFrame->data,
 					g_Video.pFrame->linesize, 0, g_Video.pCodecCtx->height,
 					g_Video.pFrameRGB->data, g_Video.pFrameRGB->linesize);
@@ -194,22 +212,30 @@ void m_IDirect3DDevice8::RenderMovie(UINT screenW, UINT screenH)
 					int srcStride = g_Video.pFrameRGB->linesize[0];
 
 					for (int y = 0; y < (int)g_Video.pCodecCtx->height; y++) {
-						memcpy(dest + (y * rect.Pitch), src + (y * srcStride), srcStride);
+						auto* dstRow = reinterpret_cast<uint32_t*>(dest + (y * rect.Pitch));
+						const auto* srcRow = reinterpret_cast<const uint32_t*>(src + (y * srcStride));
+						for (int x = 0; x < g_Video.pCodecCtx->width; ++x) dstRow[x] = srcRow[x] | 0xFF000000u;
 					}
 					g_MovieTex->UnlockRect(0);
 				}
-			}
-		}
-		av_packet_unref(&packet);
-	}
-	else {
-		g_Video.isPlaying = false;
-		if (g_MovieTex) { g_MovieTex->Release(); g_MovieTex = nullptr; }
-		return;
+		g_Video.nextFrameAtMs += g_Video.frameIntervalMs;
 	}
 
-	// 4. Draw (Cast to LPDIRECT3DTEXTURE8 because DrawTexturedQuad expects DX8 pointer)
-	DrawTexturedQuad(ProxyInterface, (LPDIRECT3DTEXTURE8)g_MovieTex, 0, 0, (float)screenW, (float)screenH);
+	// 4. Preserve the source aspect ratio. Capcom30.avi is 320x240; filling a
+	// 16:9 backbuffer crops its sides instead of showing the complete logo.
+	if (g_MovieTex && screenW && screenH) {
+		const float videoAspect = static_cast<float>(g_Video.pCodecCtx->width) / g_Video.pCodecCtx->height;
+		const float screenAspect = static_cast<float>(screenW) / screenH;
+		float w = static_cast<float>(screenW), h = static_cast<float>(screenH), x = 0.0f, y = 0.0f;
+		if (screenAspect > videoAspect) {
+			w = h * videoAspect;
+			x = (static_cast<float>(screenW) - w) * 0.5f;
+		} else {
+			h = w / videoAspect;
+			y = (static_cast<float>(screenH) - h) * 0.5f;
+		}
+		DrawTexturedQuad(ProxyInterface, (LPDIRECT3DTEXTURE8)g_MovieTex, x, y, w, h);
+	}
 }
 
 HRESULT m_IDirect3DDevice8::CreateVertexBuffer(THIS_ UINT Length, DWORD Usage, DWORD FVF, D3DPOOL Pool, IDirect3DVertexBuffer8** ppVertexBuffer)

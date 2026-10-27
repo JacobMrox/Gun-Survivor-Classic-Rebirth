@@ -18,6 +18,11 @@ struct VideoState {
 	int videoStream = -1;
 	uint8_t* buffer = nullptr;
 	bool isPlaying = false;
+	bool eof = false;
+	bool resetTexture = false;
+	ULONGLONG playbackStartedAtMs = 0;
+	double nextFrameAtMs = 0.0;
+	double frameIntervalMs = 1000.0 / 30.0;
 };
 
 // Declare the global instance (defined in AviFfmpegHook.cpp)

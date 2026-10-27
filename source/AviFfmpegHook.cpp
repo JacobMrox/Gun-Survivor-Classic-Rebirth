@@ -262,8 +262,18 @@ namespace {
             g_Video.pCodecCtx->width, g_Video.pCodecCtx->height, AV_PIX_FMT_RGB32,
             SWS_BILINEAR, NULL, NULL, NULL);
 
+        AVRational rate = g_Video.pFormatCtx->streams[g_Video.videoStream]->avg_frame_rate;
+        if (rate.num <= 0 || rate.den <= 0)
+            rate = g_Video.pFormatCtx->streams[g_Video.videoStream]->r_frame_rate;
+        const double fps = (rate.num > 0 && rate.den > 0) ? av_q2d(rate) : 30.0;
+        g_Video.frameIntervalMs = (fps > 1.0 && fps < 240.0) ? (1000.0 / fps) : (1000.0 / 30.0);
+        g_Video.playbackStartedAtMs = GetTickCount64();
+        g_Video.nextFrameAtMs = 0.0;
+        g_Video.eof = false;
+        g_Video.resetTexture = true;
         g_Video.isPlaying = true;
-        LogLine("AviFfmpegHook: FFmpeg started for %dx%d video.", g_Video.pCodecCtx->width, g_Video.pCodecCtx->height);
+        LogLine("AviFfmpegHook: FFmpeg display started for %dx%d video at %.3f fps: %s",
+            g_Video.pCodecCtx->width, g_Video.pCodecCtx->height, fps, filename);
         return true;
     }
 
@@ -283,6 +293,8 @@ namespace {
         g_Video.pCodecCtx = nullptr;
         g_Video.pFormatCtx = nullptr;
         g_Video.videoStream = -1;
+        g_Video.eof = false;
+        g_Video.nextFrameAtMs = 0.0;
     }
 }
 
@@ -295,5 +307,22 @@ namespace AviFfmpegHook {
             for (unsigned int i = 0; i < (cb / sizeof(HMODULE)); i++) PatchIAT(hMods[i]);
         }
         return true;
+    }
+
+    bool StartForDirectShow(const wchar_t* filename) {
+        if (!filename || !*filename) return false;
+        char path[MAX_PATH * 4] = {};
+        if (!WideCharToMultiByte(CP_ACP, 0, filename, -1, path, sizeof(path), nullptr, nullptr)) {
+            LogLine("AviFfmpegHook: could not convert DirectShow movie path");
+            return false;
+        }
+        return OpenVideo(path);
+    }
+
+    void StopForDirectShow() {
+        if (g_Video.isPlaying || g_Video.pFormatCtx) {
+            LogLine("AviFfmpegHook: FFmpeg display stopped");
+            CloseVideo();
+        }
     }
 }
