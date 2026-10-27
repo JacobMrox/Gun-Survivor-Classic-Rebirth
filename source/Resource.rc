@@ -4,7 +4,7 @@
 
 IDD_CONFIG_DIALOG DIALOGEX 0, 0, 280, 345
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Resident Evil: Survivor - Classic Rebirth 1.1"
+CAPTION "Resident Evil: Survivor - Classic Rebirth 1.1.2"
 FONT 9, "Segoe UI"
 BEGIN
 GROUPBOX        "Graphics", IDC_STATIC, 7, 7, 266, 65
@@ -44,7 +44,7 @@ LTEXT           "100%", IDC_CROSS_SCALE_LABEL, 145, 260, 30, 8
 
 CONTROL         "", IDC_CROSS_PREVIEW, "Static", SS_BITMAP | SS_REALSIZECONTROL | SS_CENTERIMAGE | WS_BORDER, 220, 233, 40, 40
 
-CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1 © Jacob Karuni @Mehrqarox", IDC_STATIC, 7, 305, 266, 8, WS_DISABLED
+CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1.2 © Jacob Karuni @Mehrqarox", IDC_STATIC, 7, 305, 266, 8, WS_DISABLED
 
 DEFPUSHBUTTON   "Save and Launch", IDOK, 80, 320, 55, 14
 PUSHBUTTON      "Cancel", IDCANCEL, 145, 320, 55, 14

@@ -13,7 +13,8 @@ static CRITICAL_SECTION g_lock;
 void LogOpen(const wchar_t* path, bool enabled) {
   InitializeCriticalSection(&g_lock);
   if (!enabled) return;
-  g_file = _wfopen(path, L"w");
+  // The wrapper and the game also write to this file, so preserve their earlier lines.
+  g_file = _wfopen(path, L"a");
 }
 
 void Log(const char* fmt, ...) {

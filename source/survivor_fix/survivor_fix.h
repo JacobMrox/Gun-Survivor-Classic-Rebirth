@@ -10,5 +10,5 @@
 // From DllMain, before the game's code runs: reads the options and applies the start-up fixes.
 void SurvivorFix_Attach(HMODULE module, const char* iniPath);
 
-// After the configuration window: reads the options again and hooks the game. `log` writes survivor_fix.log.
+// After the configuration window: reads the options again and hooks the game. `log` writes debug.log.
 void SurvivorFix_Start(const char* iniPath, bool log);

@@ -3,6 +3,8 @@
 #include <dshow.h>
 #include <string>
 #include <cwctype>
+#include <cstring>
+#include <cwchar>
 #include "MinHook.h"
 #include "DirectShowHook.h"
 #include "debug.h"
@@ -168,10 +170,26 @@ namespace
     using GetFileAttributesW_t = DWORD(WINAPI*)(LPCWSTR);
     static GetFileAttributesW_t Real_GetFileAttributesW = nullptr;
 
+    static std::string DebugLogPathA() {
+        char path[MAX_PATH] = {};
+        GetModuleFileNameA(GetModuleHandleA("d3d8.dll"), path, MAX_PATH);
+        char* slash = strrchr(path, '\\');
+        if (slash) strcpy_s(slash + 1, MAX_PATH - (slash + 1 - path), "debug.log");
+        return path;
+    }
+
+    static std::wstring DebugLogPathW() {
+        wchar_t path[MAX_PATH] = {};
+        GetModuleFileNameW(GetModuleHandleW(L"d3d8.dll"), path, MAX_PATH);
+        wchar_t* slash = wcsrchr(path, L'\\');
+        if (slash) wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"debug.log");
+        return path;
+    }
+
     static HANDLE WINAPI Hook_CreateFileA(LPCSTR f, DWORD a, DWORD s, LPSECURITY_ATTRIBUTES sa, DWORD c, DWORD fl, HANDLE h) {
         if (f) {
             std::string n = f;
-            if (n.find("debug.txt") != std::string::npos) return INVALID_HANDLE_VALUE;
+            if (n.find("debug.txt") != std::string::npos) return Real_CreateFileA(DebugLogPathA().c_str(), a, s, sa, c, fl, h);
             if (n.find("GBIO.CFG") != std::string::npos) return Real_CreateFileA("NUL", a, s, sa, OPEN_EXISTING, fl, h);
         }
         return Real_CreateFileA(f, a, s, sa, c, fl, h);
@@ -180,7 +198,7 @@ namespace
     static HANDLE WINAPI Hook_CreateFileW(LPCWSTR f, DWORD a, DWORD s, LPSECURITY_ATTRIBUTES sa, DWORD c, DWORD fl, HANDLE h) {
         if (f) {
             std::wstring n = f;
-            if (n.find(L"debug.txt") != std::wstring::npos) return INVALID_HANDLE_VALUE;
+            if (n.find(L"debug.txt") != std::wstring::npos) return Real_CreateFileW(DebugLogPathW().c_str(), a, s, sa, c, fl, h);
             if (n.find(L"GBIO.CFG") != std::wstring::npos) return Real_CreateFileW(L"NUL", a, s, sa, OPEN_EXISTING, fl, h);
         }
         return Real_CreateFileW(f, a, s, sa, c, fl, h);
@@ -206,9 +224,7 @@ namespace
     // This catches fopen and older CRT file calls
     HFILE WINAPI Hook_lopen(LPCSTR lpPathName, int iReadWrite) {
         if (lpPathName) {
-            if (strstr(lpPathName, "debug.txt")) {
-                return (HFILE)HFILE_ERROR; // Block it
-            }
+            if (strstr(lpPathName, "debug.txt")) return Real_lopen(DebugLogPathA().c_str(), iReadWrite);
             if (strstr(lpPathName, "GBIO.CFG")) {
                 LogLine("[FILE] _lopen redirecting GBIO.CFG");
                 return Real_lopen("NUL", iReadWrite);
@@ -219,9 +235,7 @@ namespace
 
     // This catches the creation of files via older APIs
     HFILE WINAPI Hook_lcreat(LPCSTR lpPathName, int iAttribute) {
-        if (lpPathName && strstr(lpPathName, "debug.txt")) {
-            return (HFILE)HFILE_ERROR; // Stop the file from even being created
-        }
+        if (lpPathName && strstr(lpPathName, "debug.txt")) return Real_lcreat(DebugLogPathA().c_str(), iAttribute);
         return Real_lcreat(lpPathName, iAttribute);
     }
 

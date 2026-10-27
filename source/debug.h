@@ -16,7 +16,7 @@ static void LogLine(const char* fmt, ...)
     GetModuleFileNameA(NULL, path, MAX_PATH);
     char* slash = strrchr(path, '\\');
     if (slash) *(slash + 1) = 0;
-    strcat_s(path, "hook.log");
+    strcat_s(path, "debug.log");
 
     FILE* f = nullptr;
     fopen_s(&f, path, "a");

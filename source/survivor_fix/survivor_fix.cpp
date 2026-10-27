@@ -55,7 +55,7 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
   if (!g_attached || started) return;
   started = true;
   LoadConfig(iniPath);
-  LogOpen((g_dir + L"survivor_fix.log").c_str(), log);
+  LogOpen((g_dir + L"debug.log").c_str(), log);
   const Config& c = g_config;
   Log("Survivor Fix: zombies %d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d, chase %d/%d, movement %d/%d/%d, camera %d/%d/%d, "
       "death %d, doors %d, frame rate %d",

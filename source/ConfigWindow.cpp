@@ -7,11 +7,15 @@
 #include <commdlg.h>
 #include <commctrl.h>
 #include <shlwapi.h>
+#include <uxtheme.h>
+#include <dwmapi.h>
 #include <gdiplus.h>
 
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "uxtheme.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 using namespace Gdiplus;
 
@@ -28,7 +32,7 @@ static int mouseSensitivityPercent = 100;
 static bool keepAspect = true;
 
 static char cfgPath[MAX_PATH];
-bool bShowConfigOnLaunch = true;
+bool bShowConfigOnLaunch = false;
 ULONG_PTR gdiplusToken;
 
 struct ResItem { int w, h; const char* name; };
@@ -117,7 +121,7 @@ void SyncConfig(bool save) {
         bSkipMovies = GetI("Fixes", "SkipMovies", 0) != 0;
         //bDirect3D8DisableMaximizedWindowedModeShim = GetI("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", 0) != 0;
         gEnableLogging = GetI("Debug", "EnableLogging", 0) != 0;
-        bShowConfigOnLaunch = GetI("Debug", "ShowConfig", 1) != 0;
+        bShowConfigOnLaunch = GetI("Debug", "ShowConfig", 0) != 0;
 
         char temp[MAX_PATH];
         GetPrivateProfileStringA("Fixes", "CrosshairPath", "FIXRES/crosshair_psx.png", temp, MAX_PATH, cfgPath);
@@ -132,6 +136,19 @@ void SyncConfig(bool save) {
 INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     switch (m) {
     case WM_INITDIALOG: {
+        // Use the native Explorer control style and the Windows 11 transient-window
+        // backdrop when it is available. Older Windows versions ignore these calls.
+        const int immersiveDarkModeAttribute = 20;
+        const int systemBackdropAttribute = 38;
+        const BOOL useDarkTitleBar = FALSE;
+        const int transientWindowBackdrop = 3;
+        DwmSetWindowAttribute(h, immersiveDarkModeAttribute, &useDarkTitleBar, sizeof(useDarkTitleBar));
+        DwmSetWindowAttribute(h, systemBackdropAttribute, &transientWindowBackdrop, sizeof(transientWindowBackdrop));
+        SetWindowTheme(h, L"Explorer", nullptr);
+        for (const int id : { IDC_RES_COMBO, IDC_FPS_COMBO, IDC_CROSS_COMBO, IDC_CROSS_SCALE, IDC_MOUSE_SENSITIVITY }) {
+            if (HWND control = GetDlgItem(h, id)) SetWindowTheme(control, L"Explorer", nullptr);
+        }
+
         HWND hFPS = GetDlgItem(h, IDC_FPS_COMBO);
         SendMessage(hFPS, CB_ADDSTRING, 0, (LPARAM)"Stable (60)");
         SendMessage(hFPS, CB_ADDSTRING, 0, (LPARAM)"Unlimited");
