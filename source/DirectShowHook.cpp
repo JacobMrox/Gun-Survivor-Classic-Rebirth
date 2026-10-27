@@ -32,6 +32,31 @@ namespace
         }
     }
 
+    struct HideVideoRequest { IGraphBuilder* graph = nullptr; };
+    static DWORD WINAPI HideDirectShowVideoLater(LPVOID parameter) {
+        auto* request = static_cast<HideVideoRequest*>(parameter);
+        const HRESULT apartment = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        // Survivor connects the renderer after AddSourceFilter.  Suppress every
+        // stage of that short construction window, not just the first attempt.
+        Sleep(250);
+        HideDirectShowVideo(request->graph);
+        Sleep(750);
+        HideDirectShowVideo(request->graph);
+        Sleep(1000);
+        HideDirectShowVideo(request->graph);
+        if (SUCCEEDED(apartment)) CoUninitialize();
+        request->graph->Release();
+        delete request;
+        return 0;
+    }
+
+    static void QueueDirectShowVideoHide(IGraphBuilder* graph) {
+        if (!graph) return;
+        auto* request = new HideVideoRequest{ graph };
+        graph->AddRef();
+        if (!CreateThread(nullptr, 0, HideDirectShowVideoLater, request, 0, nullptr)) { graph->Release(); delete request; }
+    }
+
     struct GraphState
     {
         bool skipTriggered = false;
@@ -116,7 +141,7 @@ namespace
         }
 
         HRESULT STDMETHODCALLTYPE Run() override {
-            if (st->ffmpegVideo) HideDirectShowVideo(st->pGraph);
+            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive()) HideDirectShowVideo(st->pGraph);
             if (!st->skipTriggered) {
                 if (!st->gameHWnd) st->gameHWnd = GetActiveWindow();
                 st->pControl = real;
@@ -198,7 +223,13 @@ namespace
             }
             return hr;
         }
-        HRESULT STDMETHODCALLTYPE AddSourceFilter(LPCWSTR f, LPCWSTR n, IBaseFilter** p) override { return real->AddSourceFilter(f, n, p); }
+        HRESULT STDMETHODCALLTYPE AddSourceFilter(LPCWSTR f, LPCWSTR n, IBaseFilter** p) override {
+            const HRESULT hr = real->AddSourceFilter(f, n, p);
+            if (SUCCEEDED(hr) && IsMovieFile(f) && AviFfmpegHook::StartForGameOverlay(f)) {
+                QueueDirectShowVideoHide(real);
+            }
+            return hr;
+        }
         HRESULT STDMETHODCALLTYPE SetLogFile(DWORD_PTR h) override { return real->SetLogFile(h); }
         HRESULT STDMETHODCALLTYPE Abort() override { return real->Abort(); }
         HRESULT STDMETHODCALLTYPE ShouldOperationContinue() override { return real->ShouldOperationContinue(); }

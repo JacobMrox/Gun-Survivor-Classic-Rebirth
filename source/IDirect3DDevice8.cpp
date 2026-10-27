@@ -20,6 +20,7 @@
 #include <intrin.h>
 #include "d3d8.h"
 #include "survivor_pc.h"
+#include "survivor_fix/log.h"
 
 // somewhere global
 
@@ -224,6 +225,30 @@ void m_IDirect3DDevice8::RenderMovie(UINT screenW, UINT screenH)
 	// 4. Preserve the source aspect ratio. Capcom30.avi is 320x240; filling a
 	// 16:9 backbuffer crops its sides instead of showing the complete logo.
 	if (g_MovieTex && screenW && screenH) {
+		static UINT lastMovieScreenW = 0, lastMovieScreenH = 0;
+		if (screenW != lastMovieScreenW || screenH != lastMovieScreenH) {
+			lastMovieScreenW = screenW;
+			lastMovieScreenH = screenH;
+			sf::Log("FFmpeg movie render: video %dx%d, back buffer %ux%u", g_Video.pCodecCtx->width, g_Video.pCodecCtx->height, screenW, screenH);
+		}
+		// The game leaves its 640x480 scene viewport active here.  XYZRHW movie
+		// vertices are clipped to that inherited viewport, which cuts off the
+		// right of 800x600 windowed movies (including the Capcom logo).
+		D3DVIEWPORT8 oldViewport{};
+		const bool restoreViewport = SUCCEEDED(ProxyInterface->GetViewport(&oldViewport));
+		D3DVIEWPORT8 movieViewport{};
+		movieViewport.X = 0;
+		movieViewport.Y = 0;
+		movieViewport.Width = screenW;
+		movieViewport.Height = screenH;
+		movieViewport.MinZ = 0.0f;
+		movieViewport.MaxZ = 1.0f;
+		ProxyInterface->SetViewport(&movieViewport);
+
+		DWORD oldScissor = FALSE;
+		const bool restoreScissor = SUCCEEDED(ProxyInterface->GetRenderState(D3DRS_SCISSORTESTENABLE, &oldScissor));
+		ProxyInterface->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+
 		const float videoAspect = static_cast<float>(g_Video.pCodecCtx->width) / g_Video.pCodecCtx->height;
 		const float screenAspect = static_cast<float>(screenW) / screenH;
 		float w = static_cast<float>(screenW), h = static_cast<float>(screenH), x = 0.0f, y = 0.0f;
@@ -235,6 +260,9 @@ void m_IDirect3DDevice8::RenderMovie(UINT screenW, UINT screenH)
 			y = (static_cast<float>(screenH) - h) * 0.5f;
 		}
 		DrawTexturedQuad(ProxyInterface, (LPDIRECT3DTEXTURE8)g_MovieTex, x, y, w, h);
+
+		if (restoreScissor) ProxyInterface->SetRenderState(D3DRS_SCISSORTESTENABLE, oldScissor);
+		if (restoreViewport) ProxyInterface->SetViewport(&oldViewport);
 	}
 }
 

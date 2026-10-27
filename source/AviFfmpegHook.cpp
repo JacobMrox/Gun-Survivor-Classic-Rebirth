@@ -6,6 +6,7 @@
 #include "AviFfmpegHook.h"
 #include "globals.h"
 #include "debug.h"
+#include "survivor_fix/log.h"
 #include "survivor_pc.h"
 #include <mmsystem.h>
 #include <string>
@@ -299,6 +300,91 @@ namespace {
 }
 
 namespace AviFfmpegHook {
+    struct OverlayState { std::string path; HWND parent = nullptr; volatile LONG stop = FALSE; };
+    static OverlayState* g_overlay = nullptr;
+
+    static BOOL CALLBACK HideNativeMovieChild(HWND window, LPARAM overlayValue) {
+        const HWND overlay = reinterpret_cast<HWND>(overlayValue);
+        if (window != overlay && IsWindowVisible(window)) ShowWindow(window, SW_HIDE);
+        return TRUE;
+    }
+
+    static DWORD WINAPI OverlayThread(LPVOID argument) {
+        auto* state = static_cast<OverlayState*>(argument);
+        AVFormatContext* format = nullptr;
+        AVCodecContext* codec = nullptr;
+        AVFrame* frame = nullptr;
+        AVFrame* rgb = nullptr;
+        SwsContext* scale = nullptr;
+        uint8_t* pixels = nullptr;
+        HWND overlay = nullptr;
+        int stream = -1, size = 0;
+        const AVCodec* decoder = nullptr;
+        BITMAPINFO info{};
+        AVRational rate{};
+        DWORD delay = 33;
+        int lastClientW = 0, lastClientH = 0;
+
+        if (avformat_open_input(&format, state->path.c_str(), nullptr, nullptr) != 0 || avformat_find_stream_info(format, nullptr) < 0) goto done;
+        for (unsigned i = 0; i < format->nb_streams; ++i) if (format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) { stream = static_cast<int>(i); break; }
+        if (stream < 0) goto done;
+        decoder = avcodec_find_decoder(format->streams[stream]->codecpar->codec_id);
+        if (!decoder || !(codec = avcodec_alloc_context3(decoder)) || avcodec_parameters_to_context(codec, format->streams[stream]->codecpar) < 0 || avcodec_open2(codec, decoder, nullptr) < 0) goto done;
+        if (!(frame = av_frame_alloc()) || !(rgb = av_frame_alloc())) goto done;
+        size = av_image_get_buffer_size(AV_PIX_FMT_BGRA, codec->width, codec->height, 1);
+        if (size <= 0 || !(pixels = static_cast<uint8_t*>(av_malloc(size)))) goto done;
+        av_image_fill_arrays(rgb->data, rgb->linesize, pixels, AV_PIX_FMT_BGRA, codec->width, codec->height, 1);
+        if (!(scale = sws_getContext(codec->width, codec->height, codec->pix_fmt, codec->width, codec->height, AV_PIX_FMT_BGRA, SWS_BILINEAR, nullptr, nullptr, nullptr))) goto done;
+        if (!state->parent) state->parent = GetForegroundWindow();
+        if (!state->parent) goto done;
+        overlay = CreateWindowExA(WS_EX_NOPARENTNOTIFY, "STATIC", "", WS_CHILD | WS_CLIPSIBLINGS | SS_BLACKRECT, 0, 0, 1, 1, state->parent, nullptr, GetModuleHandleA(nullptr), nullptr);
+        if (!overlay) goto done;
+        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = codec->width; info.bmiHeader.biHeight = -codec->height; info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
+        rate = format->streams[stream]->avg_frame_rate;
+        delay = rate.num > 0 && rate.den > 0 ? static_cast<DWORD>(1000.0 * rate.den / rate.num + 0.5) : 33;
+        sf::Log("FFmpeg overlay started: %s", state->path.c_str());
+        while (!InterlockedCompareExchange(&state->stop, FALSE, FALSE)) {
+            AVPacket packet{}; bool got = false;
+            while (!got && !InterlockedCompareExchange(&state->stop, FALSE, FALSE)) {
+                if (av_read_frame(format, &packet) < 0) { InterlockedExchange(&state->stop, TRUE); break; }
+                if (packet.stream_index == stream) { avcodec_send_packet(codec, &packet); got = avcodec_receive_frame(codec, frame) == 0; }
+                av_packet_unref(&packet);
+            }
+            if (!got) break;
+            sws_scale(scale, frame->data, frame->linesize, 0, codec->height, rgb->data, rgb->linesize);
+            RECT rc{}; GetClientRect(state->parent, &rc);
+            if (rc.right != lastClientW || rc.bottom != lastClientH) {
+                lastClientW = rc.right; lastClientH = rc.bottom;
+                SetWindowPos(overlay, HWND_TOP, 0, 0, rc.right, rc.bottom, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            }
+            HDC dc = GetDC(overlay); StretchDIBits(dc, 0, 0, rc.right, rc.bottom, 0, 0, codec->width, codec->height, pixels, &info, DIB_RGB_COLORS, SRCCOPY); ReleaseDC(overlay, dc);
+            // Keep native audio and completion handling, but retire the old video
+            // surface only after this decoded FFmpeg frame is actually visible.
+            EnumChildWindows(state->parent, HideNativeMovieChild, reinterpret_cast<LPARAM>(overlay));
+            Sleep(delay ? delay : 1);
+        }
+    done:
+        if (overlay) DestroyWindow(overlay); if (scale) sws_freeContext(scale); if (pixels) av_free(pixels); if (rgb) av_frame_free(&rgb); if (frame) av_frame_free(&frame); if (codec) avcodec_free_context(&codec); if (format) avformat_close_input(&format);
+        if (g_overlay == state) g_overlay = nullptr; delete state; return 0;
+    }
+
+    bool StartForGameOverlay(const char* filename) {
+        if (!filename || !*filename) return false;
+        StopForGameOverlay();
+        auto* state = new OverlayState{}; state->path = filename; state->parent = GetActiveWindow(); g_overlay = state;
+        if (!CreateThread(nullptr, 0, OverlayThread, state, 0, nullptr)) { g_overlay = nullptr; delete state; return false; }
+        return true;
+    }
+
+    bool StartForGameOverlay(const wchar_t* filename) {
+        if (!filename || !*filename) return false;
+        char path[MAX_PATH * 4] = {};
+        return WideCharToMultiByte(CP_ACP, 0, filename, -1, path, sizeof(path), nullptr, nullptr) && StartForGameOverlay(path);
+    }
+
+    void StopForGameOverlay() { if (g_overlay) InterlockedExchange(&g_overlay->stop, TRUE); }
+    bool IsGameOverlayActive() { return g_overlay != nullptr; }
+
     bool Install() {
         static DummyAVIFile s_DummyFile;
         g_pDummyFile = &s_DummyFile;
