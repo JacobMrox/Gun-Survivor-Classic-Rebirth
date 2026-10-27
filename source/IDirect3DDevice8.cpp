@@ -360,6 +360,18 @@ HRESULT m_IDirect3DDevice8::SetClipStatus(CONST D3DCLIPSTATUS8 *pClipStatus)
 HRESULT m_IDirect3DDevice8::SetRenderState(D3DRENDERSTATETYPE State, DWORD Value)
 {
 	SurvivorPc_OnSetRenderState(_ReturnAddress(), State, Value);
+	if (SurvivorPc_SmoothModelLighting())
+	{
+		// The PC model stream carries fixed-point-sized normals. Without this,
+		// fixed-function diffuse terms saturate and characters look flat-lit.
+		if (State == D3DRS_NORMALIZENORMALS)
+			Value = TRUE;
+		if (State == D3DRS_LIGHTING && Value)
+		{
+			ProxyInterface->SetRenderState(D3DRS_NORMALIZENORMALS, TRUE);
+			ProxyInterface->SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
+		}
+	}
 	return ProxyInterface->SetRenderState(State, Value);
 }
 

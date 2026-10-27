@@ -45,6 +45,9 @@ bool SurvivorPc_TakeShadowDraw();
 
 // True when the running executable is the PC port of Resident Evil Survivor (gun_bio.exe, checked by bytes).
 bool SurvivorPc_IsSurvivorExe();
+// Experimental fixed-function lighting correction. Survivor's model normals
+// are fixed-point scaled; D3D must normalize them before diffuse lighting.
+bool SurvivorPc_SmoothModelLighting();
 
 // ---- PS1 screen effects ----------------------------------------------------------------------------------
 // Screen effects of the PS1 version of Resident Evil Survivor (fades, the blurred view, the death zoom, the red
