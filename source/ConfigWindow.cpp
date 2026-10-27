@@ -34,6 +34,9 @@ static bool keepAspect = true;
 static char cfgPath[MAX_PATH];
 bool bShowConfigOnLaunch = false;
 ULONG_PTR gdiplusToken;
+static bool gUseFluentDesign = false;
+static WNDPROC gCrosshairPreviewProc = nullptr;
+constexpr UINT WM_RENDER_CROSSHAIR_PREVIEW = WM_APP + 1;
 
 const char* FluentComboText(HWND combo, UINT controlId, UINT itemId);
 
@@ -165,7 +168,28 @@ void DrawFluentButton(const DRAWITEMSTRUCT& item) {
     DrawTextW(item.hDC, caption, -1, const_cast<RECT*>(&item.rcItem), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
-void EnableFluentTheme(HWND h) {
+bool IsWindows11OrLater() {
+    using RtlGetVersionFn = LONG(WINAPI*)(OSVERSIONINFOEXW*);
+    if (HMODULE ntdll = GetModuleHandleW(L"ntdll.dll")) {
+        if (auto rtlGetVersion = reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion"))) {
+            OSVERSIONINFOEXW version = { sizeof(version) };
+            return rtlGetVersion(&version) == 0 && version.dwMajorVersion == 10 && version.dwBuildNumber >= 22000;
+        }
+    }
+    return false;
+}
+
+void EnableOwnerDraw(HWND h, int id, bool comboBox) {
+    HWND control = GetDlgItem(h, id);
+    if (!control) return;
+    LONG_PTR style = GetWindowLongPtrW(control, GWL_STYLE);
+    style = comboBox ? (style | CBS_OWNERDRAWFIXED) : ((style & ~BS_TYPEMASK) | BS_OWNERDRAW);
+    SetWindowLongPtrW(control, GWL_STYLE, style);
+    SetWindowPos(control, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+}
+
+bool EnableFluentTheme(HWND h) {
+    if (!IsWindows11OrLater()) return false;
     // These exports are intentionally loaded at runtime so the wrapper retains
     // compatibility with Windows versions that pre-date dark native controls.
     using SetPreferredAppModeFn = int(WINAPI*)(int);
@@ -198,6 +222,9 @@ void EnableFluentTheme(HWND h) {
     // The themed edit background remains light on some Windows 11 builds; let the
     // dialog's colour handler draw the compact dark input instead.
     if (HWND refreshRate = GetDlgItem(h, IDC_REFRESH)) SetWindowTheme(refreshRate, L"", L"");
+    for (const int id : { IDC_RES_COMBO, IDC_FPS_COMBO, IDC_CROSS_COMBO }) EnableOwnerDraw(h, id, true);
+    for (const int id : { IDC_CROSS_BROWSE, IDOK, IDCANCEL }) EnableOwnerDraw(h, id, false);
+    return true;
 }
 
 HANDLE ActivateVisualStyles(HINSTANCE instance, ULONG_PTR& cookie) {
@@ -250,22 +277,23 @@ const char* FluentComboText(HWND combo, UINT controlId, UINT itemId) {
     return "";
 }
 
-void RenderCrosshairPreview(HWND hDlg) {
-    HWND hStatic = GetDlgItem(hDlg, IDC_CROSS_PREVIEW);
-    if (!hStatic) return;
-
+void PaintCrosshairPreview(HWND hStatic, HDC hdc) {
     RECT rect;
     GetClientRect(hStatic, &rect);
-    HDC hdc = GetDC(hStatic);
 
     Graphics graphics(hdc);
-    // Use the standard Dialog background color (Face color)
     Color backColor;
-    backColor.SetFromCOLORREF(kInputColor);
+    backColor.SetFromCOLORREF(gUseFluentDesign ? kInputColor : GetSysColor(COLOR_3DFACE));
     SolidBrush backBrush(backColor);
     graphics.FillRectangle(&backBrush, 0, 0, rect.right, rect.bottom);
 
-    std::wstring widestr = std::wstring(sCrosshairPath.begin(), sCrosshairPath.end());
+    std::string previewPath = sCrosshairPath;
+    if (PathIsRelativeA(previewPath.c_str())) {
+        std::string configDirectory = cfgPath;
+        const size_t slash = configDirectory.find_last_of("\\/");
+        if (slash != std::string::npos) previewPath = configDirectory.substr(0, slash + 1) + previewPath;
+    }
+    std::wstring widestr = std::wstring(previewPath.begin(), previewPath.end());
     Image img(widestr.c_str());
 
     if (img.GetLastStatus() == Ok) {
@@ -277,7 +305,24 @@ void RenderCrosshairPreview(HWND hDlg) {
         int y = (rect.bottom - newH) / 2;
         graphics.DrawImage(&img, x, y, newW, newH);
     }
-    ReleaseDC(hStatic, hdc);
+}
+
+LRESULT CALLBACK CrosshairPreviewProc(HWND hStatic, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_PAINT) {
+        PAINTSTRUCT paint = {};
+        HDC hdc = BeginPaint(hStatic, &paint);
+        PaintCrosshairPreview(hStatic, hdc);
+        EndPaint(hStatic, &paint);
+        return 0;
+    }
+    return CallWindowProc(gCrosshairPreviewProc, hStatic, message, wParam, lParam);
+}
+
+void RenderCrosshairPreview(HWND hDlg) {
+    HWND hStatic = GetDlgItem(hDlg, IDC_CROSS_PREVIEW);
+    if (!hStatic) return;
+    InvalidateRect(hStatic, nullptr, TRUE);
+    UpdateWindow(hStatic);
 }
 
 void SyncConfig(bool save) {
@@ -336,8 +381,12 @@ void SyncConfig(bool save) {
 INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     switch (m) {
     case WM_INITDIALOG: {
-        EnableFluentTheme(h);
-        CreateSectionCards(h);
+        gUseFluentDesign = EnableFluentTheme(h);
+        if (gUseFluentDesign) CreateSectionCards(h);
+        if (HWND preview = GetDlgItem(h, IDC_CROSS_PREVIEW)) {
+            WNDPROC previous = reinterpret_cast<WNDPROC>(SetWindowLongPtr(preview, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(CrosshairPreviewProc)));
+            if (!gCrosshairPreviewProc) gCrosshairPreviewProc = previous;
+        }
 
         HWND hFPS = GetDlgItem(h, IDC_FPS_COMBO);
         SendMessage(hFPS, CB_ADDSTRING, 0, (LPARAM)"Stable (60)");
@@ -359,10 +408,10 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Umbrella Chronicles");
         SendMessage(hCross, CB_ADDSTRING, 0, (LPARAM)"Custom...");
 
-        if (sCrosshairPath.find("crosshair_pc.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 1, 0);
-        else if (sCrosshairPath.find("crosshair_old.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 2, 0);
-        else if (sCrosshairPath.find("crosshair_psx.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 3, 0);
-        else if (sCrosshairPath.find("crosshair_uc_big.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 0, 0);
+        if (sCrosshairPath.find("crosshair_pc.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 0, 0);
+        else if (sCrosshairPath.find("crosshair_old.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 1, 0);
+        else if (sCrosshairPath.find("crosshair_psx.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 2, 0);
+        else if (sCrosshairPath.find("crosshair_uc_big.png") != std::string::npos) SendMessage(hCross, CB_SETCURSEL, 3, 0);
         else SendMessage(hCross, CB_SETCURSEL, 4, 0);
 
         HWND hTrack = GetDlgItem(h, IDC_CROSS_SCALE);
@@ -388,15 +437,22 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_ENABLE_LOG, gEnableLogging);
         //CheckDlgButton(h, IDC_DISABLE_SHIM, bDirect3D8DisableMaximizedWindowedModeShim);
         CheckDlgButton(h, IDC_SHOW_CONFIG, bShowConfigOnLaunch);
+        // Let the static control complete its initial paint before drawing the image.
+        PostMessage(h, WM_RENDER_CROSSHAIR_PREVIEW, 0, 0);
         return TRUE;
     }
+    case WM_RENDER_CROSSHAIR_PREVIEW:
+        RenderCrosshairPreview(h);
+        return TRUE;
     case WM_CTLCOLORDLG: {
+        if (!gUseFluentDesign) break;
         HDC dc = reinterpret_cast<HDC>(w);
         SetBkColor(dc, kSurfaceColor);
         return reinterpret_cast<INT_PTR>(SurfaceBrush());
     }
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLORBTN: {
+        if (!gUseFluentDesign) break;
         HDC dc = reinterpret_cast<HDC>(w);
         SetTextColor(dc, kTextColor);
         SetBkColor(dc, kCardColor);
@@ -404,6 +460,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX: {
+        if (!gUseFluentDesign) break;
         HDC dc = reinterpret_cast<HDC>(w);
         SetTextColor(dc, kTextColor);
         SetBkColor(dc, kInputColor);
@@ -411,22 +468,23 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_DRAWITEM: {
         const auto* item = reinterpret_cast<const DRAWITEMSTRUCT*>(l);
-        if (item && item->CtlType == ODT_COMBOBOX && IsFluentCombo(item->CtlID)) {
+        if (gUseFluentDesign && item && item->CtlType == ODT_COMBOBOX && IsFluentCombo(item->CtlID)) {
             DrawFluentCombo(*item);
             return TRUE;
         }
-        if (item && item->CtlType == ODT_BUTTON && (item->CtlID == IDC_CROSS_BROWSE || item->CtlID == IDOK || item->CtlID == IDCANCEL)) {
+        if (gUseFluentDesign && item && item->CtlType == ODT_BUTTON && (item->CtlID == IDC_CROSS_BROWSE || item->CtlID == IDOK || item->CtlID == IDCANCEL)) {
             DrawFluentButton(*item);
             return TRUE;
         }
         break;
     }
     case WM_PAINT: {
-        PAINTSTRUCT paint = {};
-        HDC dc = BeginPaint(h, &paint);
-        PaintSectionCards(h, dc);
-        EndPaint(h, &paint);
-        RenderCrosshairPreview(h);
+        if (gUseFluentDesign) {
+            PAINTSTRUCT paint = {};
+            HDC dc = BeginPaint(h, &paint);
+            PaintSectionCards(h, dc);
+            EndPaint(h, &paint);
+        }
         break;
     }
     case WM_HSCROLL: {
@@ -434,7 +492,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             int pos = (int)SendMessage((HWND)l, TBM_GETPOS, 0, 0);
             fCrosshairScale = (float)pos / 100.0f;
             SetDlgItemTextA(h, IDC_CROSS_SCALE_LABEL, (std::to_string(pos) + "%").c_str());
-            InvalidateRect(GetDlgItem(h, IDC_CROSS_PREVIEW), NULL, TRUE);
+            RenderCrosshairPreview(h);
         }
         else if ((HWND)l == GetDlgItem(h, IDC_MOUSE_SENSITIVITY)) {
             mouseSensitivityPercent = (int)SendMessage((HWND)l, TBM_GETPOS, 0, 0);
@@ -474,7 +532,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             else if (sel == 1) sCrosshairPath = "FIXRES/crosshair_old.png";
             else if (sel == 2) sCrosshairPath = "FIXRES/crosshair_psx.png";
             else if (sel == 3) sCrosshairPath = "FIXRES/crosshair_uc_big.png";
-            InvalidateRect(GetDlgItem(h, IDC_CROSS_PREVIEW), NULL, TRUE);
+            RenderCrosshairPreview(h);
         }
         else if (LOWORD(w) == IDC_CROSS_BROWSE) {
             char szFile[MAX_PATH] = { 0 };
@@ -487,7 +545,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (GetOpenFileNameA(&ofn)) {
                 sCrosshairPath = szFile;
                 SendMessage(GetDlgItem(h, IDC_CROSS_COMBO), CB_SETCURSEL, 4, 0);
-                InvalidateRect(GetDlgItem(h, IDC_CROSS_PREVIEW), NULL, TRUE);
+                RenderCrosshairPreview(h);
             }
         }
         break;
