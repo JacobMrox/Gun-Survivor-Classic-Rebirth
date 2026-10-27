@@ -221,16 +221,19 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/c996912e-d21a-44c6-bed0-29a7f9ef2bf6" />
 
 # Project Status & To-do
-* Fix movie player by replacing DirectShow with ffmpeg (In progress...): Redirect avifil32.dll (Microsoft AVI File support library) and quartz.dll (DirectShow Runtime) to use FFMPEG.
-* Remove old log printing shipped with the original game (debug.txt).
-* Remove the need for the game to have GBIO.CFG in the directory to launch.
-* Fix Zombie footstep sound.
-* Fix NPC/enemy lighting/shader.
-* Add shooting screen flash (gun con flash simulation) effect.
-* Fix enemy behaviour and animations (partially done).
-* Add Xinput and Raw Input support, in addition to Dinput.
-* Add key bindings
-* Mod Support
+<img width="562" height="957" alt="image" src="https://github.com/user-attachments/assets/3f595689-5888-48c5-8587-4d23341b3cc3" />
+
+* Fix movie player by replacing DirectShow with ffmpeg (In progress...): Redirect avifil32.dll (Microsoft AVI File support library) and quartz.dll (DirectShow Runtime) to use FFMPEG - working on it (Mrox)
+* Remove old log printing shipped with the original game (debug.txt) - working on it.
+* Remove the need for the game to have GBIO.CFG in the directory to launch - working on it.
+* Fix Zombie footstep sound - fixed (Trigger)
+* Fix NPC/enemy lighting/shader - fixed (Mrox)
+* Restore missing screen flash/fade effects for title and menus - Fixed (Trigger)
+* Add shooting screen flash (gun con flash simulation) effect
+* Fix enemy behaviour and animations - partially done (Trigger)
+* Add Xinput and Raw Input support, in addition to Dinput - Not yet
+* Add key bindings - Not yet
+* Mod Support - Not yet
 
 # Progress Videos
 
