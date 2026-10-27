@@ -63,6 +63,10 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
       c.ps1ZombieBlend, c.ps1ZombiePose, c.ps1ZombieBlood, c.ps1ZombieDeath, c.ps1ZombiePush, c.ps1ZombieNavigation,
       c.ps1ZombieWorld, c.ps1PlayerMove, c.ps1PlayerWalls, c.ps1HeadBob, c.ps1View, c.ps1WakeView,
       c.ps1DamageView, c.ps1PlayerDeath, c.ps1DoorFade, c.ps1Cadence);
+  Log("Survivor Fix: title fade %d, walk audio %d, death audio %d, voice banks %d, "
+      "scripted access %d, player support %d, zombie support %d",
+      c.ps1TitleFade, c.ps1ZombieWalkAudio, c.ps1ZombieDeathAudio, c.ps1ZombieVoiceBanks,
+      c.ps1ScriptedAccess, c.ps1PlayerHeightSupport, c.ps1ZombieHeightSupport);
   if (!HooksInit()) return;
 
   // The room hook also tells the zombie code when a room changes.

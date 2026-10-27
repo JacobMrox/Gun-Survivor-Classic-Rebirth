@@ -1,6 +1,6 @@
 # PS1 zombie death voice banks
 
-`Ps1ZombieVoiceBanks=1` in `[SurvivorFix]`, together with `Ps1ZombieDeathAudio=1`, enables the candidate. Both default to off; there is no configuration-window switch. Walking audio is independent.
+`Ps1ZombieVoiceBanks` and `Ps1ZombieDeathAudio` are enabled by default and follow the Ps1Zombies group. Explicit `[SurvivorFix]` overrides remain available for diagnostics; there is no configuration-window switch. Walking audio is independent.
 
 ## Original rules
 

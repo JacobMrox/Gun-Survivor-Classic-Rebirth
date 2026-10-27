@@ -10,11 +10,11 @@ The sequence takes 279 or 280 VBlanks (about 4.7 seconds), depending on global p
 
 ## Implementation
 
-Ps1TitleFade is an advanced opt-in and defaults to 0 pending broader regression coverage. Two byte-guarded wait hooks retain the original game flags, stats and sound calls. The existing Native EndFrame finishes the currently open title scene and captures its image. The existing held-frame renderer presents the original brightness/flash curve, using actual VBlank deadlines so a lower presentation rate samples the same curve rather than slowing it. Native BeginFrame restores the open-scene contract before the original caller resumes. No executable, global clock, room script or gameplay cadence is changed.
+Ps1TitleFade is enabled by default. An explicit `Ps1TitleFade=0` in `[SurvivorFix]` keeps the original PC wait for diagnostics. Two byte-guarded wait hooks retain the original game flags, stats and sound calls. The existing Native EndFrame finishes the currently open title scene and captures its image. The existing held-frame renderer presents the original brightness/flash curve, using actual VBlank deadlines so a lower presentation rate samples the same curve rather than slowing it. Native BeginFrame restores the open-scene contract before the original caller resumes. No executable, global clock, room script or gameplay cadence is changed.
 
 The title renderer temporarily excludes other screen effects. It multiplies the destination by the brightness factor, adds the white flash and restores the render state. Its capture is scoped to the transition, avoiding idle title copies and preventing previous-frame effects from leaking into the room. Fixed-function colour quantization can differ from PS1 integer multiplication by one 8-bit output unit.
 
-Unknown ABI, an unavailable initial device or failed initial capture retains the native wait. The feature is not enabled by default after tests alone. The PC confirmation audio is preserved; the PS1 layered voices and music-volume fade are outside this visual correction. Device loss, Alt+Tab, Easy mode and repeated start/return sequences still require interactive checks.
+Unknown ABI, an unavailable initial device or failed initial capture retains the native wait. Default activation follows the observed gameplay acceptance; broader interactive coverage remains open. The PC confirmation audio is preserved; the PS1 layered voices and music-volume fade are outside this visual correction. Device loss, Alt+Tab, Easy mode and repeated start/return sequences still require interactive checks.
 
 ## Verification
 

@@ -10,7 +10,7 @@ A bounded native-damage diagnostic confirmed health reached zero, managed clips 
 
 ## Candidate
 
-`Ps1ZombieDeathAudio=1` in `[SurvivorFix]` opts in. The default is off, with no configuration-window control. The candidate requests the shipped PC death voice through native pooled playback once on managed death entry, independently of the walking-audio option. It checks the original sound-entry bytes before installation. Unsupported models, living actors, existing pools, missing clips and native fallback retain existing audio ownership. Held death clips and optional ground follow-ups do not request another voice. Actor reset permits a fresh event for a new life.
+`Ps1ZombieDeathAudio` is enabled by default and follows Ps1Zombies unless explicitly overridden in `[SurvivorFix]`. No configuration-window control is added. The candidate requests the shipped PC death voice through native pooled playback once on managed death entry, independently of the walking-audio option. It checks the original sound-entry bytes before installation. Unsupported models, living actors, existing pools, missing clips and native fallback retain existing audio ownership. Held death clips and optional ground follow-ups do not request another voice. Actor reset permits a fresh event for a new life.
 
 The death plan, random selection, animation speeds, hit voices and walking sounds are unchanged. A missing sound backend does not prevent the existing death animation.
 
@@ -30,6 +30,6 @@ In all nine entries, death mono cue `1` and stereo cues `6/7` reference the same
 
 The preserved shower checkpoint has four active zombies alternating logical banks `4/5` by their own actor-index parity; both banks have loaded source entry `27`. Hearing the same death voice from that group would therefore be consistent with that checkpoint; it does not establish a universal recording for the whole game.
 
-Every one of the nine complete original banks has an exact byte match in the already-installed PC `PSX_DATA/noise/noise.bin`. No new sound assets need to be distributed to reproduce this inventory. The first candidate uses only the native PC death cue, observed loading `ZOMBIE1/SND-001.WAV`. The additional opt-in `Ps1ZombieVoiceBanks` candidate now implements original bank selection and per-life assignment for recognized native encounters; see [zombie-voice-banks.md](zombie-voice-banks.md).
+Every one of the nine complete original banks has an exact byte match in the already-installed PC `PSX_DATA/noise/noise.bin`. No new sound assets need to be distributed to reproduce this inventory. The first candidate uses only the native PC death cue, observed loading `ZOMBIE1/SND-001.WAV`. The default-on `Ps1ZombieVoiceBanks` adapter implements original bank selection and per-life assignment for recognized native encounters; see [zombie-voice-banks.md](zombie-voice-banks.md).
 
 This verification was offline: existing PSX exports, the preserved checkpoint, original disc sectors, SPU decoding and exact hashes. It did not start another game, alter the open PC session, change binaries or claim acoustic/spatial playback parity. The bank-selection follow-up restores the verified rules rather than choosing a random sound independently on each death. Its tested scope and recognition limits are documented separately.

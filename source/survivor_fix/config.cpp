@@ -24,7 +24,7 @@ void LoadConfig(const char* iniPath) {
   const bool zombies = Read("Ps1Zombies", true);
   c.ps1ZombieStumble = Read("Ps1ZombieStumble", zombies);
   c.ps1ZombieWalk = Read("Ps1ZombieWalk", zombies);
-  c.ps1ZombieWalkAudio = Read("Ps1ZombieWalkAudio", false);
+  c.ps1ZombieWalkAudio = Read("Ps1ZombieWalkAudio", zombies);
   c.ps1ZombieSpeed = Read("Ps1ZombieSpeed", zombies);
   c.ps1ZombieWalkAnim = Read("Ps1ZombieWalkAnim", zombies);
   c.ps1ZombieBite = Read("Ps1ZombieBite", zombies);
@@ -33,8 +33,8 @@ void LoadConfig(const char* iniPath) {
   c.ps1ZombiePose = Read("Ps1ZombiePose", zombies);
   c.ps1ZombieBlood = Read("Ps1ZombieBlood", zombies);
   c.ps1ZombieDeath = Read("Ps1ZombieDeath", zombies);
-  c.ps1ZombieDeathAudio = Read("Ps1ZombieDeathAudio", false);
-  c.ps1ZombieVoiceBanks = Read("Ps1ZombieVoiceBanks", false);
+  c.ps1ZombieDeathAudio = Read("Ps1ZombieDeathAudio", zombies);
+  c.ps1ZombieVoiceBanks = Read("Ps1ZombieVoiceBanks", zombies);
   c.ps1ZombiePush = Read("Ps1ZombiePush", zombies);
   c.biteFromBehind = Read("BiteFromBehind", zombies);
   // The shadow switch of the window (Ps1ShadowBlend, survivor_pc.cpp) also gives the shadow its PS1 size.
@@ -44,13 +44,13 @@ void LoadConfig(const char* iniPath) {
   const bool chase = Read("Ps1ZombieChase", true);
   c.ps1ZombieNavigation = Read("Ps1ZombieNavigation", chase);
   c.ps1ZombieWorld = Read("Ps1ZombieWorld", chase);
-  c.ps1ZombieHeightSupport = Read("Ps1ZombieHeightSupport", false);
+  c.ps1ZombieHeightSupport = Read("Ps1ZombieHeightSupport", chase);
 
   const bool movement = Read("Ps1PlayerMovement", true);
   c.ps1PlayerMove = Read("Ps1PlayerMove", movement);
   c.ps1PlayerWalls = Read("Ps1PlayerWalls", movement);
-  c.ps1ScriptedAccess = Read("Ps1ScriptedAccess", false);
-  c.ps1PlayerHeightSupport = Read("Ps1PlayerHeightSupport", false);
+  c.ps1ScriptedAccess = Read("Ps1ScriptedAccess", movement);
+  c.ps1PlayerHeightSupport = Read("Ps1PlayerHeightSupport", movement);
   c.ps1HeadBob = Read("Ps1HeadBob", movement);
 
   const bool view = Read("Ps1PlayerView", true);
@@ -60,7 +60,7 @@ void LoadConfig(const char* iniPath) {
 
   c.ps1PlayerDeath = Read("Ps1PlayerDeath", true);
   c.ps1DoorFade = Read("Ps1DoorFade", true);
-  c.ps1TitleFade = Read("Ps1TitleFade", false);
+  c.ps1TitleFade = Read("Ps1TitleFade", true);
   c.ps1Cadence = Read("Ps1FrameRate", true);
 
   c.inputDeviceFix = Read("InputDeviceFix", true);
