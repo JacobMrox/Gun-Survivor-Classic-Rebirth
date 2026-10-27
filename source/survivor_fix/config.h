@@ -51,6 +51,8 @@ struct Config {
   bool ps1ZombieNavigation = true;
   // Shared PS1 planar world (80081618, 8007F404): contacts and enemy walls like on the PS1.
   bool ps1ZombieWorld = true;
+  // Candidate: retain native mesh support after the PS1 planar step; opt-in until gameplay acceptance.
+  bool ps1ZombieHeightSupport = false;
 
   // Player movement (Ps1PlayerMovement) -------------------------------------------------------------
   // PS1 player movement (800771AC): forward 80, running 150, backwards 60 per frame, fixed from the first
@@ -59,6 +61,9 @@ struct Config {
   // PS1 walls for the player (800785C0 -> 8007CB9C): a point against the room's segments instead of the PC
   // object boxes (sphere of radius 650).
   bool ps1PlayerWalls = true;
+  // Candidate: native approach inside original type-3 scripted interaction ranges.
+  bool ps1ScriptedAccess = false;
+  bool ps1PlayerHeightSupport = false;  // Experimental preservation of native floor boxes.
   // PS1 view bob (800785C0): the eye rises up to 68 (112 running) by the table.
   bool ps1HeadBob = true;
 

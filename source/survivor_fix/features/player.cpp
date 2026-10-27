@@ -314,6 +314,92 @@ void RefreshJoltView() {
 // goes through the PS1 walls. Wall coordinates: same x, z opposite to the PC's.
 using QueryFn = int(__fastcall*)(void* c, void* edx, int index, float* disp, float* resp, float* dir);
 QueryFn g_query = nullptr;
+// 0045FAE0: __thiscall(mesh, face, recordA, recordB, recordC), RET 0x10.
+// Records are 40 bytes; position is the first three floats (00461850).
+// Observe triangles already read by 00461000; do not lock the vertex buffer again.
+using ReadTriangleFn = void(__fastcall*)(void*, void*, int, float*, float*, float*);
+ReadTriangleFn g_readTriangle = nullptr;
+struct NativeTriangle {
+  void* mesh = nullptr;
+  int face = -1;
+  float point[3] = {}, normal[3] = {}, rawNormal[3] = {};
+  bool valid = false;
+};
+thread_local bool g_collectTriangle = false;
+thread_local NativeTriangle g_nativeTriangle;
+
+// 0045F090: model+14 has 0x18-byte parts, face start/count at +8/+C,
+// bone at +10. Apply B+40 then B+C0 along B+100 parents, row vectors.
+// This keeps translated parts in world coordinates; reject unterminated chains.
+bool TriangleToWorld(void* mesh, int face, float (&points)[3][3]) {
+  const auto* model = game::Read<const uint8_t*>(mesh, 0x7C);
+  if (!model) return false;
+  const auto* parts = game::Read<const uint8_t*>(model, 0x14);
+  const unsigned count = game::Read<unsigned>(model, 0x18);
+  if (!parts || !count || count > 1024) return false;
+  const uint8_t* bone = nullptr;
+  bool found = false;
+  for (unsigned i = 0; i < count; ++i) {
+    const auto* part = parts + i*0x18;
+    const unsigned first = game::Read<unsigned>(part, 8), faces = game::Read<unsigned>(part, 12);
+    if (face >= 0 && unsigned(face) >= first && unsigned(face)-first < faces) {
+      bone = game::Read<const uint8_t*>(part, 16);found = true;break;
+    }
+  }
+  if (!found) return false;
+  for (int depth = 0; bone && depth < 64; ++depth) {
+    for (size_t offset : {size_t(0x40), size_t(0xC0)}) {
+      const auto* m = reinterpret_cast<const float*>(bone+offset);
+      for (int k = 0; k < 16; ++k) if (!std::isfinite(m[k])) return false;
+      for (auto& point : points) {
+        const float w = point[0]*m[3]+point[1]*m[7]+point[2]*m[11]+m[15];
+        if (w == 0.0f || !std::isfinite(w)) return false;
+        float next[3];
+        for (int k = 0; k < 3; ++k) {
+          next[k] = (point[0]*m[k]+point[1]*m[4+k]+point[2]*m[8+k]+m[12+k])/w;
+          if (!std::isfinite(next[k])) return false;
+        }
+        std::memcpy(point,next,sizeof next);
+      }
+    }
+    bone = game::Read<const uint8_t*>(bone, 0x100);
+  }
+  return bone == nullptr;
+}
+
+void __fastcall ReadTriangleDetour(void* mesh, void* edx, int face, float* a, float* b, float* c) {
+  g_readTriangle(mesh, edx, face, a, b, c);
+  if (!g_collectTriangle) return;
+  g_nativeTriangle = {};
+  if (!a || !b || !c || face < 0) return;
+  for (int i = 0; i < 3; ++i) {
+    if (!std::isfinite(a[i]) || !std::isfinite(b[i]) || !std::isfinite(c[i])) return;
+  }
+  const float ab[3] = {b[0]-a[0], b[1]-a[1], b[2]-a[2]};
+  const float ac[3] = {c[0]-a[0], c[1]-a[1], c[2]-a[2]};
+  const float n[3] = {ab[1]*ac[2]-ab[2]*ac[1], ab[2]*ac[0]-ab[0]*ac[2], ab[0]*ac[1]-ab[1]*ac[0]};
+  const float length = std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
+  if (!(length > 0.0f) || !std::isfinite(length)) return;
+  float points[3][3];
+  std::memcpy(points[0],a,sizeof points[0]);
+  std::memcpy(points[1],b,sizeof points[1]);
+  std::memcpy(points[2],c,sizeof points[2]);
+  if (!TriangleToWorld(mesh,face,points)) return;
+  const float u[3] = {points[1][0]-points[0][0],points[1][1]-points[0][1],points[1][2]-points[0][2]};
+  const float v[3] = {points[2][0]-points[0][0],points[2][1]-points[0][1],points[2][2]-points[0][2]};
+  const float world[3] = {u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]};
+  const float worldLength = std::sqrt(world[0]*world[0]+world[1]*world[1]+world[2]*world[2]);
+  if (!(worldLength > 0.0f) || !std::isfinite(worldLength)) return;
+  g_nativeTriangle.mesh = mesh;
+  g_nativeTriangle.face = face;
+  std::memcpy(g_nativeTriangle.point, points[0], sizeof g_nativeTriangle.point);
+  for (int i = 0; i < 3; ++i) {
+    g_nativeTriangle.rawNormal[i] = n[i]/length;
+    g_nativeTriangle.normal[i] = world[i]/worldLength;
+  }
+  g_nativeTriangle.valid = true;
+}
+
 bool g_nativeDoorAccessReady = false;
 bool g_native0801DoorAccessReady = false;
 
@@ -353,6 +439,9 @@ bool NativeDoorPassage(const float* p, const float* before = nullptr) {
   // already opens against the wall, while the PC exit area can lie beyond the imported wall (08/02:
   // doors 496 from walls x -3232 and 3520, the door did not open). There the step stays with the
   // native physics, which reaches the PC exit.
+  // The loader can also retain original type-3 scripted interaction ranges
+  // (80079A28 -> 8008DA00). These use the same approach policy in every room;
+  // native stage handlers still decide interaction, facing and progression.
   return ps1::InDoorEvent(CurrentRoomDoors(), p[0], p[2]);
 }
 
@@ -362,24 +451,96 @@ constexpr float kNoNormal = 99.0f;  // placeholder: normal not written by the qu
 // replacing it let the player into the floor.
 constexpr float kMeshWallPs1Match = 200.0f;
 constexpr size_t kPlayerRadius = 0xC4;  // O+C4, radius of the player's sphere (650)
+constexpr size_t kBoxResponseMode = 0x111;  // B+111 -> 00461000 -> 0040CA40
+constexpr uint8_t kNativeStepResponse = 4;
+
+// 00461000 uses O+B8 as the sphere centre and transforms the two box corners
+// through 0045E980. A box below that centre can provide native vertical support;
+// filtering it as a horizontal obstacle removes that support before mesh queries.
+// Keep the original native response instead of synthesising an upward movement.
+// 03/07 is a verified example: centre Y=-360, floor box top Y=-200, response 2.
+bool NativeBoxCanSupport(const uint8_t* self, const uint8_t* box) {
+  if (!g_config.ps1PlayerHeightSupport || !self || !box) return false;
+  const float centerY = game::Read<float>(self, 0xBC);  // O+B8.y (00461000)
+  const auto* a = reinterpret_cast<const float*>(box + 0x20);
+  const auto* b = reinterpret_cast<const float*>(box + 0x2C);
+  const auto* m = reinterpret_cast<const float*>(box + game::O::kMatrix);
+  if (!std::isfinite(centerY)) return false;
+  for (int i = 0; i < 3; ++i) {
+    if (!std::isfinite(a[i]) || !std::isfinite(b[i]) || !std::isfinite(m[i * 4 + 1])) return false;
+  }
+  if (!std::isfinite(m[13]) || !(m[1] * m[1] + m[5] * m[5] + m[9] * m[9] > 0.0f)) return false;
+  const float ay = a[0] * m[1] + a[1] * m[5] + a[2] * m[9] + m[13];
+  const float by = b[0] * m[1] + b[1] * m[5] + b[2] * m[9] + m[13];
+  return std::isfinite(ay) && std::isfinite(by) && (std::min)(ay, by) >= centerY;
+}
+
+// 00461000 shortens disp in place before visiting the next collider. Coincident
+// mesh risers can consume the whole step before later mode-4 boxes see it. Visit
+// native height responders first for this one query, preserving the designated
+// player slot. Restore the collection and map the returned contact index before
+// the caller sees it; actor indices and the original object array never change.
+int QueryWithNativeSupport(void* c, void* edx, int index, float* disp, float* resp, float* dir) {
+  if (!g_config.ps1PlayerWalls || !g_config.ps1PlayerHeightSupport || !c ||
+      index != game::Read<int>(c, game::C::kTarget)) return g_query(c, edx, index, disp, resp, dir);
+  auto** original = game::Read<uint8_t**>(c, game::C::kObjects);
+  const int count = game::Read<int>(c, game::C::kCount);
+  constexpr int capacity = 128;
+  if (!original || index < 0 || index >= count || count > capacity || !original[index])
+    return g_query(c, edx, index, disp, resp, dir);
+  uint8_t* ordered[capacity] = {};
+  int source[capacity] = {};
+  bool support[capacity] = {};
+  for (int i = 0; i < count; ++i) {
+    auto* box = original[i];
+    support[i] = i != index && box && game::Read<int8_t>(box, game::O::kCollisionMode) == 2 &&
+                 (game::Read<uint32_t>(box, game::O::kCollisionFlags) & 2u) == 0 &&
+                 (game::Read<uint8_t>(box, kBoxResponseMode) == kNativeStepResponse ||
+                  NativeBoxCanSupport(original[index], box));
+  }
+  ordered[index] = original[index];
+  source[index] = index;
+  int next = 0;
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = 0; i < count; ++i) {
+      if (i == index || support[i] != (pass == 0)) continue;
+      if (next == index) ++next;
+      ordered[next] = original[i];
+      source[next++] = i;
+    }
+  }
+  bool changed = false;
+  for (int i = 0; i < count; ++i) changed = changed || source[i] != i;
+  if (!changed) return g_query(c, edx, index, disp, resp, dir);
+  auto* contact = game::Field<int>(original[index], game::O::kContactIndex);
+  const int savedContact = *contact;
+  *contact = -1;
+  *game::Field<uint8_t**>(c, game::C::kObjects) = ordered;
+  const int result = g_query(c, edx, index, disp, resp, dir);
+  *game::Field<uint8_t**>(c, game::C::kObjects) = original;
+  *contact = *contact >= 0 && *contact < count ? source[*contact] : savedContact;
+  return result;
+}
 
 int __fastcall QueryDetour(void* c, void* edx, int index, float* disp, float* resp, float* dir) {
   zombie::WorldBeforeQuery(c, index);
   if (!g_config.ps1PlayerWalls || !c || index != game::Read<int>(c, game::C::kTarget)) {
-    return g_query(c, edx, index, disp, resp, dir);
+    return QueryWithNativeSupport(c, edx, index, disp, resp, dir);
   }
   auto** objects = game::Read<uint8_t**>(c, game::C::kObjects);
   const int count = game::Read<int>(c, game::C::kCount);
   uint8_t* self = objects && index >= 0 && index < count ? objects[index] : nullptr;
-  if (self && NativeDoorPassage(game::Field<float>(self, game::O::kPos))) {
-    // Keep the box/mesh contacts and the native step response intact in the doorway.
-    return g_query(c, edx, index, disp, resp, dir);
-  }
+  const bool nativePassage = self && NativeDoorPassage(game::Field<float>(self, game::O::kPos));
+  // Door approaches keep all native boxes and vertical responses. A return step
+  // must still be able to leave a matched mesh wall toward the PS1 room interior.
   uint8_t* marked[128];
   int n = 0;
-  for (int i = 0; objects && i < count && n < 128; ++i) {
+  for (int i = 0; !nativePassage && objects && i < count && n < 128; ++i) {
     uint8_t* b = objects[i];
     if (!b || i == index || game::Read<int8_t>(b, game::O::kCollisionMode) != 2) continue;
+    // 0040CA40 mode 4 redirects a box contact upwards; 004A4870 uses it for
+    // the six stair boxes in 07/03. Keep these native height contacts in every room.
+    if (game::Read<uint8_t>(b, kBoxResponseMode) == kNativeStepResponse || NativeBoxCanSupport(self, b)) continue;
     uint32_t* flags = game::Field<uint32_t>(b, game::O::kCollisionFlags);
     if (*flags & 2) continue;
     *flags |= 2;
@@ -405,7 +566,14 @@ int __fastcall QueryDetour(void* c, void* edx, int index, float* disp, float* re
     normal[2] = 0.0f;
     *game::Field<int>(self, game::O::kContactIndex) = -1;
   }
-  const int result = g_query(c, edx, index, disp, resp, dir);
+  const bool savedCollect = g_collectTriangle;
+  const NativeTriangle savedTriangle = g_nativeTriangle;
+  g_collectTriangle = g_readTriangle != nullptr;
+  g_nativeTriangle = {};
+  const int result = QueryWithNativeSupport(c, edx, index, disp, resp, dir);
+  const NativeTriangle triangle = g_nativeTriangle;
+  g_collectTriangle = savedCollect;
+  g_nativeTriangle = savedTriangle;
   for (int k = 0; k < n; ++k) *game::Field<uint32_t>(marked[k], game::O::kCollisionFlags) &= ~2u;
   if (self && disp) {
     float* normal = game::Field<float>(self, game::O::kContactNormal);
@@ -424,7 +592,26 @@ int __fastcall QueryDetour(void* c, void* edx, int index, float* disp, float* re
     const float radius = game::Read<float>(self, kPlayerRadius);
     const float fx = nl > 1e-6f ? pos[0] - normal[0] / nl * radius : pos[0];
     const float fz = nl > 1e-6f ? pos[2] - normal[2] / nl * radius : pos[2];
-    if (meshWall && ps1::MeshWallMatchesPs1(CurrentRoomWalls(), fx, fz, normal[0], normal[2], kMeshWallPs1Match)) {
+    // PS1 800785C0 -> 8007CB9C/8007C60C: return movement uses the room walls.
+    // The native sphere can already overlap a mesh at room entry. Its contact
+    // plane cannot then be inferred from position minus radius on every step.
+    // Use the exact face that the native query just read, with the same normal.
+    bool entersRoom = false;
+    if (meshWall && triangle.valid && triangle.mesh == objects[hit] &&
+        triangle.face == game::Read<int>(self, 0x100) &&
+        std::fabs(triangle.rawNormal[0]*normal[0] + triangle.rawNormal[1]*normal[1] +
+                  triangle.rawNormal[2]*normal[2]) > 0.99f && std::fabs(triangle.normal[1]) < 0.5f) {
+      const auto* centre = game::Field<float>(self,0xB8);
+      const auto* wn = triangle.normal;
+      const float plane = (centre[0]-triangle.point[0])*wn[0] +
+                          (centre[1]-triangle.point[1])*wn[1] + (centre[2]-triangle.point[2])*wn[2];
+      const float faceX = centre[0]-wn[0]*plane, faceZ = centre[2]-wn[2]*plane;
+      entersRoom = ps1::MeshWallEntersRoom(CurrentRoomWalls(), faceX, faceZ, wn[0], wn[2],
+                                         wanted[0], wanted[2], kMeshWallPs1Match);
+    }
+    const bool restoreMeshStep = entersRoom || (meshWall && !nativePassage &&
+        ps1::MeshWallMatchesPs1(CurrentRoomWalls(), fx, fz, normal[0], normal[2], kMeshWallPs1Match));
+    if (restoreMeshStep) {
       // Only the horizontal part: the vertical one stays the query's (floor and ramp). Restoring the wanted
       // y too (with gravity) let the player through the floor at the bottom of the 08/02 ramp, walking 150
       // lower (ground floor at -1438 instead of -1588).
@@ -811,6 +998,15 @@ bool InstallPlayer() {
     for (const auto& check : storageChecks) g_native0801DoorAccessReady = game::CheckBytes(check) && g_native0801DoorAccessReady;
     Log("Ps1PlayerWalls: PC door access 07/00 %s, 08/01 Storage %s", g_nativeDoorAccessReady ? "ready" : "off",
         g_native0801DoorAccessReady ? "ready" : "off");
+  }
+  if (g_config.ps1PlayerWalls) {
+    const game::ByteSignature triangle = {game::kReadCollisionTriangle, game::kReadCollisionTriangleBytes,
+                                          sizeof(game::kReadCollisionTriangleBytes)};
+    if (!game::CheckBytes(triangle) ||
+        !Hook("PlayerCollisionTriangle", game::kReadCollisionTriangle,
+              reinterpret_cast<void*>(&ReadTriangleDetour), reinterpret_cast<void**>(&g_readTriangle))) {
+      Log("Ps1PlayerWalls: exact triangle capture unavailable; native doorway response retained");
+    }
   }
   if (g_config.ps1WakeView) {
     const game::ByteSignature rotate = {game::kRotateObject, game::kRotateObjectPrologue,

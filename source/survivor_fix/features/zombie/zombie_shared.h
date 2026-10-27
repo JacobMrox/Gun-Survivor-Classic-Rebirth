@@ -143,6 +143,7 @@ struct BiteGate {
 
 // Shared world bridge; no extra hook ABI.
 bool WorldEnabled();
+bool InstallZombieHeightSupport();
 bool WorldOwnsObject(const uint8_t* o);
 bool WorldBeginUpdate(void* s, uintptr_t caller);
 void WorldPlanWalk(void* s, float fx, float fz, bool walk);

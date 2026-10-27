@@ -23,3 +23,7 @@ These tests cover mouse batch draining and movie skip input gating. They do not 
 The opt-in title-to-New Game candidate (`Ps1TitleFade=1`) follows the original PS1 flash and multiplicative fade; see `../../docs/title-new-game-fade.md` for evidence and pending validation. The wake-up camera trail remains incomplete. The room-entry fade in this change is separate from the title transition. Manual movie skipping and the complete Alt+Tab control sequence still need gameplay validation.
 
 The opt-in zombie locomotion audio candidate and its validation limits are documented in `../../docs/zombie-walk-audio.md`. It uses the original sound bank already present in the PC data; no audio assets are bundled.
+
+The opt-in zombie floor-support candidate (`Ps1ZombieHeightSupport=1`) preserves native mesh support after the PS1 planar step. Its measured scope and pending gameplay acceptance are documented in `../../docs/zombie-floor-support.md`.
+
+Player doorway returns, native stair responders and advanced approach/support options are documented in `../../docs/player-door-stair-compatibility.md`.

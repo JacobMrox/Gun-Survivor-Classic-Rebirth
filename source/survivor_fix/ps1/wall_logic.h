@@ -42,15 +42,19 @@ bool InNegativeZDoorPassage(const std::vector<Wall>& walls, float minX, float ma
 bool InNegativeXDoorPassage(const std::vector<Wall>& walls, float minPcZ, float maxPcZ,
                             float nativeExitX, float x, float pcZ);
 
-// PS1 doors of the room: type 4 events (handler 8008DA74 -> 8008D51C in table 800A31B0).
+// PS1 interaction approach ranges. Type 4 uses 8008DA74; type 3 starts a script
+// through 8008DA00 -> 8008D390 (table 800A31B0). Scripted events are not all doors.
+// The adapter changes only approach physics; native input/progression checks remain.
 // 0x24-byte records as 80079A28 reads them from [800AB52C]: type short +0, x int +4, z int +0xC,
 // radius short +0x1E; on the PC they are section 4 of the room record in ROOMENV.DAT (07/00: the
 // door to 08/01 at x 7800, z 5500, radius 600, in front of wall z 5056).
 struct DoorEvent {
   int32_t x, z;
   int32_t radius;
+  bool scripted = false;
 };
 constexpr int kDoorEventType = 4;
+constexpr int kScriptedAccessEventType = 3;
 constexpr size_t kEventRecordSize = 0x24;
 std::vector<DoorEvent> ParseDoorEvents(const uint8_t* data, size_t size);
 // 80079A28: |dx| <= 1000, |dz| <= 1000 and integer sqrt(dx^2 + dz^2) < radius. pcZ is the PC z
@@ -64,5 +68,11 @@ float DistanceToNearestWall(const std::vector<Wall>& walls, float x, float pcZ);
 // True if within maxDist there is a PS1 wall parallel to the mesh face with horizontal normal (nx, nz PC):
 // the same wall. The base of the 08/02 ramp is perpendicular to the side walls and stays with the mesh.
 bool MeshWallMatchesPs1(const std::vector<Wall>& walls, float x, float pcZ, float nx, float nz, float maxDist);
+
+// Doorway return compatibility: the matched mesh wall must be approached toward
+// the original room interior (cross decreases toward the 8007C60C allowed side).
+// Outgoing/tangential contacts, floors, ramps and unmatched geometry remain native.
+bool MeshWallEntersRoom(const std::vector<Wall>& walls, float x, float pcZ, float nx, float nz,
+                       float stepX, float stepPcZ, float maxDist);
 
 }  // namespace ps1

@@ -5,6 +5,7 @@
 // arguments, plain RET; used by 004740C0 and 18 other call sites of the room loader).
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <vector>
 
@@ -28,7 +29,7 @@ int g_room = -1;
 std::vector<ps1::Wall> g_enemyWalls;
 bool g_geometryReady = false;
 std::vector<ps1::Wall> g_walls;       // movement walls of the current room
-std::vector<ps1::DoorEvent> g_doors;  // PS1 doors (type 4 events, section 4)
+std::vector<ps1::DoorEvent> g_doors;  // direct and optional scripted approach ranges (section 4)
 
 // Movement walls (800B60CC on the PS1) from the room's record in the PC ROOMENV.DAT:
 // section at offset +4 of the header: n1 (byte), then at +8 n1 walls of 16 bytes.
@@ -68,11 +69,16 @@ void LoadWalls(int stage, int room) {
          std::fread(g_walls.data(), sizeof(ps1::Wall), g_walls.size(), f) == g_walls.size();
   }
   if (ok && header[5] > header[4] && header[5] - header[4] <= 0x1000) {
-    // Section 4: the room's events (0x24-byte records of 80079A28), the doors are type 4.
+    // Section 4: original ranges of 80079A28; direct type 4 and scripted type 3.
     std::vector<uint8_t> events(header[5] - header[4]);
     if (std::fseek(f, static_cast<long>(offset + header[4]), SEEK_SET) == 0 &&
         std::fread(events.data(), 1, events.size(), f) == events.size()) {
       g_doors = ps1::ParseDoorEvents(events.data(), events.size());
+      if (!g_config.ps1ScriptedAccess) {
+        g_doors.erase(std::remove_if(g_doors.begin(), g_doors.end(),
+                                    [](const ps1::DoorEvent& event) { return event.scripted; }),
+                      g_doors.end());
+      }
     }
   }
   if (ok) {
@@ -93,9 +99,14 @@ void LoadWalls(int stage, int room) {
     return;
   }
   g_geometryReady = true;
+  const auto scripted = std::count_if(g_doors.begin(), g_doors.end(),
+                                     [](const ps1::DoorEvent& event) { return event.scripted; });
   Log("walls: room %02X/%02X, %u walls, %u enemy-only walls, %u doors", stage, room,
       static_cast<unsigned>(g_walls.size()), static_cast<unsigned>(g_enemyWalls.size()),
-      static_cast<unsigned>(g_doors.size()));
+      static_cast<unsigned>(g_doors.size() - scripted));
+  if (g_config.ps1ScriptedAccess)
+    Log("access: room %02X/%02X, %u scripted approach ranges; native interaction checks retained",
+        stage, room, static_cast<unsigned>(scripted));
 }
 
 void __cdecl RoomPathDetour(char* out, int stage, int room, int variant) {

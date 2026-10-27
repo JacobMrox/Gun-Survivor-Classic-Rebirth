@@ -156,7 +156,10 @@ std::vector<DoorEvent> ParseDoorEvents(const uint8_t* data, size_t size) {
     std::memcpy(&x, data + off + 4, sizeof x);
     std::memcpy(&z, data + off + 0xC, sizeof z);
     std::memcpy(&radius, data + off + 0x1E, sizeof radius);
-    if (type == kDoorEventType && radius > 0) doors.push_back({x, z, radius});
+    // 80079A28 gives both types the same original range test. Type 3 dispatches
+    // 8008DA00 and was previously lost, including the 07/03 scripted exit.
+    if ((type == kDoorEventType || type == kScriptedAccessEventType) && radius > 0)
+      doors.push_back({x, z, radius, type == kScriptedAccessEventType});
   }
   return doors;
 }
@@ -176,21 +179,40 @@ float DistanceToNearestWall(const std::vector<Wall>& walls, float x, float pcZ) 
   return static_cast<float>(best);
 }
 
-bool MeshWallMatchesPs1(const std::vector<Wall>& walls, float x, float pcZ, float nx, float nz, float maxDist) {
+namespace {
+bool MeshWallMatchesSegment(const Wall& w, float x, float pcZ, float nx, float nz, float maxDist) {
   const double px = x, pz = -pcZ;
-  const double hx = nx, hz = -nz;  // normal in PS1 coordinates (opposite z)
+  const double hx = nx, hz = -nz;
   const double hl = std::sqrt(hx * hx + hz * hz);
   if (!(hl > 1e-6)) return false;
+  const double ax = w.x1, az = w.z1, bx = w.x2 - ax, bz = w.z2 - az;
+  const double len = std::sqrt(bx * bx + bz * bz);
+  if (!(len > 0.0)) return false;
+  double t = ((px - ax) * bx + (pz - az) * bz) / (len * len);
+  t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+  const double dx = px - (ax + bx * t), dz = pz - (az + bz * t);
+  if (std::sqrt(dx * dx + dz * dz) > maxDist) return false;
+  return std::fabs((hx * bx + hz * bz) / (hl * len)) < 0.5;
+}
+}  // namespace
+
+bool MeshWallMatchesPs1(const std::vector<Wall>& walls, float x, float pcZ, float nx, float nz, float maxDist) {
   for (const Wall& w : walls) {
-    const double ax = w.x1, az = w.z1, bx = w.x2 - ax, bz = w.z2 - az;
-    const double len = std::sqrt(bx * bx + bz * bz);
-    if (!(len > 0.0)) continue;
-    double t = ((px - ax) * bx + (pz - az) * bz) / (len * len);
-    t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
-    const double dx = px - (ax + bx * t), dz = pz - (az + bz * t);
-    if (std::sqrt(dx * dx + dz * dz) > maxDist) continue;
-    // Face parallel to the segment: its normal is almost perpendicular to the wall's direction.
-    if (std::fabs((hx * bx + hz * bz) / (hl * len)) < 0.5) return true;
+    if (MeshWallMatchesSegment(w, x, pcZ, nx, nz, maxDist)) return true;
+  }
+  return false;
+}
+
+bool MeshWallEntersRoom(const std::vector<Wall>& walls, float x, float pcZ, float nx, float nz,
+                       float stepX, float stepPcZ, float maxDist) {
+  if (!std::isfinite(stepX) || !std::isfinite(stepPcZ)) return false;
+  for (const Wall& w : walls) {
+    if (!MeshWallMatchesSegment(w, x, pcZ, nx, nz, maxDist)) continue;
+    // 8007C60C resolves to cross <= 0. In PC coordinates Z is reversed;
+    // this is the change of that cross product, not a distance or time margin.
+    const double sideChange = (double(w.z2) - w.z1) * stepX +
+                              (double(w.x2) - w.x1) * stepPcZ;
+    if (sideChange < 0.0) return true;
   }
   return false;
 }
