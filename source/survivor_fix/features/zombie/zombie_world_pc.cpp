@@ -251,6 +251,43 @@ bool WorldMove(uint8_t* o, float dx, float dz) {
   return true;
 }
 
+// Native mesh support adapter. Kept separate from PS1 XZ/state logic.
+using NativeSupportSweep = unsigned char(__fastcall*)(void*, void*, float*, float, float*, int*, float*);
+NativeSupportSweep g_supportSweep = nullptr;
+bool ResolveNativeSupport(void* c, uint8_t* o) {
+  if (!g_config.ps1ZombieHeightSupport || !g_supportSweep || !c || !WorldOwnsObject(o)) return false;
+  // 00461000 handles this radius only for a participating sphere (mode 1).
+  if (game::Read<int8_t>(o, game::O::kCollisionMode) != 1 ||
+      (game::Read<uint32_t>(o, game::O::kCollisionFlags) & 1)) return false;
+  const float radius = game::Read<float>(o, 0xC4);
+  const auto* centre = game::Field<float>(o, game::O::kAimPoint);
+  auto* position = game::Field<float>(o, game::O::kPos);
+  if (!std::isfinite(radius) || radius <= 0 || !std::isfinite(2 * radius)) return false;
+  for (int k = 0; k < 3; ++k)
+    if (!std::isfinite(centre[k]) || !std::isfinite(position[k])) return false;
+  auto** objects = game::Read<uint8_t**>(c, game::C::kObjects);
+  const int count = game::Read<int>(c, game::C::kCount);
+  if (!objects || count <= 0 || count > 4096) return false;
+  float floor = std::numeric_limits<float>::infinity();
+  for (int i = 0; i < count; ++i) {
+    auto* mesh = objects[i];
+    if (!mesh || mesh == o || FindObject(mesh) || game::Read<int8_t>(mesh, game::O::kCollisionMode) != 3 ||
+        (game::Read<uint32_t>(mesh, game::O::kCollisionFlags) & 2)) continue;
+    float origin[3] = {centre[0], centre[1], centre[2]};
+    float step[3] = {0, 2 * radius, 0}, response[3] = {};
+    int face = -1;
+    if (g_supportSweep(mesh, nullptr, origin, 0, step, &face, response) &&
+        std::isfinite(step[1]) && step[1] >= 0 && step[1] <= 2 * radius) {
+      floor = (std::min)(floor, centre[1] + step[1]);
+    }
+  }
+  const float correction = floor - (centre[1] + radius);
+  if (!std::isfinite(correction) || correction >= 0) return false;
+  position[1] += correction;
+  SyncObjectPose(o);
+  return true;
+}
+
 void WorldFinishUpdate(void* s) {
   auto it = lives.find(s);
   if (it == lives.end()) return;
@@ -289,6 +326,11 @@ void WorldFinishUpdate(void* s) {
   }
   if (WorldOwnsObject(life.o)) ClearPlanar(life.o);
   SyncObjectPose(life.o);
+  // 8007FEBC -> 8007F404 owns PS1 XZ, not the PC model's static support.
+  // Native physics ran before this XZ commit. Its sphere can now start inside a raised floor,
+  // which 0045F090's sphere sweep does not lift out. Sample the same static mesh below its centre
+  // and restore the native bottom-on-floor invariant. No fixed Y, mesh-pose lift or downward snap.
+  ResolveNativeSupport(life.c, life.o);
 }
 
 void WorldPhysicsBegin(void* c) {
@@ -370,6 +412,19 @@ void WorldPhysicsEnd(void* c) {
   nativeSaved.clear();
   physicsCollection = nullptr;
   havePlayerBefore = false;
+}
+
+bool InstallZombieHeightSupport() {
+  g_supportSweep = nullptr;
+  if (!g_config.ps1ZombieHeightSupport) return false;
+  if (!game::CheckBytes({game::kNativeMeshSweep, game::kNativeMeshSweepBytes,
+                        sizeof(game::kNativeMeshSweepBytes)})) {
+    Log("ZombieHeightSupport: native sweep signature mismatch; candidate inactive");
+    return false;
+  }
+  g_supportSweep = reinterpret_cast<NativeSupportSweep>(game::kNativeMeshSweep);
+  Log("ZombieHeightSupport: candidate on; native mesh support after PS1 XZ commit");
+  return true;
 }
 
 }  // namespace sf::features::zombie

@@ -76,6 +76,11 @@ constexpr uintptr_t kUpdateGateCall = 0x0043A8D3;  // call 0046D500
 inline constexpr uint8_t kUpdateGateCallBytes[] = {0xE8, 0x28, 0x2C, 0x03, 0x00, 0x83, 0xF8, 0x04};
 constexpr size_t kEnemyActive = 0x68;  // S+68 byte
 
+// Native mesh sweep: ECX=O, stack (origin*, radius, displacement*, face*, response*), RET 14.
+// Original 004612B7/004616F4 calls and 0045F090 assembly verified; no new hook is installed here.
+constexpr uintptr_t kNativeMeshSweep = 0x0045F090;
+inline constexpr uint8_t kNativeMeshSweepBytes[] = {0x81,0xEC,0x40,0x02,0x00,0x00,0x53,0x55,0x8B,0xE9};
+
 constexpr uintptr_t kMapAnim = 0x00436E40;
 // FUN_00412B90: applies the sequence to a track. __thiscall(M, track, selector, transition, speed),
 // RET 10 (00412C78, 00412C84). The only call of 00436B40 (00436C0F: push eax(S+30); push ebx(transition);
@@ -232,6 +237,10 @@ inline constexpr uint8_t kMouseClickBytes[] = {0x8A, 0x44, 0x24, 0x18, 0x8B, 0x5
 // 0046A520: __thiscall(game, 7 arguments), RET 0x1C: the player's commands of one room frame, after the
 // 34 ms wait. With [5FD0DC]+8 (health) at 0 it writes 0 into the sixth argument and returns 0: the room
 // (e.g. 00479600) leaves with scene 0 and sets +351C = 7.
+// 00461000/0045F090 call 0045FAE0 on the collided mesh, face + three 40-byte records.
+// Assembly verified: ECX=mesh; RET 0x10. Observe its existing outputs only.
+constexpr uintptr_t kReadCollisionTriangle = 0x0045FAE0;
+inline constexpr uint8_t kReadCollisionTriangleBytes[] = {0x81,0xEC,0xD8,0,0,0,0x53,0x55,0x56,0x8B,0xF1};
 constexpr uintptr_t kRoomTick = 0x0046A520;
 inline constexpr uint8_t kRoomTickBytes[] = {0xA1, 0x60, 0xE0, 0x5B, 0x00, 0x83, 0xEC, 0x40, 0x53};
 constexpr size_t kGameStatsHp = 0x08;  // int in [5FD0DC]

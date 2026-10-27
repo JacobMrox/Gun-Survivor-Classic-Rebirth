@@ -482,6 +482,7 @@ bool InstallZombies() {
                      Hook("MapAnim", game::kMapAnim, reinterpret_cast<void*>(&MapAnimDetour),
                           reinterpret_cast<void**>(&g_mapAnim));
   if (!ready) WorldBridgeReady(false);
+  if (ready) InstallZombieHeightSupport();
   if (ready) InstallZombiePose();
   if (ready) InstallZombieBlood();
   if (ready) InstallZombieDeath();

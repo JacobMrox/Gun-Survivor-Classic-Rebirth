@@ -42,10 +42,13 @@ void LoadConfig(const char* iniPath) {
   const bool chase = Read("Ps1ZombieChase", true);
   c.ps1ZombieNavigation = Read("Ps1ZombieNavigation", chase);
   c.ps1ZombieWorld = Read("Ps1ZombieWorld", chase);
+  c.ps1ZombieHeightSupport = Read("Ps1ZombieHeightSupport", false);
 
   const bool movement = Read("Ps1PlayerMovement", true);
   c.ps1PlayerMove = Read("Ps1PlayerMove", movement);
   c.ps1PlayerWalls = Read("Ps1PlayerWalls", movement);
+  c.ps1ScriptedAccess = Read("Ps1ScriptedAccess", false);
+  c.ps1PlayerHeightSupport = Read("Ps1PlayerHeightSupport", false);
   c.ps1HeadBob = Read("Ps1HeadBob", movement);
 
   const bool view = Read("Ps1PlayerView", true);
