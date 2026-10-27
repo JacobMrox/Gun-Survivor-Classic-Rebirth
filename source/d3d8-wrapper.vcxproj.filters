@@ -207,6 +207,9 @@
     <ClCompile Include="survivor_fix\features\zombie\zombie_push.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
+    <ClCompile Include="survivor_fix\features\zombie\zombie_voice.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
     <ClCompile Include="survivor_fix\features\zombie\zombie_audio.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
@@ -376,6 +379,12 @@
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\title_fade_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\zombie_voice_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\zombie_voice_samples.h">
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\zombie_audio_logic.h">

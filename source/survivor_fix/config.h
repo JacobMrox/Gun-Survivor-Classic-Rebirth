@@ -39,6 +39,10 @@ struct Config {
   bool ps1ZombieBlood = true;
   // PS1 zombie death (80101700, 801032CC): clip from the side hit, last pose held.
   bool ps1ZombieDeath = true;
+  // Restore the lethal-hit voice for managed death; opt-in pending broader PS1 audio comparisons.
+  bool ps1ZombieDeathAudio = false;
+  // Original encounter-controlled voice banks; opt-in pending broader encounter coverage.
+  bool ps1ZombieVoiceBanks = false;
   // PS1 separation between zombie and player (circle 600 + 380 with 80081FF0).
   bool ps1ZombiePush = true;
   // Monsters also bite from behind (the PC filtered out the hits from behind).

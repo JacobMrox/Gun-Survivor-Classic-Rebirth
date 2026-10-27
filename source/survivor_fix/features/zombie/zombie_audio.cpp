@@ -1,6 +1,7 @@
 // Locomotion sound independent of RequestAnim restarts (PS1 80104108/80104660).
 #include "zombie_shared.h"
 #include "../../ps1/zombie_audio_logic.h"
+#include "../../ps1/zombie_voice_samples.h"
 #include <fstream>
 #include <iterator>
 #include <intrin.h>
@@ -12,10 +13,20 @@ using LoadFn = bool(__fastcall*)(void*,void*,const char*,char,int,char);
 SoundFn nativeSound = nullptr;
 LoadFn nativeLoad = nullptr;
 bool ready = false;
+bool voiceSamplesReady = false;
 thread_local void* subject = nullptr;
 thread_local int headingBefore = 0;
 thread_local const char* replacement = nullptr;
+enum class ReplacementKind {None,Walk,DeathVoice};
+thread_local ReplacementKind replacementKind=ReplacementKind::None;
+struct ReplacementScope {
+  const char* previous=replacement;
+  ReplacementKind kind=replacementKind;
+  ReplacementScope(const char* path,ReplacementKind next){replacement=path;replacementKind=next;}
+  ~ReplacementScope(){replacement=previous;replacementKind=kind;}
+};
 std::string paths[2];
+std::array<std::string,9> voicePaths;
 unsigned emitted = 0;
 
 bool Managed(void* s) {
@@ -37,11 +48,18 @@ int Heading(const uint8_t* o) {
   return AngleUnits(std::atan2(f[0],-f[2])) & 4095;
 }
 bool __fastcall Load(void* sound,void* edx,const char* path,char mode,int flags,char algorithm) {
-  const bool custom = replacement != nullptr;
-  const bool ok = nativeLoad(sound,edx,custom ? replacement : path,mode,flags,algorithm);
-  if (custom && (emitted<16 || !ok)) Log("ZombieWalkAudio: load=%d",ok);
-  if (custom && !ok) ready=false; // Keep native audio after a failed replacement load.
-  return ok;
+  const bool custom=replacement!=nullptr;
+  const bool ok=nativeLoad(sound,edx,custom?replacement:path,mode,flags,algorithm);
+  if(!custom)return ok;
+  if(replacementKind==ReplacementKind::DeathVoice) {
+    Log("ZombieVoice: original sample load=%d",ok);
+    if(!ok)voiceSamplesReady=false;
+  } else {
+    if(emitted<16||!ok)Log("ZombieWalkAudio: load=%d",ok);
+    if(!ok)ready=false;
+  }
+  // A missing or unusable private cache must not silence the stock sound.
+  return ok || nativeLoad(sound,edx,path,mode,flags,algorithm);
 }
 unsigned __fastcall Sound(void* manager,void* edx,int family,int cue) {
   // 43D550 calls 471260(13,5) only when a walking animation is reapplied. Keep its
@@ -50,10 +68,10 @@ unsigned __fastcall Sound(void* manager,void* edx,int family,int cue) {
       subject && Managed(subject) && family==13 && cue==5) return 0;
   return nativeSound(manager,edx,family,cue);
 }
-bool CacheWave(const std::vector<int16_t>& pcm,int cue,std::string& path) {
+bool CacheWave(const std::vector<int16_t>& pcm,int cue,std::string& path,const char* category="walk") {
   char temp[MAX_PATH];const auto length=GetTempPathA(MAX_PATH,temp);
   if(!length || length>=MAX_PATH)return false;
-  path=std::string(temp)+"SurvivorFix-walk-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(cue)+".wav";
+  path=std::string(temp)+"SurvivorFix-"+category+"-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(cue)+".wav";
   const auto bytes=ps1::MonoWave(pcm);if(bytes.empty())return false;
   HANDLE h=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY,nullptr);
   if(h==INVALID_HANDLE_VALUE) {
@@ -67,20 +85,31 @@ bool CacheWave(const std::vector<int16_t>& pcm,int cue,std::string& path) {
   DWORD written=0;const bool ok=WriteFile(h,bytes.data(),static_cast<DWORD>(bytes.size()),&written,nullptr)&&written==bytes.size();
   CloseHandle(h);return ok;
 }
-bool PrepareSounds() {
+bool ReadNoise(std::vector<uint8_t>& bytes) {
   const std::wstring source=g_dir+L"PSX_DATA\\noise\\noise.bin";
   HANDLE h=CreateFileW(source.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
   if(h==INVALID_HANDLE_VALUE)return false;
   LARGE_INTEGER size;bool ok=GetFileSizeEx(h,&size)&&size.QuadPart>0&&size.QuadPart<=64*1024*1024;
-  std::vector<uint8_t> bytes(ok ? static_cast<size_t>(size.QuadPart) : 0);
+  bytes.resize(ok?static_cast<size_t>(size.QuadPart):0);
   DWORD read=0;if(ok)ok=ReadFile(h,bytes.data(),static_cast<DWORD>(bytes.size()),&read,nullptr)&&read==bytes.size();
-  CloseHandle(h);
-  std::array<std::vector<int16_t>,2> clips;
-  if(!ok || !ps1::SharedLocomotionClips(bytes.data(),bytes.size(),clips))return false;
-  // 471260 validates this stock path before entering its native pooled load/play route.
-  if(GetFileAttributesW((g_dir+L"PSX_DATA\\WAV\\ENEMY\\RICKER\\SND-005.WAV").c_str())==INVALID_FILE_ATTRIBUTES)return false;
-  return CacheWave(clips[0],9,paths[0]) && CacheWave(clips[1],10,paths[1]);
+  CloseHandle(h);if(!ok)bytes.clear();return ok;
 }
+bool PrepareWalking(const std::vector<uint8_t>& bytes) {
+  std::array<std::vector<int16_t>,2> clips;
+  if(!ps1::SharedLocomotionClips(bytes.data(),bytes.size(),clips))return false;
+  if(GetFileAttributesW((g_dir+L"PSX_DATA\\WAV\\ENEMY\\RICKER\\SND-005.WAV").c_str())==INVALID_FILE_ATTRIBUTES)return false;
+  return CacheWave(clips[0],9,paths[0])&&CacheWave(clips[1],10,paths[1]);
+}
+bool PrepareVoices(const std::vector<uint8_t>& bytes) {
+  std::array<std::vector<int16_t>,9> clips;
+  if(!ps1::DecodeZombieDeathVoices(bytes.data(),bytes.size(),clips))return false;
+  // The native dispatcher validates its stock path before entering pooled loading.
+  for(const auto* family:{L"ZOMBIE0",L"ZOMBIE1"})
+    if(GetFileAttributesW((g_dir+L"PSX_DATA\\WAV\\ENEMY\\"+family+L"\\SND-001.WAV").c_str())==INVALID_FILE_ATTRIBUTES)return false;
+  for(int i=0;i<9;++i)if(!CacheWave(clips[i],i,voicePaths[i],"voice"))return false;
+  return true;
+}
+
 }
 void WalkAudioBefore(void* s) {
   subject=nullptr;
@@ -99,23 +128,40 @@ void WalkAudioAfter(void* s) {
   const int cue=ps1::ZombieLocomotionCue(tick,1,4,game::Read<int>(s,game::S::kSelector),Heading(o)==headingBefore);
   if(cue<0)return;
   entry.walkAudioTick=tick;
-  replacement=paths[cue-9].c_str();
+  ReplacementScope replacementScope(paths[cue-9].c_str(),ReplacementKind::Walk);
   nativeSound(*reinterpret_cast<void**>(game::kGameState),nullptr,13,5);
-  replacement=nullptr;
   if(emitted++<16)Log("ZombieWalkAudio: S=%p tick=%u cue=%d selector=%d",s,tick,cue,game::Read<int>(s,game::S::kSelector));
 }
-bool InstallZombieWalkAudio() {
-  if(!g_config.ps1ZombieWalkAudio)return false;
-  uint32_t tick;
-  if(!Ps1LogicFrame(&tick) || !PrepareSounds()) {Log("ZombieWalkAudio: original bank or cadence unavailable; native audio kept");return false;}
+bool PlayZombieDeathVoice(void* s) {
+  if(!voiceSamplesReady||!nativeSound||!g_config.ps1ZombieDeathAudio)return false;
+  const int variant=ZombieVoiceVariant(s);
+  if(variant<0||variant>=9)return false;
+  void* manager=*reinterpret_cast<void**>(game::kGameState);if(!manager)return false;
+  ReplacementScope replacementScope(voicePaths[variant].c_str(),ReplacementKind::DeathVoice);
+  nativeSound(manager,nullptr,0,1);
+  Log("ZombieVoice: S=%p death variant=%d",s,variant);
+  return true;
+}
+bool InstallZombieAudio() {
+  const bool wantVoice=g_config.ps1ZombieDeath&&g_config.ps1ZombieDeathAudio&&g_config.ps1ZombieVoiceBanks;
+  if(!g_config.ps1ZombieWalkAudio&&!wantVoice)return false;
+  uint32_t tick;std::vector<uint8_t> bytes;
+  if(!ReadNoise(bytes)){Log("ZombieAudio: original data unavailable; native audio retained");return false;}
+  const bool walking=g_config.ps1ZombieWalkAudio&&Ps1LogicFrame(&tick)&&PrepareWalking(bytes);
+  const bool voices=wantVoice&&PrepareVoices(bytes);
+  if(!walking&&!voices){Log("ZombieAudio: original banks unavailable; native audio retained");return false;}
   const unsigned char soundBytes[]={0x83,0xec,0x74,0xa0,0x70,0x24,0x5f,0x00};
   const unsigned char loadBytes[]={0x64,0xa1,0x00,0x00,0x00,0x00,0x6a,0xff};
-  if(!game::CheckBytes({0x00471260,soundBytes,sizeof(soundBytes)}) || !game::CheckBytes({0x0057F970,loadBytes,sizeof(loadBytes)})) {
-    Log("ZombieWalkAudio: unexpected native audio ABI; unchanged");return false;
+  if(!game::CheckBytes({0x00471260,soundBytes,sizeof(soundBytes)})||!game::CheckBytes({0x0057F970,loadBytes,sizeof(loadBytes)})) {
+    Log("ZombieAudio: unexpected native ABI; unchanged");return false;
   }
-  ready=Hook("ZombieWalkSound",0x00471260,reinterpret_cast<void*>(Sound),reinterpret_cast<void**>(&nativeSound)) &&
-        Hook("ZombieWalkLoad",0x0057F970,reinterpret_cast<void*>(Load),reinterpret_cast<void**>(&nativeLoad));
+  const bool hooked=Hook("ZombieSound",0x00471260,reinterpret_cast<void*>(Sound),reinterpret_cast<void**>(&nativeSound))&&
+                    Hook("ZombieSoundLoad",0x0057F970,reinterpret_cast<void*>(Load),reinterpret_cast<void**>(&nativeLoad));
+  ready=hooked&&walking;
+  voiceSamplesReady=hooked&&voices&&InstallZombieVoiceBanks();
   Log("ZombieWalkAudio: candidate=%d; shared PS1 bank; native pooled playback",ready);
-  return ready;
+  Log("ZombieVoice: candidate=%d; original room assignment; verified local banks",voiceSamplesReady);
+  return ready||voiceSamplesReady;
 }
+
 } // namespace sf::features::zombie

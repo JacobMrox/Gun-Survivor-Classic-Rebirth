@@ -5,6 +5,7 @@
 
 #include "../ps1/nav_logic.h"
 #include "../ps1/wall_logic.h"
+#include "../ps1/zombie_voice_logic.h"
 
 namespace sf::features {
 
@@ -14,6 +15,7 @@ namespace sf::features {
 namespace zombie {
 void BeginWalkSpeedLife(void* s);
 void NativeZombieLife(void* s);
+void ObserveZombieVoiceLife(void* s);
 void ResetZombieRoom();
 void WorldPhysicsBegin(void* c);
 void WorldPhysicsEnd(void* c);
@@ -52,6 +54,7 @@ const std::vector<ps1::DoorEvent>& CurrentRoomDoors();
 const std::vector<ps1::Wall>& CurrentEnemyOnlyWalls();
 bool IsCurrentRoom(int stage, int room);
 bool CurrentRoomGeometryReady();
+const std::vector<ps1::VoiceProfile>& CurrentRoomVoiceProfiles();
 
 // Player (player.cpp): hooks 004609D0 (physics) and 004603F0 (rotation) for the PS1 movement, walls and view.
 bool InstallPlayer();

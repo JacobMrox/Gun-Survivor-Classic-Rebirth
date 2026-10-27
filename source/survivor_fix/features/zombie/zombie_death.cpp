@@ -57,6 +57,8 @@ struct Death {
 };
 std::unordered_map<void*, Death> g_deaths;
 bool g_deathReady = false;  // bytes of 00464FA0 and of its call verified
+using DeathSoundFn = unsigned(__fastcall*)(void* manager, void* edx, int family, int cue);
+DeathSoundFn g_deathSound = nullptr;
 
 bool ClipExists(const uint8_t* o, int clip) {
   auto* m = game::Read<uint8_t*>(o, game::O::kModel);
@@ -158,6 +160,22 @@ void Grounded(void* s, Death& d) {
   *game::Field<int>(s, kPool) = 1;
 }
 
+// Managed death voice adapter.
+// PS1 80102224 -> 801005BC(E, 6, 1) requests the voice at lethal damage,
+// independently of the death clip. PC 0043D550 uses family 0/cue 1 for death,
+// but ties it to selectors 12/13, which the managed death may never request.
+void EmitDeathVoice(void* s, const uint8_t* o) {
+  if (!g_config.ps1ZombieDeathAudio || !g_deathSound ||
+      !ps1::IsPcZombie(game::Read<int>(s, game::S::kType)) ||
+      !(game::Read<float>(o, game::O::kHealth) <= 0.0f) || game::Read<int>(s, kPool) != 0) return;
+  void* manager = *reinterpret_cast<void**>(game::kGameState);
+  if (!manager) return;
+  // Keep the native pooled playback and shipped sample; no asset replacement.
+  if (!PlayZombieDeathVoice(s)) g_deathSound(manager, nullptr, 0, 1);
+  Log("ZombieDeathAudio: S=%p native death voice requested", s);
+}
+// End managed death voice adapter.
+
 ps1::DeathPart PartOf(const uint8_t* o) {
   const float* hit = reinterpret_cast<const float*>(o + game::O::kHitPos);
   float head[3];
@@ -206,6 +224,7 @@ bool DeathMap(void* s, Entry& e, int request, int& result) {
   d.count = plan.count;
   e.reactClip = 0;
   SetPhase(s, e, Phase::Death, "PS1 death");
+  EmitDeathVoice(s, o);  // Entry only: held clips and ground follow-ups never repeat this event.
   e.phaseBlend = plan.blend;
   e.deathClip = d.clips[0];
   HoldSequence(s, e, result);
@@ -288,11 +307,22 @@ void ResetDeathActor(void* s) { g_deaths.erase(s); }
 void ResetDeaths() { g_deaths.clear(); }
 
 bool InstallZombieDeath() {
+  g_deathSound = nullptr;
   if (!g_config.ps1ZombieDeath) return false;
   g_deathReady = game::CheckBytes({game::kCountKill, game::kCountKillBytes, sizeof(game::kCountKillBytes)}) &&
                  game::CheckBytes({game::kCountKillCall, game::kCountKillCallBytes, sizeof(game::kCountKillCallBytes)});
   if (!g_deathReady) {
     Log("Ps1ZombieDeath: unexpected bytes at %08X, PC death unchanged", static_cast<unsigned>(game::kCountKill));
+  }
+  if (g_deathReady && g_config.ps1ZombieDeathAudio) {
+    // Installed before the walking-sound hook; the checked entry remains callable
+    // through that hook, whose suppression only concerns family 13/cue 5.
+    const unsigned char soundBytes[] = {0x83, 0xEC, 0x74, 0xA0, 0x70, 0x24, 0x5F, 0x00};
+    if (game::CheckBytes({0x00471260, soundBytes, sizeof(soundBytes)})) {
+      g_deathSound = reinterpret_cast<DeathSoundFn>(0x00471260);
+    } else {
+      Log("ZombieDeathAudio: unexpected native sound ABI; death voice unchanged");
+    }
   }
   return g_deathReady;
 }
