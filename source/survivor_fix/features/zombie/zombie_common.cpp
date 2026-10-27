@@ -486,7 +486,7 @@ bool InstallZombies() {
   if (ready) InstallZombiePose();
   if (ready) InstallZombieBlood();
   if (ready) InstallZombieDeath();
-  if (ready) InstallZombieWalkAudio();
+  if (ready) InstallZombieAudio();
   if (ready && g_config.ps1ZombieBlend) {
     if (!game::CheckBytes({game::kApplySequence, game::kApplySequencePrologue,
                            sizeof(game::kApplySequencePrologue)}) ||

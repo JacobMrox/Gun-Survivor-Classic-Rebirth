@@ -20,6 +20,7 @@ bool g_requestReady = false;
 
 int __fastcall RequestAnimDetour(void* s, void* edx, int request, int flag) {
   const auto caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
+  if (caller == game::kZombieInitAnimReturn && s) zombie::ObserveZombieVoiceLife(s);
   if (caller == game::kZombieInitAnimReturn && s &&
       ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) {
     zombie::NativeZombieLife(s);

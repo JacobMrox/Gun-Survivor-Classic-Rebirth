@@ -255,7 +255,10 @@ void SeparateZombie(void* s);
 int UpdateWithNavigation(void* s, void* edx);
 
 // zombie_audio.cpp
-bool InstallZombieWalkAudio();
+bool InstallZombieAudio();
+bool InstallZombieVoiceBanks();
+int ZombieVoiceVariant(void* s);
+bool PlayZombieDeathVoice(void* s);
 void WalkAudioBefore(void* s);
 void WalkAudioAfter(void* s);
 

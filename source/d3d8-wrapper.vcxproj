@@ -179,6 +179,8 @@
     <ClInclude Include="survivor_fix\ps1\wake_view_logic.h" />
     <ClInclude Include="survivor_fix\ps1\wall_logic.h" />
     <ClInclude Include="survivor_fix\ps1\title_fade_logic.h" />
+    <ClInclude Include="survivor_fix\ps1\zombie_voice_logic.h" />
+    <ClInclude Include="survivor_fix\ps1\zombie_voice_samples.h" />
     <ClInclude Include="survivor_fix\ps1\zombie_audio_logic.h" />
     <ClInclude Include="survivor_fix\ps1\zombie_profile.h" />
     <ClInclude Include="survivor_fix\ps1\zombie_world.h" />
@@ -245,6 +247,7 @@
     <ClCompile Include="survivor_fix\features\zombie\zombie_nav.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_pose.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_push.cpp" />
+    <ClCompile Include="survivor_fix\features\zombie\zombie_voice.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_audio.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_walk.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_world_pc.cpp" />

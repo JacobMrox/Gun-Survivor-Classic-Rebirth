@@ -72,6 +72,15 @@ constexpr size_t kGameModeOffset = 0x41;
 constexpr uintptr_t kSceneIdGetter = 0x0046D500;
 inline constexpr uint8_t kSceneIdGetterBytes[] = {0xA1, 0xAC, 0x3D, 0x5F, 0x00, 0xC3};
 constexpr uintptr_t kSceneId = 0x005F3DAC;
+// Native room enemy construction: 00430F90 has three stack arguments, ignores incoming ECX,
+// and returns at004346B4 with RET0C. Read-only C/ASM export pc-enemy-room-loader, 2026-10-23.
+constexpr uintptr_t kBuildRoomEnemies=0x00430F90;
+inline constexpr uint8_t kBuildRoomEnemiesBytes[]={0x51,0x8B,0x0D,0xC4,0xD0,0x5F,0x00,0x53,0x6A,0x37};
+constexpr uintptr_t kBuildRoomEnemiesRet=0x004346B4;
+inline constexpr uint8_t kBuildRoomEnemiesRetBytes[]={0xC2,0x0C,0x00};
+constexpr uintptr_t kSkipRoomEnemyBuild=0x005F2C14;
+constexpr uintptr_t kBuildRoomEnemyGate=0x00430FB2;
+inline constexpr uint8_t kBuildRoomEnemyGateBytes[]={0x38,0x1D,0x14,0x2C,0x5F,0x00};
 constexpr uintptr_t kUpdateGateCall = 0x0043A8D3;  // call 0046D500
 inline constexpr uint8_t kUpdateGateCallBytes[] = {0xE8, 0x28, 0x2C, 0x03, 0x00, 0x83, 0xF8, 0x04};
 constexpr size_t kEnemyActive = 0x68;  // S+68 byte

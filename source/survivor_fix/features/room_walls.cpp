@@ -29,6 +29,7 @@ int g_room = -1;
 std::vector<ps1::Wall> g_enemyWalls;
 bool g_geometryReady = false;
 std::vector<ps1::Wall> g_walls;       // movement walls of the current room
+std::vector<ps1::VoiceProfile> g_voiceProfiles;
 std::vector<ps1::DoorEvent> g_doors;  // direct and optional scripted approach ranges (section 4)
 
 // Movement walls (800B60CC on the PS1) from the room's record in the PC ROOMENV.DAT:
@@ -37,6 +38,7 @@ void LoadWalls(int stage, int room) {
   g_walls.clear();
   g_enemyWalls.clear();
   g_doors.clear();
+  g_voiceProfiles.clear();
   g_geometryReady = false;
   uint32_t offset = 0;
   bool found = false;
@@ -67,6 +69,12 @@ void LoadWalls(int stage, int room) {
     g_walls.resize(counts[0]);
     ok = g_walls.empty() ||
          std::fread(g_walls.data(), sizeof(ps1::Wall), g_walls.size(), f) == g_walls.size();
+  }
+  if (ok && g_config.ps1ZombieVoiceBanks && header[3]>header[2] && header[3]-header[2]<=65536) {
+    std::vector<uint8_t> encounters(header[3]-header[2]);
+    if (std::fseek(f,static_cast<long>(offset+header[2]),SEEK_SET)==0 &&
+        std::fread(encounters.data(),1,encounters.size(),f)==encounters.size())
+      g_voiceProfiles=ps1::ParseVoiceProfiles(encounters.data(),encounters.size());
   }
   if (ok && header[5] > header[4] && header[5] - header[4] <= 0x1000) {
     // Section 4: original ranges of 80079A28; direct type 4 and scripted type 3.
@@ -126,6 +134,7 @@ const std::vector<ps1::Wall>& CurrentRoomWalls() { return g_walls; }
 const std::vector<ps1::DoorEvent>& CurrentRoomDoors() { return g_doors; }
 const std::vector<ps1::Wall>& CurrentEnemyOnlyWalls() { return g_enemyWalls; }
 bool CurrentRoomGeometryReady() { return g_geometryReady; }
+const std::vector<ps1::VoiceProfile>& CurrentRoomVoiceProfiles() { return g_voiceProfiles; }
 bool IsCurrentRoom(int stage, int room) { return g_stage == stage && g_room == room; }
 
 bool InstallRoomWalls() {

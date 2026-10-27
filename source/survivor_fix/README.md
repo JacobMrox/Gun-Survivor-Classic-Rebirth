@@ -27,3 +27,7 @@ The opt-in zombie locomotion audio candidate and its validation limits are docum
 The opt-in zombie floor-support candidate (`Ps1ZombieHeightSupport=1`) preserves native mesh support after the PS1 planar step. Its measured scope and pending gameplay acceptance are documented in `../../docs/zombie-floor-support.md`.
 
 Player doorway returns, native stair responders and advanced approach/support options are documented in `../../docs/player-door-stair-compatibility.md`.
+
+The experimental managed-death voice is documented in [zombie-death-audio.md](../../docs/zombie-death-audio.md). `Ps1ZombieDeathAudio` defaults to off pending broader PS1 audio comparisons.
+
+Original per-life death-voice bank selection is available experimentally through `Ps1ZombieVoiceBanks=1` together with `Ps1ZombieDeathAudio=1`; both default to off. See [zombie-voice-banks.md](../../docs/zombie-voice-banks.md) for recognized encounters, original-data validation and remaining gameplay checks.
