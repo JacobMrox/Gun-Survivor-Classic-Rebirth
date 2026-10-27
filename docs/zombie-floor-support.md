@@ -2,7 +2,7 @@
 
 The shared PS1 world commits zombie XZ after the PC physics batch. In physical room 03/07, the rendered floor rises from Y=2 to Y=-198, while the PC sphere can remain at root Y=12 after crossing. Its next native sphere sweep begins overlapping the raised surface and does not recover the height. This produces an additional 200 units of floor penetration.
 
-`Ps1ZombieHeightSupport=1` in `[SurvivorFix]` enables an experimental native mesh-support adapter. It is disabled by default and adds no configuration-window control. It requires the existing PS1 zombie world and the verified original PC mesh sweep (0045F090, ECX=object, five stack arguments, RET 14). A signature mismatch keeps it inactive.
+`Ps1ZombieHeightSupport=1` in `[SurvivorFix]` enables an experimental native mesh-support adapter. It is enabled by default, follows Ps1ZombieChase unless explicitly overridden, and adds no configuration-window control. It requires the existing PS1 zombie world and the verified original PC mesh sweep (0045F090, ECX=object, five stack arguments, RET 14). A signature mismatch keeps it inactive.
 
 After the PS1 XZ commit and pose synchronization, the adapter samples participating native meshes below the sphere centre over the native two-radius probe distance. An upward correction restores the existing sphere-bottom-on-floor invariant. It preserves XZ, animation, velocity and native downward settling. Non-sphere/excluded actors, excluded meshes and registered zombie bodies are not eligible. There is no room-coordinate exception, fixed height, animated-vertex lift or change to PS1 navigation/state logic (8007FEBC -> 8007F404).
 
@@ -12,7 +12,7 @@ This is PC support compatibility, not a new PS1 step-height rule. The original P
 
 The production adapter regression initially failed the recorded raised-floor case and then passed, including option/signature-pointer gates, native participation, actor-body exclusion, finite inputs and preservation of downward settling. All seven local test targets pass. The integrated Win32 build succeeds. Private runtime measurements reproduced the additional 200-unit lift with the candidate enabled; these measurements do not replace gameplay acceptance.
 
-On 2026-10-27, the user reported that the restarted 03/07 trial with living zombies was much better and approved publication. This is acceptance of the observed improvement, not confirmation of every control below. The option remains disabled by default pending broader coverage.
+On 2026-10-27, the user reported that the restarted 03/07 trial with living zombies was much better and approved publication. This is acceptance of the observed improvement, not confirmation of every control below. The option is now enabled by default; broader coverage remains open.
 
 Remaining gameplay coverage, maximum five groups:
 

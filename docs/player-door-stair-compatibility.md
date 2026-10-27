@@ -13,7 +13,7 @@ Advanced overrides in `[SurvivorFix]` in `config.ini`:
 - `Ps1PlayerHeightSupport=1`: retain and prioritize native height responders.
 - `Ps1ScriptedAccess=1`: retain the original type-3 scripted approach ranges.
 
-Both options default to 0 while broader room and approach-angle coverage remains open. No configuration-window controls are added. The matched inward doorway-return correction and preservation of native mode-4 step responders operate with the existing PS1 player-wall adapter.
+Both options are enabled by default and follow Ps1PlayerMovement unless explicitly overridden. Broader room and approach-angle coverage remains open. No configuration-window controls are added. The matched inward doorway-return correction and preservation of native mode-4 step responders operate with the existing PS1 player-wall adapter.
 
 ## Validation and limits
 

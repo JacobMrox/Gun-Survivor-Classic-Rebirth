@@ -19,8 +19,8 @@ struct Config {
   bool ps1ZombieBackFall = false;
   // One walk per zombie (02 or 03) like on the PS1, without the PC's jerky switches.
   bool ps1ZombieWalk = true;
-  // Original locomotion audio, opt-in pending broader regression coverage.
-  bool ps1ZombieWalkAudio = false;
+  // Original locomotion audio, independent of animation restarts.
+  bool ps1ZombieWalkAudio = true;
   // PS1 walk speed: random base 13..25 units/frame per zombie, growing with the distance from the player
   // (801047B4, 80104D5C).
   bool ps1ZombieSpeed = true;
@@ -39,10 +39,10 @@ struct Config {
   bool ps1ZombieBlood = true;
   // PS1 zombie death (80101700, 801032CC): clip from the side hit, last pose held.
   bool ps1ZombieDeath = true;
-  // Restore the lethal-hit voice for managed death; opt-in pending broader PS1 audio comparisons.
-  bool ps1ZombieDeathAudio = false;
-  // Original encounter-controlled voice banks; opt-in pending broader encounter coverage.
-  bool ps1ZombieVoiceBanks = false;
+  // Restore the lethal-hit voice independently of the managed death clip.
+  bool ps1ZombieDeathAudio = true;
+  // Original encounter-controlled voice banks, with native fallback for unmatched profiles.
+  bool ps1ZombieVoiceBanks = true;
   // PS1 separation between zombie and player (circle 600 + 380 with 80081FF0).
   bool ps1ZombiePush = true;
   // Monsters also bite from behind (the PC filtered out the hits from behind).
@@ -55,8 +55,8 @@ struct Config {
   bool ps1ZombieNavigation = true;
   // Shared PS1 planar world (80081618, 8007F404): contacts and enemy walls like on the PS1.
   bool ps1ZombieWorld = true;
-  // Candidate: retain native mesh support after the PS1 planar step; opt-in until gameplay acceptance.
-  bool ps1ZombieHeightSupport = false;
+  // Retain native mesh support after the PS1 planar step.
+  bool ps1ZombieHeightSupport = true;
 
   // Player movement (Ps1PlayerMovement) -------------------------------------------------------------
   // PS1 player movement (800771AC): forward 80, running 150, backwards 60 per frame, fixed from the first
@@ -65,9 +65,9 @@ struct Config {
   // PS1 walls for the player (800785C0 -> 8007CB9C): a point against the room's segments instead of the PC
   // object boxes (sphere of radius 650).
   bool ps1PlayerWalls = true;
-  // Candidate: native approach inside original type-3 scripted interaction ranges.
-  bool ps1ScriptedAccess = false;
-  bool ps1PlayerHeightSupport = false;  // Experimental preservation of native floor boxes.
+  // Native approach inside original type-3 scripted interaction ranges.
+  bool ps1ScriptedAccess = true;
+  bool ps1PlayerHeightSupport = true;  // Preserve native floor boxes.
   // PS1 view bob (800785C0): the eye rises up to 68 (112 running) by the table.
   bool ps1HeadBob = true;
 
@@ -86,8 +86,8 @@ struct Config {
   // PS1 door fades (8009016C): the room goes to black in 16 frames, the door comes out of it in 16, the
   // new room in 2.
   bool ps1DoorFade = true;
-  // Original title flash/fade, opt-in pending broader regression coverage.
-  bool ps1TitleFade = false;
+  // Original title confirmation flash and fade.
+  bool ps1TitleFade = true;
   // The game runs at the PS1 rate: two NTSC vertical blanks per frame, about 29.91 logic updates/s (VSync(2)).
   bool ps1Cadence = true;
 

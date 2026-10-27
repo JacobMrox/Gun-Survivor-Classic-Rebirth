@@ -66,7 +66,7 @@ void Init(Objects& a,int type=0,int clip=2) {
 }
 void Reset(){g_deaths.clear();actors.clear();sounds.clear();g_config={};g_config.ps1ZombieDeathAudio=true;g_deathReady=true;g_deathSound=RecordSound;missingClip=-1;part=ps1::DeathPart::Body;manager=reinterpret_cast<void*>(uintptr_t{0x1234});game::kGameState=reinterpret_cast<uintptr_t>(&manager);}
 int main(){
- require(!sf::Config{}.ps1ZombieDeathAudio,"unaccepted death voice defaults to off");
+ require(sf::Config{}.ps1ZombieDeathAudio,"managed death voice defaults to on");
  Reset();Objects a;Init(a);Entry e;int result=-1;
  require(DeathMap(a.s.data(),e,0x0F,result),"managed torso death selected");
  require(result==0x0B&&e.phase==Phase::Death,"PS1 torso sequence preserved");

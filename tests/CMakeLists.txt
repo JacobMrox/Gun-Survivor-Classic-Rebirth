@@ -122,3 +122,11 @@ add_executable(zombie_voice_adapter_test zombie_voice_adapter_test.cpp)
 target_compile_features(zombie_voice_adapter_test PRIVATE cxx_std_17)
 target_include_directories(zombie_voice_adapter_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 add_test(NAME zombie_voice_adapter COMMAND zombie_voice_adapter_test)
+
+# Exercise the production Win32 profile reader, including configurations without new keys.
+if(WIN32)
+  add_executable(config_defaults_test config_defaults_test.cpp
+    ../source/survivor_fix/config.cpp)
+  target_compile_features(config_defaults_test PRIVATE cxx_std_17)
+  add_test(NAME config_defaults COMMAND config_defaults_test)
+endif()
