@@ -57,7 +57,7 @@ bool gMenuWindowsCursor = false;
 bool gHideCrosshairInMenus = false;
 bool gHudAspect = false;
 bool gPs1ShadowBlend = false;
-bool gSmoothModelLighting = false;
+bool gSmoothModelLighting = true;
 int gOutW = 0, gOutH = 0;  // window client size (ForceWidth x ForceHeight)
 float gAxisScaleY = 1.0f;  // EqualMouseAxes, set in SurvivorPc_OnDevice
 
@@ -210,7 +210,7 @@ void SurvivorPc_LoadConfig(const char* ini) {
   gHideCrosshairInMenus = GetPrivateProfileIntA("SurvivorFix", "HideCrosshairInMenus", 1, ini) != 0;
   gHudAspect = GetPrivateProfileIntA("SurvivorFix", "HudAspect", 1, ini) != 0;
   gPs1ShadowBlend = GetPrivateProfileIntA("SurvivorFix", "Ps1ShadowBlend", 1, ini) != 0;
-  gSmoothModelLighting = GetPrivateProfileIntA("SurvivorFix", "SmoothModelLighting", 0, ini) != 0;
+  gSmoothModelLighting = GetPrivateProfileIntA("SurvivorFix", "SmoothModelLighting", 1, ini) != 0;
   const UINT buffer = GetPrivateProfileIntA("SurvivorFix", "MouseBufferSize", 1024, ini);
   gMouseBufferSize = buffer > 65536 ? 65536 : buffer;
 }

@@ -4,7 +4,7 @@
 
 1 RT_MANIFEST "Fluent.manifest"
 
-IDD_CONFIG_DIALOG DIALOGEX 0, 0, 280, 345
+IDD_CONFIG_DIALOG DIALOGEX 0, 0, 280, 370
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Resident Evil: Survivor - Classic Rebirth 1.1.2"
 FONT 9, "Segoe UI"
@@ -26,28 +26,30 @@ CONTROL         "Always On Top", IDC_ALWAYS_ONTOP, "Button", BS_AUTOCHECKBOX | W
 CONTROL         "Lock Cursor", IDC_LOCK_CURSOR, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 120, 80, 10
 CONTROL         "Primary Monitor Only", IDC_PRIMARY_MON, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 120, 100, 10
 
-GROUPBOX        "Fixes and Debug", IDC_STATIC, 7, 145, 266, 75
+GROUPBOX        "Fixes and Debug", IDC_STATIC, 7, 145, 266, 65
 CONTROL         "Keep Aspect Ratio", IDC_KEEP_ASPECT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 160, 100, 10
 CONTROL         "Skip FMV Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 140, 160, 100, 10
-LTEXT           "Mouse Sensitivity:", IDC_STATIC, 15, 178, 75, 8
-CONTROL         "", IDC_MOUSE_SENSITIVITY, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 90, 175, 100, 15
-LTEXT           "100%", IDC_MOUSE_SENSITIVITY_LABEL, 195, 178, 35, 8
-CONTROL         "Enable Logging", IDC_ENABLE_LOG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 198, 100, 10
-CONTROL         "Show Config on Launch", IDC_SHOW_CONFIG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 140, 198, 110, 10
+CONTROL         "Smooth Model Lighting", IDC_SMOOTH_MODEL_LIGHTING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 178, 115, 10
+CONTROL         "Enable Logging", IDC_ENABLE_LOG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 140, 178, 100, 10
+CONTROL         "Show Config on Launch", IDC_SHOW_CONFIG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 195, 110, 10
 
-GROUPBOX        "Crosshair Settings", IDC_STATIC, 7, 225, 266, 75
-LTEXT           "Type:", IDC_STATIC, 15, 240, 20, 8
-COMBOBOX        IDC_CROSS_COMBO, 40, 238, 100, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-PUSHBUTTON      "Browse...", IDC_CROSS_BROWSE, 145, 238, 40, 12
+GROUPBOX        "Crosshair Settings", IDC_STATIC, 7, 215, 266, 100
+LTEXT           "Type:", IDC_STATIC, 15, 230, 20, 8
+COMBOBOX        IDC_CROSS_COMBO, 40, 228, 100, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+PUSHBUTTON      "Browse...", IDC_CROSS_BROWSE, 145, 228, 40, 12
 
-LTEXT           "Scale:", IDC_STATIC, 15, 260, 20, 8
-CONTROL         "", IDC_CROSS_SCALE, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 40, 258, 100, 15
-LTEXT           "100%", IDC_CROSS_SCALE_LABEL, 145, 260, 30, 8
+LTEXT           "Scale:", IDC_STATIC, 15, 250, 20, 8
+CONTROL         "", IDC_CROSS_SCALE, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 40, 248, 100, 15
+LTEXT           "100%", IDC_CROSS_SCALE_LABEL, 145, 250, 30, 8
 
-CONTROL         "", IDC_CROSS_PREVIEW, "Static", SS_BITMAP | SS_REALSIZECONTROL | SS_CENTERIMAGE | WS_BORDER, 220, 233, 40, 40
+LTEXT           "Mouse Sensitivity:", IDC_STATIC, 15, 273, 75, 8
+CONTROL         "", IDC_MOUSE_SENSITIVITY, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 90, 270, 100, 15
+LTEXT           "100%", IDC_MOUSE_SENSITIVITY_LABEL, 195, 273, 35, 8
 
-CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1.2 © Jacob Qarooni @Mehrqarox; Giuseppe Marsiglia @Trigger117", IDC_STATIC, 7, 305, 266, 8, WS_DISABLED
+CONTROL         "", IDC_CROSS_PREVIEW, "Static", SS_BITMAP | SS_REALSIZECONTROL | SS_CENTERIMAGE | WS_BORDER, 220, 223, 40, 40
 
-DEFPUSHBUTTON   "Save and Launch", IDOK, 80, 320, 55, 14
-PUSHBUTTON      "Cancel", IDCANCEL, 145, 320, 55, 14
+CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1.2 © Jacob Qarooni @Mehrqarox\nGiuseppe Marsiglia @Trigger117", IDC_STATIC, 7, 320, 266, 18, WS_DISABLED
+
+DEFPUSHBUTTON   "Start Game", IDOK, 78, 345, 60, 14
+PUSHBUTTON      "Cancel", IDCANCEL, 145, 345, 55, 14
 END

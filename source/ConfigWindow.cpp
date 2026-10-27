@@ -30,6 +30,7 @@ extern float fCrosshairScale;
 
 static int mouseSensitivityPercent = 100;
 static bool keepAspect = true;
+static bool smoothModelLighting = true;
 
 static char cfgPath[MAX_PATH];
 bool bShowConfigOnLaunch = false;
@@ -214,7 +215,7 @@ bool EnableFluentTheme(HWND h) {
     for (const int id : {
         IDC_RES_COMBO, IDC_FPS_COMBO, IDC_REFRESH, IDC_FPS_COUNTER, IDC_WINDOWED,
         IDC_BORDERLESS, IDC_CENTER, IDC_ALWAYS_ONTOP, IDC_LOCK_CURSOR, IDC_PRIMARY_MON,
-        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_MOUSE_SENSITIVITY, IDC_ENABLE_LOG,
+        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_MOUSE_SENSITIVITY, IDC_ENABLE_LOG,
         IDC_SHOW_CONFIG, IDC_CROSS_COMBO, IDC_CROSS_BROWSE, IDC_CROSS_SCALE, IDOK, IDCANCEL
     }) {
         if (HWND control = GetDlgItem(h, id)) SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
@@ -344,6 +345,7 @@ void SyncConfig(bool save) {
         SetI("Fixes", "SkipMovies", bSkipMovies);
         SetI("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", bDirect3D8DisableMaximizedWindowedModeShim);
         SetI("SurvivorFix", "KeepAspect", keepAspect);
+        SetI("SurvivorFix", "SmoothModelLighting", smoothModelLighting);
         const std::string sensitivity = std::to_string(static_cast<float>(mouseSensitivityPercent) / 100.0f);
         WritePrivateProfileStringA("SurvivorFix", "MouseSensitivity", sensitivity.c_str(), cfgPath);
         SetI("Debug", "EnableLogging", gEnableLogging);
@@ -373,6 +375,7 @@ void SyncConfig(bool save) {
         sCrosshairPath = temp;
         fCrosshairScale = (float)GetI("Fixes", "CrosshairScale", 100) / 100.0f;
         keepAspect = GetI("SurvivorFix", "KeepAspect", 1) != 0;
+        smoothModelLighting = GetI("SurvivorFix", "SmoothModelLighting", 1) != 0;
         GetPrivateProfileStringA("SurvivorFix", "MouseSensitivity", "1.0", temp, MAX_PATH, cfgPath);
         mouseSensitivityPercent = std::clamp(static_cast<int>(std::atof(temp) * 100.0 + 0.5), 10, 500);
     }
@@ -434,6 +437,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_PRIMARY_MON, bUsePrimaryMonitor);
         CheckDlgButton(h, IDC_KEEP_ASPECT, keepAspect);
         CheckDlgButton(h, IDC_SKIP_MOVIES, bSkipMovies);
+        CheckDlgButton(h, IDC_SMOOTH_MODEL_LIGHTING, smoothModelLighting);
         CheckDlgButton(h, IDC_ENABLE_LOG, gEnableLogging);
         //CheckDlgButton(h, IDC_DISABLE_SHIM, bDirect3D8DisableMaximizedWindowedModeShim);
         CheckDlgButton(h, IDC_SHOW_CONFIG, bShowConfigOnLaunch);
@@ -517,6 +521,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             bUsePrimaryMonitor = IsDlgButtonChecked(h, IDC_PRIMARY_MON);
             keepAspect = IsDlgButtonChecked(h, IDC_KEEP_ASPECT);
             bSkipMovies = IsDlgButtonChecked(h, IDC_SKIP_MOVIES);
+            smoothModelLighting = IsDlgButtonChecked(h, IDC_SMOOTH_MODEL_LIGHTING);
             gEnableLogging = IsDlgButtonChecked(h, IDC_ENABLE_LOG);
             //bDirect3D8DisableMaximizedWindowedModeShim = IsDlgButtonChecked(h, IDC_DISABLE_SHIM);
             bShowConfigOnLaunch = IsDlgButtonChecked(h, IDC_SHOW_CONFIG);
