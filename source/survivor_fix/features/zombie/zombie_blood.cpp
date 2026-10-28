@@ -117,6 +117,21 @@ int __fastcall DrawEffectDetour(void* e, void* edx, const float* axisA, const fl
 
 void SetBloodSubject(void* s) { g_subject = s; }
 
+void SpawnHeadBlood(void* s, const uint8_t* o) {
+  // 0043A8A0 keeps the effect manager at S+08. Reuse its blood2 sprite with
+  // the native parameters, positioned slightly below bone 3 at the neck. The
+  // ordinary hit path subsequently creates the impact cloud at the head too.
+  void* manager = s ? game::Read<void*>(s, 0x08) : nullptr;
+  float head[3];
+  if (!manager || !BoneWorld(o, 3, head)) return;
+  head[1] += 120.0f;  // PC world Y increases downward: head joint -> neck
+  auto create = reinterpret_cast<CreateEffectFn>(game::kEffectCreate);
+  create(manager, nullptr, reinterpret_cast<const char*>(0x005BAFAC),
+         0.1f, 0.1f, 600.0f, 600.0f, 0.8f,
+         reinterpret_cast<const char*>(0x005BAFB4), 32, 32, 0,
+         head[0], head[1], head[2], 1, 1);
+}
+
 bool InstallZombieBlood() {
   if (!g_config.ps1ZombieBlood) return false;
   const game::ByteSignature checks[] = {

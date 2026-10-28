@@ -14,6 +14,8 @@
 // hits during the bite stay native.
 #include "zombie_shared.h"
 
+#include <mmsystem.h>
+
 namespace sf::features::zombie {
 
 namespace {
@@ -24,8 +26,40 @@ int g_hitSavedRequest = 0;
 constexpr int kNoReactionRequest = 0x0C;  // one of the requests that 0043A8A0 does not interrupt
 constexpr unsigned kHeadBone = 3;
 constexpr float kLethalHeadRadius = 250.0f;
-using SoundFn = unsigned(__fastcall*)(void*, void*, int, int);
-const auto g_sound = reinterpret_cast<SoundFn>(0x00471260);
+
+// A short embedded wet pop. The shipped cue tried previously is only a few
+// milliseconds long and disappears under the simultaneous death voice.
+void PlayHeadPop() {
+  static std::vector<uint8_t> wave;
+  if (wave.empty()) {
+    constexpr uint32_t rate = 11025;
+    constexpr uint32_t samples = rate * 18 / 100;
+    constexpr uint32_t bytes = samples * 2;
+    wave.resize(44 + bytes);
+    auto w16 = [&](size_t at, uint16_t v) { wave[at] = uint8_t(v); wave[at + 1] = uint8_t(v >> 8); };
+    auto w32 = [&](size_t at, uint32_t v) {
+      wave[at] = uint8_t(v); wave[at + 1] = uint8_t(v >> 8);
+      wave[at + 2] = uint8_t(v >> 16); wave[at + 3] = uint8_t(v >> 24);
+    };
+    std::memcpy(wave.data(), "RIFF", 4); w32(4, 36 + bytes);
+    std::memcpy(wave.data() + 8, "WAVEfmt ", 8); w32(16, 16); w16(20, 1); w16(22, 1);
+    w32(24, rate); w32(28, rate * 2); w16(32, 2); w16(34, 16);
+    std::memcpy(wave.data() + 36, "data", 4); w32(40, bytes);
+    uint32_t noise = 0x51F15EEDu;
+    for (uint32_t i = 0; i < samples; ++i) {
+      noise = noise * 1664525u + 1013904223u;
+      const float t = float(i) / rate;
+      const float decay = std::exp(-t * 25.0f);
+      const float body = std::sin(6.2831853f * (115.0f - 230.0f * t) * t) * 0.72f;
+      const float grit = (float(int(noise >> 16) - 32768) / 32768.0f) * 0.38f;
+      const int value = int((body + grit) * decay * 28000.0f);
+      const int16_t sample = int16_t((std::max)(-32768, (std::min)(32767, value)));
+      w16(44 + i * 2, uint16_t(sample));
+    }
+  }
+  PlaySoundA(reinterpret_cast<LPCSTR>(wave.data()), nullptr,
+             SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+}
 
 bool IsLethalHeadHit(const uint8_t* o) {
   float head[3];
@@ -69,12 +103,20 @@ HitGate HitBefore(void* s) {
   if (!GetObjects(s, o, t) || game::Read<uint8_t>(o, game::O::kHitFlag) == 0) return g;
   const float hp = game::Read<float>(o, game::O::kHealth);
   if (g_config.lethalZombieHeadshots && hp > 0.0f && IsLethalHeadHit(o)) {
-    *game::Field<float>(o, game::O::kHitDamage) = hp;
-    g_entries[s].lethalHeadshot = true;
-    // Shipped zombie cue 4 is the short impact/pop sample. Route it through
-    // the game's mixer so it follows the normal effects volume and playback.
-    if (void* manager = *reinterpret_cast<void**>(game::kGameState)) g_sound(manager, nullptr, 0, 4);
-    Log("ZombieHeadshots: S=%p lethal head hit", s);
+    Entry& e = g_entries[s];
+    if (++e.headshotCount >= 2) {
+      *game::Field<float>(o, game::O::kHitDamage) = hp;
+      e.lethalHeadshot = true;
+      PlayHeadPop();
+      SpawnHeadBlood(s, o);
+      Log("ZombieHeadshots: S=%p lethal head hit %u; head removed", s, e.headshotCount);
+    } else {
+      // Even a high-powered weapon cannot kill on the first qualifying head
+      // hit. Preserve its normal damage unless that would leave no health.
+      const float damage = game::Read<float>(o, game::O::kHitDamage);
+      *game::Field<float>(o, game::O::kHitDamage) = (std::min)(damage, (std::max)(0.0f, hp - 1.0f));
+      Log("ZombieHeadshots: S=%p head hit 1; guaranteed survivor", s);
+    }
   }
   const float damage = game::Read<float>(o, game::O::kHitDamage);
   if (!g_config.ps1ZombieHit) return g;

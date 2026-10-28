@@ -75,6 +75,7 @@ struct Entry {
   Phase phase = Phase::Idle;
   int updates = 0;
   bool applied = false;
+  uint8_t headshotCount = 0;    // first head hit is guaranteed nonlethal; second may remove the head
   bool lethalHeadshot = false;  // hide head mesh after the optional instant-kill rule fires
   bool backRolled = false;  // roll of 0x20 already done for this application
   ps1::BackPush push;
@@ -241,6 +242,7 @@ bool InstallZombieDeath();
 
 // zombie_blood.cpp
 void SetBloodSubject(void* s);
+void SpawnHeadBlood(void* s, const uint8_t* o);
 bool InstallZombieBlood();
 
 // zombie_pose.cpp
