@@ -93,6 +93,7 @@ int ForceHeight;//Survivor Exclusive
 bool bSkipMovies;//Survivor Exclusive; skip movies
 bool gEnableLogging;//Survivor Exclusive; whether to log to file or not
 bool bLaserTrail = false;//Optional fading dot trail behind the overlay crosshair
+COLORREF gLaserColor = RGB(255, 35, 20);
 float fFPSLimit;
 int nFullScreenRefreshRateInHz;
 
@@ -168,10 +169,47 @@ char WinDir[MAX_PATH + 1];
             const float half = 0.7f + 1.8f * static_cast<float>(i + 1) / gLaserTrailPoints.size();
             const float nx = -dy * half, ny = dx * half;
             const BYTE alpha = static_cast<BYTE>(20 + 180 * (i + 1) / gLaserTrailPoints.size());
-            const DWORD color = D3DCOLOR_ARGB(alpha, 255, 35, 20);
+            const DWORD color = D3DCOLOR_ARGB(alpha, GetRValue(gLaserColor), GetGValue(gLaserColor), GetBValue(gLaserColor));
             DotVertex v[4] = {{a.x + nx, a.y + ny, 0, 1, color}, {a.x - nx, a.y - ny, 0, 1, color},
                               {b.x + nx, b.y + ny, 0, 1, color}, {b.x - nx, b.y - ny, 0, 1, color}};
             dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(DotVertex));
+        }
+        dev->ApplyStateBlock(state);
+        dev->DeleteStateBlock(state);
+    }
+
+    void DrawLaserImpactDot(LPDIRECT3DDEVICE8 dev, float x, float y)
+    {
+        DWORD state = 0;
+        if (FAILED(dev->CreateStateBlock(D3DSBT_ALL, &state))) return;
+        dev->SetTexture(0, nullptr);
+        dev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+        dev->SetRenderState(D3DRS_ZENABLE, TRUE);
+        dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        // A clear depth pixel is 1.0 and fails GREATER. Any rendered surface is nearer and
+        // accepts this z=1 probe, making the glow appear only at the first visible hit.
+        dev->SetRenderState(D3DRS_ZFUNC, D3DCMP_GREATER);
+        dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+        dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+        dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+        struct GlowVertex { float x, y, z, rhw; DWORD color; };
+        const BYTE r = GetRValue(gLaserColor), g = GetGValue(gLaserColor), b = GetBValue(gLaserColor);
+        // Each ring probes a different depth. Near surfaces pass all three rings and
+        // receive the broad glow; distant surfaces pass only the compact core.
+        const float radii[] = { 14.0f, 8.0f, 3.0f };
+        const float depth[] = { 0.30f, 0.70f, 0.9999f };
+        const BYTE alpha[] = { 24, 62, 235 };
+        for (int i = 0; i < 3; ++i) {
+            const float s = radii[i];
+            const DWORD color = D3DCOLOR_ARGB(alpha[i], r, g, b);
+            const float z = depth[i];
+            GlowVertex v[4] = {{x-s,y-s,z,1,color},{x+s,y-s,z,1,color},{x-s,y+s,z,1,color},{x+s,y+s,z,1,color}};
+            dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(GlowVertex));
         }
         dev->ApplyStateBlock(state);
         dev->DeleteStateBlock(state);
@@ -675,7 +713,10 @@ HRESULT m_IDirect3DDevice8::EndScene()
                 if (gAimX > (float)bbW - 1) gAimX = (float)bbW - 1;
                 if (gAimY > (float)bbH - 1) gAimY = (float)bbH - 1;
                 SurvivorPc_SyncGameAim(gAimX, gAimY);//the game's aim follows the crosshair
-                if (drawCross && bLaserTrail) DrawLaserTrail(ProxyInterface, gAimX, gAimY);
+                if (drawCross && bLaserTrail) {
+                    DrawLaserTrail(ProxyInterface, gAimX, gAimY);
+                    DrawLaserImpactDot(ProxyInterface, gAimX, gAimY);
+                }
 
                 // --- PATCHED SCALE LOGIC ---
                 D3DSURFACE_DESC8 texDesc;

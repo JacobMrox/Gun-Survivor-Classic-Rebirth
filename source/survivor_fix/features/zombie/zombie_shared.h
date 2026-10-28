@@ -75,6 +75,7 @@ struct Entry {
   Phase phase = Phase::Idle;
   int updates = 0;
   bool applied = false;
+  bool lethalHeadshot = false;  // hide head mesh after the optional instant-kill rule fires
   bool backRolled = false;  // roll of 0x20 already done for this application
   ps1::BackPush push;
   ps1::NavState nav;

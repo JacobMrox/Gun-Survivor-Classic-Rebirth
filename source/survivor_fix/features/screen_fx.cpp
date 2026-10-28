@@ -405,6 +405,7 @@ int __fastcall ContinueDetour(DWORD* screen, void* edx, int a, char continues) {
 
 bool PlayerDying() { return g_dying; }
 
+
 bool InstallScreenFx() {
   QueryPerformanceFrequency(&g_frequency);
   const game::ByteSignature endFrame = {game::kEndFrame, game::kEndFrameBytes, sizeof game::kEndFrameBytes};

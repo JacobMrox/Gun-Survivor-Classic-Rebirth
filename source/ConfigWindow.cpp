@@ -28,10 +28,12 @@ extern float fFPSLimit;
 extern std::string sCrosshairPath;
 extern float fCrosshairScale;
 extern bool bLaserTrail;
+extern COLORREF gLaserColor;
 
 static int mouseSensitivityPercent = 100;
 static bool keepAspect = true;
 static bool smoothModelLighting = true;
+static bool lethalZombieHeadshots = false;
 
 static char cfgPath[MAX_PATH];
 bool bShowConfigOnLaunch = false;
@@ -216,7 +218,7 @@ bool EnableFluentTheme(HWND h) {
     for (const int id : {
         IDC_RES_COMBO, IDC_FPS_COMBO, IDC_REFRESH, IDC_FPS_COUNTER, IDC_WINDOWED,
         IDC_BORDERLESS, IDC_CENTER, IDC_ALWAYS_ONTOP, IDC_LOCK_CURSOR, IDC_PRIMARY_MON,
-        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_ENABLE_LOG,
+        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_ZOMBIE_HEADSHOTS, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
         IDC_SHOW_CONFIG, IDC_CROSS_COMBO, IDC_CROSS_BROWSE, IDC_CROSS_SCALE, IDOK, IDCANCEL
     }) {
         if (HWND control = GetDlgItem(h, id)) SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
@@ -225,7 +227,7 @@ bool EnableFluentTheme(HWND h) {
     // dialog's colour handler draw the compact dark input instead.
     if (HWND refreshRate = GetDlgItem(h, IDC_REFRESH)) SetWindowTheme(refreshRate, L"", L"");
     for (const int id : { IDC_RES_COMBO, IDC_FPS_COMBO, IDC_CROSS_COMBO }) EnableOwnerDraw(h, id, true);
-    for (const int id : { IDC_CROSS_BROWSE, IDOK, IDCANCEL }) EnableOwnerDraw(h, id, false);
+    for (const int id : { IDC_CROSS_BROWSE, IDC_LASER_COLOR, IDOK, IDCANCEL }) EnableOwnerDraw(h, id, false);
     return true;
 }
 
@@ -347,11 +349,15 @@ void SyncConfig(bool save) {
         SetI("Fixes", "Direct3D8DisableMaximizedWindowedModeShim", bDirect3D8DisableMaximizedWindowedModeShim);
         SetI("Window", "KeepAspectRatio", keepAspect);
         SetI("Fixes", "SmoothModelLighting", smoothModelLighting);
+        SetI("Fixes", "LethalZombieHeadshots", lethalZombieHeadshots);
         const std::string sensitivity = std::to_string(static_cast<float>(mouseSensitivityPercent) / 100.0f);
         WritePrivateProfileStringA("Crosshair", "MouseSensitivity", sensitivity.c_str(), cfgPath);
         WritePrivateProfileStringA("Crosshair", "TexturePath", sCrosshairPath.c_str(), cfgPath);
         SetI("Crosshair", "Scale", (int)(fCrosshairScale * 100.0f));
         SetI("Crosshair", "LaserTrail", bLaserTrail);
+        const std::string color = std::to_string(GetRValue(gLaserColor)) + "," +
+            std::to_string(GetGValue(gLaserColor)) + "," + std::to_string(GetBValue(gLaserColor));
+        WritePrivateProfileStringA("Crosshair", "LaserColor", color.c_str(), cfgPath);
         SetI("Application", "EnableLogging", gEnableLogging);
         SetI("Application", "ShowConfigOnLaunch", bShowConfigOnLaunch);
         // Remove only the obsolete locations after writing their canonical replacements.
@@ -394,8 +400,13 @@ void SyncConfig(bool save) {
         sCrosshairPath = temp;
         fCrosshairScale = (float)MigratedI("Crosshair", "Scale", "Fixes", "CrosshairScale", 100) / 100.0f;
         bLaserTrail = GetI("Crosshair", "LaserTrail", 0) != 0;
+        GetPrivateProfileStringA("Crosshair", "LaserColor", "255,35,20", temp, MAX_PATH, cfgPath);
+        int red = 255, green = 35, blue = 20;
+        if (sscanf_s(temp, "%d,%d,%d", &red, &green, &blue) == 3)
+            gLaserColor = RGB(std::clamp(red, 0, 255), std::clamp(green, 0, 255), std::clamp(blue, 0, 255));
         keepAspect = MigratedI("Window", "KeepAspectRatio", "SurvivorFix", "KeepAspect", 1) != 0;
         smoothModelLighting = MigratedI("Fixes", "SmoothModelLighting", "SurvivorFix", "SmoothModelLighting", 1) != 0;
+        lethalZombieHeadshots = GetI("Fixes", "LethalZombieHeadshots", 0) != 0;
         GetPrivateProfileStringA(Has("Crosshair", "MouseSensitivity") ? "Crosshair" : "SurvivorFix",
             "MouseSensitivity", "1.0", temp, MAX_PATH, cfgPath);
         mouseSensitivityPercent = std::clamp(static_cast<int>(std::atof(temp) * 100.0 + 0.5), 10, 500);
@@ -459,6 +470,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_KEEP_ASPECT, keepAspect);
         CheckDlgButton(h, IDC_SKIP_MOVIES, bSkipMovies);
         CheckDlgButton(h, IDC_SMOOTH_MODEL_LIGHTING, smoothModelLighting);
+        CheckDlgButton(h, IDC_ZOMBIE_HEADSHOTS, lethalZombieHeadshots);
         CheckDlgButton(h, IDC_LASER_TRAIL, bLaserTrail);
         CheckDlgButton(h, IDC_ENABLE_LOG, gEnableLogging);
         //CheckDlgButton(h, IDC_DISABLE_SHIM, bDirect3D8DisableMaximizedWindowedModeShim);
@@ -498,7 +510,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             DrawFluentCombo(*item);
             return TRUE;
         }
-        if (gUseFluentDesign && item && item->CtlType == ODT_BUTTON && (item->CtlID == IDC_CROSS_BROWSE || item->CtlID == IDOK || item->CtlID == IDCANCEL)) {
+        if (gUseFluentDesign && item && item->CtlType == ODT_BUTTON && (item->CtlID == IDC_CROSS_BROWSE || item->CtlID == IDC_LASER_COLOR || item->CtlID == IDOK || item->CtlID == IDCANCEL)) {
             DrawFluentButton(*item);
             return TRUE;
         }
@@ -544,6 +556,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             keepAspect = IsDlgButtonChecked(h, IDC_KEEP_ASPECT);
             bSkipMovies = IsDlgButtonChecked(h, IDC_SKIP_MOVIES);
             smoothModelLighting = IsDlgButtonChecked(h, IDC_SMOOTH_MODEL_LIGHTING);
+            lethalZombieHeadshots = IsDlgButtonChecked(h, IDC_ZOMBIE_HEADSHOTS);
             bLaserTrail = IsDlgButtonChecked(h, IDC_LASER_TRAIL);
             gEnableLogging = IsDlgButtonChecked(h, IDC_ENABLE_LOG);
             //bDirect3D8DisableMaximizedWindowedModeShim = IsDlgButtonChecked(h, IDC_DISABLE_SHIM);
@@ -575,6 +588,15 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 SendMessage(GetDlgItem(h, IDC_CROSS_COMBO), CB_SETCURSEL, 4, 0);
                 RenderCrosshairPreview(h);
             }
+        }
+        else if (LOWORD(w) == IDC_LASER_COLOR) {
+            static COLORREF customColors[16] = {};
+            CHOOSECOLORA picker = { sizeof(picker) };
+            picker.hwndOwner = h;
+            picker.rgbResult = gLaserColor;
+            picker.lpCustColors = customColors;
+            picker.Flags = CC_FULLOPEN | CC_RGBINIT;
+            if (ChooseColorA(&picker)) gLaserColor = picker.rgbResult;
         }
         break;
     }

@@ -103,10 +103,14 @@ int __fastcall DrawModelDetour(void* m, void* edx, int a, int b) {
 
 int DrawPosed(void* m, void* edx, int a, int b) {
   auto owner = g_subjectByModel.find(m);
-  if (owner == g_subjectByModel.end() || !g_config.ps1ZombiePose) return g_drawModel(m, edx, a, b);
+  if (owner == g_subjectByModel.end()) return g_drawModel(m, edx, a, b);
+  const auto entry = g_entries.find(owner->second);
+  const bool headless = g_config.lethalZombieHeadshots && entry != g_entries.end() && entry->second.lethalHeadshot;
   auto pose = g_poseBySubject.find(owner->second);
-  if (pose == g_poseBySubject.end() || GetTickCount() - pose->second.seen > kAliveMs ||
-      (!pose->second.head && !pose->second.twist)) {
+  const bool hasPose = g_config.ps1ZombiePose && pose != g_poseBySubject.end() &&
+                       GetTickCount() - pose->second.seen <= kAliveMs &&
+                       (pose->second.head || pose->second.twist);
+  if (!headless && !hasPose) {
     return g_drawModel(m, edx, a, b);
   }
   auto* bones = game::Read<uint8_t*>(m, game::M::kBones);
@@ -120,11 +124,19 @@ int DrawPosed(void* m, void* edx, int a, int b) {
   auto anim = [&](unsigned bone) {
     return reinterpret_cast<float*>(bones + bone * game::M::kBoneSize + game::M::kBoneAnim);
   };
-  const Pose& p = pose->second;
-  if (p.head) PreRotate(anim(kHeadBone), 'y', Radians(p.head));
-  if (p.twist) {
-    PreRotate(anim(kTorsoBone), 'z', Radians(p.twist));
-    PreRotate(anim(kPelvisBone), 'z', -Radians(p.twist));
+  if (headless) {
+    // Collapse only the head's local axes to its joint. The native blood and
+    // death animation still draw, but the head geometry no longer remains on
+    // the corpse. Restore the matrix immediately after this model draw.
+    float* head = anim(kHeadBone);
+    head[0] = head[1] = head[2] = 0.0f;
+    head[4] = head[5] = head[6] = 0.0f;
+    head[8] = head[9] = head[10] = 0.0f;
+  }
+  if (hasPose && pose->second.head) PreRotate(anim(kHeadBone), 'y', Radians(pose->second.head));
+  if (hasPose && pose->second.twist) {
+    PreRotate(anim(kTorsoBone), 'z', Radians(pose->second.twist));
+    PreRotate(anim(kPelvisBone), 'z', -Radians(pose->second.twist));
   }
   const int result = g_drawModel(m, edx, a, b);
   for (int i = 0; i < 3; ++i) {
@@ -165,7 +177,7 @@ void PoseOnHit(void* s, bool behind) {
 }
 
 void UpdatePose(void* s, const Entry& e) {
-  if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath) return;
+  if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return;
   uint8_t *o, *t;
   if (!GetObjects(s, o, t)) return;
   if (auto* m = game::Read<uint8_t*>(o, game::O::kModel)) {
@@ -196,7 +208,7 @@ void UpdatePose(void* s, const Entry& e) {
 }
 
 bool InstallZombiePose() {
-  if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath) return false;
+  if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return false;
   if (!game::CheckBytes({game::kDrawModel, game::kDrawModelBytes, sizeof(game::kDrawModelBytes)})) {
     Log("Ps1ZombiePose: unexpected bytes at %08X, PS1 pose off", static_cast<unsigned>(game::kDrawModel));
     g_config.ps1ZombiePose = false;

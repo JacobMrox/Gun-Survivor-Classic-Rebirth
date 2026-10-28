@@ -22,6 +22,18 @@ void* g_hitSuppress = nullptr;  // zombie whose update takes the PC branch witho
 int g_hitSavedRequest = 0;
 
 constexpr int kNoReactionRequest = 0x0C;  // one of the requests that 0043A8A0 does not interrupt
+constexpr unsigned kHeadBone = 3;
+constexpr float kLethalHeadRadius = 250.0f;
+using SoundFn = unsigned(__fastcall*)(void*, void*, int, int);
+const auto g_sound = reinterpret_cast<SoundFn>(0x00471260);
+
+bool IsLethalHeadHit(const uint8_t* o) {
+  float head[3];
+  if (!o || !BoneWorld(o, kHeadBone, head)) return false;
+  const float* hit = reinterpret_cast<const float*>(o + game::O::kHitPos);
+  const float dx = hit[0] - head[0], dy = hit[1] - head[1], dz = hit[2] - head[2];
+  return dx * dx + dy * dy + dz * dz < kLethalHeadRadius * kLethalHeadRadius;
+}
 
 // Number of sequences of the model (track 0, Q+0C): the mapper takes the selector modulo this
 // number, so a clip beyond it does not exist for this zombie.
@@ -52,11 +64,20 @@ int HitMapRequest(void* s, int request) {
 
 HitGate HitBefore(void* s) {
   HitGate g;
-  if (!g_config.ps1ZombieHit || !ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) return g;
+  if (!ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) return g;
   uint8_t *o, *t;
   if (!GetObjects(s, o, t) || game::Read<uint8_t>(o, game::O::kHitFlag) == 0) return g;
   const float hp = game::Read<float>(o, game::O::kHealth);
+  if (g_config.lethalZombieHeadshots && hp > 0.0f && IsLethalHeadHit(o)) {
+    *game::Field<float>(o, game::O::kHitDamage) = hp;
+    g_entries[s].lethalHeadshot = true;
+    // Shipped zombie cue 4 is the short impact/pop sample. Route it through
+    // the game's mixer so it follows the normal effects volume and playback.
+    if (void* manager = *reinterpret_cast<void**>(game::kGameState)) g_sound(manager, nullptr, 0, 4);
+    Log("ZombieHeadshots: S=%p lethal head hit", s);
+  }
   const float damage = game::Read<float>(o, game::O::kHitDamage);
+  if (!g_config.ps1ZombieHit) return g;
   if (!(hp - damage > 0.0f)) return g;  // deadly hit: native death
   Entry& e = g_entries[s];
   const int selector = game::Read<int>(s, game::S::kSelector);

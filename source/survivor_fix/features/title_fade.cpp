@@ -7,12 +7,16 @@
 #include "../ps1/title_fade_logic.h"
 #include "../../survivor_pc.h"
 #include "features.h"
+#include <intrin.h>
 namespace sf::features {
 namespace {
 bool ready=false;
-void* normalWait=nullptr;void* easyWait=nullptr;
+void* loadMenuWait=nullptr;void* normalWait=nullptr;void* easyWait=nullptr;
+using LoadSaveFn=void(__fastcall*)(void*,void*,int);
+LoadSaveFn loadSave=nullptr;
 void* normalDone=reinterpret_cast<void*>(0x00585553);
 void* easyDone=reinterpret_cast<void*>(0x005855BC);
+void* loadMenuDone=reinterpret_cast<void*>(0x0058534A);
 using EndFrameFn=int(__fastcall*)(void*,void*,int);
 using BeginFrameFn=void(__fastcall*)(void*,void*,int,int,int);
 using PumpFn=void(__cdecl*)();
@@ -49,9 +53,6 @@ bool __cdecl RunTitleFade(){
     ++presented;
   }
   SurvivorPc_EndTitleTransition();
-  // Carry the final black frame across the beginning of the native load instead of exposing
-  // its first bright frames immediately after the title fade.
-  if(ok) SurvivorPc_HoldTitleBlackForLoading(24);
   // The interrupted caller expects an open native scene and will finish it
   // before leaving its menu loop. Restore that contract even on capture failure.
   if(ContextAlive(context))beginFrame(context,nullptr,0,0,0);else ok=false;
@@ -60,6 +61,14 @@ bool __cdecl RunTitleFade(){
       ok?"complete":"unavailable, native wait kept",timeline.Updates(),presented,
       static_cast<unsigned>((now.QuadPart-start.QuadPart)*1000/frequency.QuadPart));
   return ok;
+}
+void __fastcall LoadSaveDetour(void* saves,void* edx,int slot){
+  // Only the confirmed slot path at 005858C7 should receive the title-style transition.
+  if(reinterpret_cast<uintptr_t>(_ReturnAddress())==0x005858CC && g_config.ps1TitleFade){
+    Log("TitleFade: confirmed Load Game slot; flash/fade before native save loader");
+    RunTitleFade();
+  }
+  loadSave(saves,edx,slot);
 }
 __declspec(naked) void NormalWait(){
  __asm {
@@ -75,6 +84,22 @@ __declspec(naked) void NormalWait(){
   popad
   popfd
   jmp dword ptr [normalWait]
+ }
+}
+__declspec(naked) void LoadMenuWait(){
+ __asm {
+  pushfd
+  pushad
+  call RunTitleFade
+  test al,al
+  jz native_load
+  popad
+  popfd
+  jmp dword ptr [loadMenuDone]
+ native_load:
+  popad
+  popfd
+  jmp dword ptr [loadMenuWait]
  }
 }
 __declspec(naked) void EasyWait(){
@@ -103,14 +128,18 @@ bool InstallTitleFade(){
  const uint8_t begin[]={0xa1,0xc8,0xd0,0x5f,0,0x6a,0,0x68};
  const uint8_t pumpBytes[]={0x83,0xec,0x1c,0x8d,0x44,0x24,0,0x6a};
  const game::ByteSignature checks[]={
+  {0x00585321,wait,sizeof(wait)},
   {0x0058552A,wait,sizeof(wait)},{0x00585593,wait,sizeof(wait)},
+  {0x0058534A,done,sizeof(done)},
   {0x00585553,done,sizeof(done)},{0x005855BC,done,sizeof(done)},
   {0x00466D50,begin,sizeof(begin)}, {0x0046FEC0,pumpBytes,sizeof(pumpBytes)},
   {game::kEndFrame,game::kEndFrameBytes,sizeof(game::kEndFrameBytes)}};
  for(const auto& check:checks)if(!game::CheckBytes(check)){Log("TitleFade: unexpected native ABI; original wait kept");return false;}
- ready=Hook("TitleNormalWait",0x0058552A,reinterpret_cast<void*>(NormalWait),&normalWait)&&
-       Hook("TitleEasyWait",0x00585593,reinterpret_cast<void*>(EasyWait),&easyWait);
- Log("TitleFade: candidate=%d; original title curve, Normal/Easy only",ready);
+ ready=Hook("TitleLoadMenuWait",0x00585321,reinterpret_cast<void*>(LoadMenuWait),&loadMenuWait)&&
+       Hook("TitleNormalWait",0x0058552A,reinterpret_cast<void*>(NormalWait),&normalWait)&&
+       Hook("TitleEasyWait",0x00585593,reinterpret_cast<void*>(EasyWait),&easyWait)&&
+       Hook("TitleLoadSave",0x00464940,reinterpret_cast<void*>(LoadSaveDetour),reinterpret_cast<void**>(&loadSave));
+ Log("TitleFade: candidate=%d; original title curve for New Game, Load Game selection and confirmed slots",ready);
  return ready;
 }
 }
