@@ -34,6 +34,21 @@ IDirect3DTexture8* EnemySurfaceTexture(IDirect3DDevice8* device, int surface) {
     if (surface < 1 || surface > 3) return nullptr;
     IDirect3DTexture8*& texture = gEnemySurfaceTextures[surface - 1];
     if (texture) return texture;
+    const char* names[] = {"ps1_shadow.png", "ps1_bloodx1.png", "ps1_bloodx2.png"};
+    char loosePath[MAX_PATH] = {};
+    if (GetModuleFileNameA(g_hWrapperModule, loosePath, MAX_PATH)) {
+        char* slash = strrchr(loosePath, '\\');
+        if (slash) {
+            *slash = '\0';
+            const size_t folderLength = strlen(loosePath);
+            sprintf_s(loosePath + folderLength, MAX_PATH - folderLength,
+                "\\FIXRES\\%s", names[surface - 1]);
+            // Loose files remain user/mod overrides. Only fall back to the
+            // copy embedded in d3d8.dll when the override is absent or bad.
+            if (SUCCEEDED(D3DXCreateTextureFromFileA(device, loosePath, &texture)) && texture)
+                return texture;
+        }
+    }
     const int ids[] = {IDR_PS1_SHADOW_PNG, IDR_PS1_BLOODX1_PNG, IDR_PS1_BLOODX2_PNG};
     HRSRC info = FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(ids[surface - 1]), RT_RCDATA);
     HGLOBAL data = info ? LoadResource(g_hWrapperModule, info) : nullptr;
