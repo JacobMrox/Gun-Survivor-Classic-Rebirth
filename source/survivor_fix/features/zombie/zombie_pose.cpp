@@ -177,6 +177,12 @@ void PoseOnHit(void* s, bool behind) {
   g_poseBySubject[s].twist = ps1::TwistForHit(behind);
 }
 
+void ResetPoseRoom() {
+  g_poseBySubject.clear();
+  g_subjectByModel.clear();
+  g_subjectByDrawn.clear();
+}
+
 void UpdatePose(void* s, const Entry& e) {
   if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return;
   uint8_t *o, *t;

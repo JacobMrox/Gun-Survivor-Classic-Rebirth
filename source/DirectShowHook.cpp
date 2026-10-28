@@ -97,58 +97,98 @@ namespace
 
         static DWORD WINAPI KillMovieThread(LPVOID lpParam) {
             GraphState* st = (GraphState*)lpParam;
+            // The graph proxy can be released as soon as the movie completes,
+            // while this polling thread is still scheduled.  Never retain its
+            // embedded GraphState: take independent COM references and use
+            // only the copied window/flags below.
+            IGraphBuilder* graph = st ? st->pGraph : nullptr;
+            IMediaControl* control = st ? st->pControl : nullptr;
+            IMediaEvent* event = st ? st->pEvent : nullptr;
+            const bool ffmpegVideo = st && st->ffmpegVideo;
+            const bool gameOverlay = AviFfmpegHook::IsGameOverlayActive();
+            const HWND gameHWnd = st ? st->gameHWnd : NULL;
+            if (graph) graph->AddRef();
+            if (control) control->AddRef();
+            if (event) event->AddRef();
+
+            auto finish = [&]() {
+                if (event) event->Release();
+                if (control) control->Release();
+                if (graph) graph->Release();
+            };
+            if (!graph || !control) {
+                finish();
+                return 0;
+            }
+
             HANDLE hEv = NULL;
-            if (st->pEvent) st->pEvent->GetEventHandle((OAEVENT*)&hEv);
+            if (event) event->GetEventHandle((OAEVENT*)&hEv);
+
+            bool skipTriggered = false;
 
             if (gSkipMovies) {
                 Sleep(150);
             }
             else {
-                // Inside KillMovieThread
                 while (true) {
-                    // Check keys
                     if ((GetAsyncKeyState(VK_SPACE) & 0x8000) || (GetAsyncKeyState(VK_RETURN) & 0x8000)) {
-                        if (st->pControl) {
-                            st->pControl->Stop();
-                            LogLine("[MOVIE] Manual skip triggered by user.");
-                            break;
-                        }
+                        if (ffmpegVideo) AviFfmpegHook::StopForDirectShow();
+                        if (gameOverlay) AviFfmpegHook::StopForGameOverlay();
+                        control->Stop();
+                        skipTriggered = true;
+                        LogLine("[MOVIE] Manual skip triggered by user.");
+                        break;
                     }
-
-                    // Safety exit: if the movie window is closed or the graph is destroyed
-                    if (!st->pControl) break;
-
-                    Sleep(15); // 20ms is the sweet spot for input polling
+                    // Once FFmpeg has finished, or DirectShow reports a terminal
+                    // event, retire the polling thread before title input begins.
+                    if (ffmpegVideo && !AviFfmpegHook::IsGameOverlayActive()) break;
+                    if (gameOverlay) {
+                        if (!AviFfmpegHook::IsGameOverlayActive()) break;
+                        // DirectShow can show its renderer again after graph
+                        // state changes. Keep it suppressed for the lifetime
+                        // of the replacement overlay, not only at Run().
+                        HideDirectShowVideo(graph);
+                    }
+                    long code = 0;
+                    LONG_PTR p1 = 0, p2 = 0;
+                    if (event && event->GetEvent(&code, &p1, &p2, 0) == S_OK) {
+                        event->FreeEventParams(code, p1, p2);
+                        if (code == EC_COMPLETE || code == EC_USERABORT || code == EC_ERRORABORT) break;
+                    }
+                    Sleep(15);
                 }
             }
 
-            if (!st->skipTriggered) {
-                st->skipTriggered = true;
+            if (gSkipMovies || skipTriggered) {
                 IBasicAudio* pBA = nullptr;
-                if (SUCCEEDED(st->pGraph->QueryInterface(IID_IBasicAudio, (void**)&pBA))) {
+                if (SUCCEEDED(graph->QueryInterface(IID_IBasicAudio, (void**)&pBA))) {
                     pBA->put_Volume(-10000); pBA->Release();
                 }
                 IMediaSeeking* pMS = nullptr;
-                if (SUCCEEDED(st->pGraph->QueryInterface(IID_IMediaSeeking, (void**)&pMS))) {
+                if (SUCCEEDED(graph->QueryInterface(IID_IMediaSeeking, (void**)&pMS))) {
                     LONGLONG dur = 0;
                     if (SUCCEEDED(pMS->GetDuration(&dur)))
                         pMS->SetPositions(&dur, AM_SEEKING_AbsolutePositioning, NULL, AM_SEEKING_NoPositioning);
                     pMS->Release();
                 }
-                if (st->gameHWnd) PostMessageA(st->gameHWnd, 0x8001, (WPARAM)EC_COMPLETE, 0);
+                if (gameHWnd) PostMessageA(gameHWnd, 0x8001, (WPARAM)EC_COMPLETE, 0);
             }
+            finish();
             return 0;
         }
 
         HRESULT STDMETHODCALLTYPE Run() override {
-            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive()) HideDirectShowVideo(st->pGraph);
             if (!st->skipTriggered) {
                 if (!st->gameHWnd) st->gameHWnd = GetActiveWindow();
                 st->pControl = real;
                 st->pGraph->QueryInterface(IID_IMediaEvent, (void**)&st->pEvent);
                 CreateThread(NULL, 0, KillMovieThread, st, 0, NULL);
             }
-            return real->Run();
+            // Run may re-enable the renderer's window. Hide it afterwards so
+            // the legacy video cannot flash over the FFmpeg overlay.
+            const HRESULT hr = real->Run();
+            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive()) HideDirectShowVideo(st->pGraph);
+            return hr;
         }
 
         // Other methods...
@@ -156,6 +196,7 @@ namespace
         HRESULT STDMETHODCALLTYPE Stop() override {
             st->skipTriggered = true;
             if (st->ffmpegVideo) AviFfmpegHook::StopForDirectShow();
+            if (AviFfmpegHook::IsGameOverlayActive()) AviFfmpegHook::StopForGameOverlay();
             return real->Stop();
         }
         HRESULT STDMETHODCALLTYPE GetState(LONG ms, OAFilterState* pfs) override { return real->GetState(ms, pfs); }
@@ -175,6 +216,7 @@ namespace
         GraphBuilderProxy(IGraphBuilder* r) : real(r) { if (real) real->AddRef(); st.pGraph = r; }
         ~GraphBuilderProxy() {
             if (st.ffmpegVideo) AviFfmpegHook::StopForDirectShow();
+            if (AviFfmpegHook::IsGameOverlayActive()) AviFfmpegHook::StopForGameOverlay();
             if (real) real->Release();
             if (st.pEvent) st.pEvent->Release();
         }

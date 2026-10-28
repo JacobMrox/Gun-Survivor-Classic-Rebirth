@@ -45,6 +45,8 @@ void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsig
 // and must retain their native red texture/blending.
 void SurvivorPc_ArmEnemyShadowDraw();
 void SurvivorPc_ArmEnemyPoolDraw(int texture);
+void SurvivorPc_ArmBloodEffectDraw();
+void SurvivorPc_DisarmBloodEffectDraw();
 // 0 none, 1 shadow, 2 BLOODX1, 3 BLOODX2.
 int SurvivorPc_TakeEnemySurfaceDraw();
 

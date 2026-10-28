@@ -40,7 +40,8 @@ GROUPBOX        "Fixes", IDC_STATIC, 7, 160, 198, 65
 CONTROL         "Skip FMV Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 177, 100, 10
 CONTROL         "Smooth Model Lighting", IDC_SMOOTH_MODEL_LIGHTING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 177, 95, 10
 CONTROL         "Lethal Zombie Headshots", IDC_ZOMBIE_HEADSHOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 194, 130, 10
-CONTROL         "Detached Zombie Heads", IDC_DETACHED_HEADS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 210, 130, 10
+CONTROL         "Uncensored Headshots", IDC_DETACHED_HEADS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 210, 140, 10
+PUSHBUTTON      "Blood Color...", IDC_BLOOD_COLOR, 120, 192, 70, 14
 
 GROUPBOX        "Crosshair", IDC_STATIC, 212, 7, 201, 148
 LTEXT           "Type:", IDC_STATIC, 220, 22, 20, 8

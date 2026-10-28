@@ -21,6 +21,7 @@
 #include "d3d8.h"
 #include "survivor_pc.h"
 #include "survivor_fix/log.h"
+#include "survivor_fix/config.h"
 #include "resource.h"
 #include "d3dx8tex.h"
 
@@ -641,6 +642,11 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 			ProxyInterface->SetTexture(0, replacement);
 		if (enemySurface == 1) {
 			ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0x80404040);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+		} else {
+			ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0xFF000000u | sf::g_config.bloodColor);
 			ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
 			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
 			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);

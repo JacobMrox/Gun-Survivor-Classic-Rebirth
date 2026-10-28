@@ -7,6 +7,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 namespace sf {
 
@@ -90,8 +91,10 @@ struct Config {
   bool ps1TitleFade = true;
   // Optional restoration of the PS1 lethal head-part rule, exposed in the configuration window.
   bool lethalZombieHeadshots = false;
-  // Visual decapitation for lethal headshots. This also gates the detached/falling head effect.
+  // Original-trilogy-style head explosion: hide the head and emit the stable blood/pop effects.
   bool detachedZombieHeads = true;
+  // 0x00RRGGBB modulation shared by hit blood and blood pools. White preserves the artwork.
+  uint32_t bloodColor = 0x00FFFFFF;
   // The game runs at the PS1 rate: two NTSC vertical blanks per frame, about 29.91 logic updates/s (VSync(2)).
   bool ps1Cadence = true;
 

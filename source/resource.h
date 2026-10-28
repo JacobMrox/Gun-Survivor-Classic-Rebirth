@@ -31,6 +31,7 @@
 #define IDC_LASER_COLOR           1028
 #define IDC_ZOMBIE_HEADSHOTS      1029
 #define IDC_DETACHED_HEADS        1030
+#define IDC_BLOOD_COLOR           1031
 #define IDR_CROSSHAIR_PC          2001
 #define IDR_CROSSHAIR_OLD         2002
 #define IDR_CROSSHAIR_PSX         2003

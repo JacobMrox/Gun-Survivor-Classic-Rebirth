@@ -20,6 +20,7 @@
 #include "zombie_shared.h"
 
 #include "../../ps1/blood_logic.h"
+#include "../../../survivor_pc.h"
 
 namespace sf::features::zombie {
 
@@ -107,7 +108,9 @@ int __fastcall DrawEffectDetour(void* e, void* edx, const float* axisA, const fl
   const int cell = ps1::BloodPcCell(b.seq, b.age, kPcCells);
   *game::Field<float>(e, game::kEffectFrame) =
       ((cell < 0 ? kPcCells : cell) + 1.5f) * game::Read<float>(e, game::kEffectFrameDiv);
+  SurvivorPc_ArmBloodEffectDraw();
   const int result = g_drawEffect(e, edx, axisA, axisB);
+  SurvivorPc_DisarmBloodEffectDraw();
   ++b.age;
   if (!result || b.age > ps1::BloodDuration(b.seq) + 30) g_blood.erase(it);
   return result;
@@ -116,6 +119,14 @@ int __fastcall DrawEffectDetour(void* e, void* edx, const float* axisA, const fl
 }  // namespace
 
 void SetBloodSubject(void* s) { g_subject = s; }
+
+void ResetBloodRoom() {
+  // The native room teardown frees every effect object. Their addresses can be
+  // reused immediately in the next room, so no pointer-keyed animation state
+  // may survive the transition.
+  g_subject = nullptr;
+  g_blood.clear();
+}
 
 void SpawnHeadBlood(void* s, const uint8_t* o) {
   // 0043A8A0 keeps the effect manager at S+08. Reuse its blood2 sprite with
@@ -152,12 +163,11 @@ void SpawnHeadBurst(void* s, const uint8_t* o) {
          blood2, 32, 32, 0, head[0] - 90.0f, head[1] + 120.0f, head[2] + 45.0f, 1, 1);
   create(manager, nullptr, name, 0.1f, 0.1f, 540.0f, 540.0f, 0.8f,
          blood2, 32, 32, 0, head[0] + 90.0f, head[1] + 120.0f, head[2] - 45.0f, 1, 1);
-  // EF03_0 is Survivor's eight-cell flesh/debris burst. It is the native
-  // analogue of RE2's extra decapitation debris and remains tied only to a
-  // confirmed lethal head hit.
-  create(manager, nullptr, "head_debris", 0.12f, 0.12f, 680.0f, 680.0f, 0.82f,
-         "RESOURCE\\EF03_0.BMP", 32, 32, 0,
-         head[0], head[1] + 45.0f, head[2], 1, 1);
+  // Do not create EF03_0 through the generic sprite manager here. Unlike the
+  // two blood sheets above, its lifetime/layout is not compatible with this
+  // call site and can leave the game's BMP decoder reading a stale source
+  // buffer after a room transition. A detached head needs its own owned draw
+  // object rather than borrowing this transient effect slot.
 }
 
 bool InstallZombieBlood() {

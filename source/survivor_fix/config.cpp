@@ -62,7 +62,26 @@ void LoadConfig(const char* iniPath) {
   c.ps1DoorFade = Read("Ps1DoorFade", true);
   c.ps1TitleFade = Read("Ps1TitleFade", true);
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
-  c.detachedZombieHeads = GetPrivateProfileIntA("Fixes", "DetachedZombieHeads", 1, iniPath) != 0;
+  char uncensored[16] = {};
+  GetPrivateProfileStringA("Fixes", "UncensoredHeadshots", "", uncensored, sizeof(uncensored), iniPath);
+  if (uncensored[0]) {
+    c.detachedZombieHeads = std::atoi(uncensored) != 0;
+  } else {
+    char exploding[16] = {};
+    GetPrivateProfileStringA("Fixes", "ExplodingZombieHeads", "", exploding, sizeof(exploding), iniPath);
+    c.detachedZombieHeads = exploding[0]
+        ? std::atoi(exploding) != 0
+        : GetPrivateProfileIntA("Fixes", "DetachedZombieHeads", 1, iniPath) != 0;
+  }
+  char bloodColor[32] = {};
+  GetPrivateProfileStringA("Fixes", "BloodColor", "255,255,255", bloodColor, sizeof(bloodColor), iniPath);
+  int bloodR = 255, bloodG = 255, bloodB = 255;
+  if (sscanf_s(bloodColor, "%d,%d,%d", &bloodR, &bloodG, &bloodB) == 3) {
+    bloodR = (std::max)(0, (std::min)(255, bloodR));
+    bloodG = (std::max)(0, (std::min)(255, bloodG));
+    bloodB = (std::max)(0, (std::min)(255, bloodB));
+    c.bloodColor = (uint32_t(bloodR) << 16) | (uint32_t(bloodG) << 8) | uint32_t(bloodB);
+  }
   c.ps1Cadence = Read("Ps1FrameRate", true);
 
   c.inputDeviceFix = Read("InputDeviceFix", true);

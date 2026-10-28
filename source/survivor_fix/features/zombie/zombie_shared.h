@@ -249,11 +249,13 @@ bool InstallZombieDeath();
 void SetBloodSubject(void* s);
 void SpawnHeadBlood(void* s, const uint8_t* o);
 void SpawnHeadBurst(void* s, const uint8_t* o);
+void ResetBloodRoom();
 bool InstallZombieBlood();
 
 // zombie_pose.cpp
 void PoseOnHit(void* s, bool behind);
 void UpdatePose(void* s, const Entry& e);
+void ResetPoseRoom();
 bool InstallZombiePose();
 
 // zombie_push.cpp

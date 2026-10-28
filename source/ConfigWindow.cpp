@@ -37,6 +37,7 @@ static bool keepAspect = true;
 static bool smoothModelLighting = true;
 static bool lethalZombieHeadshots = false;
 static bool detachedZombieHeads = true;
+static COLORREF bloodColor = RGB(255, 255, 255);
 
 static char cfgPath[MAX_PATH];
 bool bShowConfigOnLaunch = false;
@@ -221,7 +222,7 @@ bool EnableFluentTheme(HWND h) {
     for (const int id : {
         IDC_RES_COMBO, IDC_FPS_COMBO, IDC_REFRESH, IDC_FPS_COUNTER, IDC_WINDOWED,
         IDC_BORDERLESS, IDC_CENTER, IDC_ALWAYS_ONTOP, IDC_LOCK_CURSOR, IDC_PRIMARY_MON,
-        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_ZOMBIE_HEADSHOTS, IDC_DETACHED_HEADS, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
+        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_ZOMBIE_HEADSHOTS, IDC_DETACHED_HEADS, IDC_BLOOD_COLOR, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
         IDC_SHOW_CONFIG, IDC_CROSS_COMBO, IDC_CROSS_BROWSE, IDC_CROSS_SCALE, IDOK, IDCANCEL
     }) {
         if (HWND control = GetDlgItem(h, id)) SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
@@ -371,7 +372,10 @@ void SyncConfig(bool save) {
         SetI("Window", "KeepAspectRatio", keepAspect);
         SetI("Fixes", "SmoothModelLighting", smoothModelLighting);
         SetI("Fixes", "LethalZombieHeadshots", lethalZombieHeadshots);
-        SetI("Fixes", "DetachedZombieHeads", detachedZombieHeads);
+        SetI("Fixes", "UncensoredHeadshots", detachedZombieHeads);
+        const std::string blood = std::to_string(GetRValue(bloodColor)) + "," +
+            std::to_string(GetGValue(bloodColor)) + "," + std::to_string(GetBValue(bloodColor));
+        WritePrivateProfileStringA("Fixes", "BloodColor", blood.c_str(), cfgPath);
         const std::string sensitivity = std::to_string(static_cast<float>(mouseSensitivityPercent) / 100.0f);
         WritePrivateProfileStringA("Crosshair", "MouseSensitivity", sensitivity.c_str(), cfgPath);
         WritePrivateProfileStringA("Crosshair", "TexturePath", sCrosshairPath.c_str(), cfgPath);
@@ -429,7 +433,15 @@ void SyncConfig(bool save) {
         keepAspect = MigratedI("Window", "KeepAspectRatio", "SurvivorFix", "KeepAspect", 1) != 0;
         smoothModelLighting = MigratedI("Fixes", "SmoothModelLighting", "SurvivorFix", "SmoothModelLighting", 1) != 0;
         lethalZombieHeadshots = GetI("Fixes", "LethalZombieHeadshots", 0) != 0;
-        detachedZombieHeads = GetI("Fixes", "DetachedZombieHeads", 1) != 0;
+        detachedZombieHeads = Has("Fixes", "UncensoredHeadshots")
+            ? GetI("Fixes", "UncensoredHeadshots", 1) != 0
+            : (Has("Fixes", "ExplodingZombieHeads")
+                ? GetI("Fixes", "ExplodingZombieHeads", 1) != 0
+                : GetI("Fixes", "DetachedZombieHeads", 1) != 0);
+        GetPrivateProfileStringA("Fixes", "BloodColor", "255,255,255", temp, MAX_PATH, cfgPath);
+        red = green = blue = 255;
+        if (sscanf_s(temp, "%d,%d,%d", &red, &green, &blue) == 3)
+            bloodColor = RGB(std::clamp(red, 0, 255), std::clamp(green, 0, 255), std::clamp(blue, 0, 255));
         GetPrivateProfileStringA(Has("Crosshair", "MouseSensitivity") ? "Crosshair" : "SurvivorFix",
             "MouseSensitivity", "1.0", temp, MAX_PATH, cfgPath);
         mouseSensitivityPercent = std::clamp(static_cast<int>(std::atof(temp) * 100.0 + 0.5), 10, 500);
@@ -534,7 +546,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             DrawFluentCombo(*item);
             return TRUE;
         }
-        if (gUseFluentDesign && item && item->CtlType == ODT_BUTTON && (item->CtlID == IDC_CROSS_BROWSE || item->CtlID == IDC_LASER_COLOR || item->CtlID == IDOK || item->CtlID == IDCANCEL)) {
+        if (gUseFluentDesign && item && item->CtlType == ODT_BUTTON && (item->CtlID == IDC_CROSS_BROWSE || item->CtlID == IDC_LASER_COLOR || item->CtlID == IDC_BLOOD_COLOR || item->CtlID == IDOK || item->CtlID == IDCANCEL)) {
             DrawFluentButton(*item);
             return TRUE;
         }
@@ -622,6 +634,15 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             picker.lpCustColors = customColors;
             picker.Flags = CC_FULLOPEN | CC_RGBINIT;
             if (ChooseColorA(&picker)) gLaserColor = picker.rgbResult;
+        }
+        else if (LOWORD(w) == IDC_BLOOD_COLOR) {
+            static COLORREF customBloodColors[16] = {};
+            CHOOSECOLORA picker = { sizeof(picker) };
+            picker.hwndOwner = h;
+            picker.rgbResult = bloodColor;
+            picker.lpCustColors = customBloodColors;
+            picker.Flags = CC_FULLOPEN | CC_RGBINIT;
+            if (ChooseColorA(&picker)) bloodColor = picker.rgbResult;
         }
         break;
     }

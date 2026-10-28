@@ -358,6 +358,8 @@ int gEnemySurfaceArmed = 0;
 
 void SurvivorPc_ArmEnemyShadowDraw() { gEnemySurfaceArmed = 1; }
 void SurvivorPc_ArmEnemyPoolDraw(int texture) { gEnemySurfaceArmed = texture == 2 ? 3 : 2; }
+void SurvivorPc_ArmBloodEffectDraw() { gEnemySurfacePending = 4; }
+void SurvivorPc_DisarmBloodEffectDraw() { if (gEnemySurfacePending == 4) gEnemySurfacePending = 0; }
 
 void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsigned long value) {
   if (!gPs1ShadowBlend) return;

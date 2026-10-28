@@ -208,6 +208,8 @@ void ResetZombieRoom() {
   ResetPushes();
   ResetWalkRoom();
   ResetDeaths();
+  ResetBloodRoom();
+  ResetPoseRoom();
   // nativeSaved is not destroyed here: an in-flight native phase still owns its restoration.
 }
 
