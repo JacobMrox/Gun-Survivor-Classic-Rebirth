@@ -303,6 +303,33 @@ namespace AviFfmpegHook {
     struct OverlayState { std::string path; HWND parent = nullptr; volatile LONG stop = FALSE; };
     static OverlayState* g_overlay = nullptr;
 
+    static LRESULT CALLBACK OverlayWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+        // A STATIC/SS_BLACKRECT child erases itself to black whenever Windows
+        // repaints it, briefly replacing the FFmpeg frame. The movie thread
+        // owns all frame drawing, so suppress background erasure and empty
+        // paint requests instead of flashing black between decoded frames.
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_PAINT) {
+            PAINTSTRUCT paint{};
+            BeginPaint(window, &paint);
+            EndPaint(window, &paint);
+            return 0;
+        }
+        return DefWindowProcA(window, message, wParam, lParam);
+    }
+
+    static bool EnsureOverlayWindowClass() {
+        static bool overlayClassAvailable = []() {
+            WNDCLASSEXA wc{};
+            wc.cbSize = sizeof(wc);
+            wc.lpfnWndProc = OverlayWindowProc;
+            wc.hInstance = GetModuleHandleA(nullptr);
+            wc.lpszClassName = "SurvivorFfmpegOverlay";
+            return RegisterClassExA(&wc) != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+        }();
+        return overlayClassAvailable;
+    }
+
     static BOOL CALLBACK HideNativeMovieChild(HWND window, LPARAM overlayValue) {
         const HWND overlay = reinterpret_cast<HWND>(overlayValue);
         if (window != overlay && IsWindowVisible(window)) ShowWindow(window, SW_HIDE);
@@ -337,7 +364,8 @@ namespace AviFfmpegHook {
         if (!(scale = sws_getContext(codec->width, codec->height, codec->pix_fmt, codec->width, codec->height, AV_PIX_FMT_BGRA, SWS_BILINEAR, nullptr, nullptr, nullptr))) goto done;
         if (!state->parent) state->parent = GetForegroundWindow();
         if (!state->parent) goto done;
-        overlay = CreateWindowExA(WS_EX_NOPARENTNOTIFY, "STATIC", "", WS_CHILD | WS_CLIPSIBLINGS | SS_BLACKRECT, 0, 0, 1, 1, state->parent, nullptr, GetModuleHandleA(nullptr), nullptr);
+        if (!EnsureOverlayWindowClass()) goto done;
+        overlay = CreateWindowExA(WS_EX_NOPARENTNOTIFY, "SurvivorFfmpegOverlay", "", WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 1, 1, state->parent, nullptr, GetModuleHandleA(nullptr), nullptr);
         if (!overlay) goto done;
         info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = codec->width; info.bmiHeader.biHeight = -codec->height; info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
         rate = format->streams[stream]->avg_frame_rate;

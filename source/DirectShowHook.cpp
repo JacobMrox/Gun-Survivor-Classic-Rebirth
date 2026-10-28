@@ -1,10 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dshow.h>
+#include <uuids.h>
 #include <string>
 #include <cwctype>
 #include <cstring>
 #include <cwchar>
+#include <vector>
 #include "MinHook.h"
 #include "DirectShowHook.h"
 #include "AviFfmpegHook.h"
@@ -16,6 +18,10 @@
 namespace
 {
     static bool gSkipMovies = false;
+    // CLSID_NullRenderer is omitted by some current Windows SDK header sets.
+    // This is Microsoft's registered DirectShow Null Renderer class ID.
+    static const CLSID CLSID_SurvivorNullRenderer =
+        { 0xC1F400A4, 0x3F08, 0x11D3, { 0x9F, 0x0B, 0x00, 0x60, 0x08, 0x03, 0x9E, 0x37 } };
 
     static bool IsMovieFile(const wchar_t* path) {
         if (!path) return false;
@@ -28,8 +34,147 @@ namespace
         if (graph && SUCCEEDED(graph->QueryInterface(IID_IVideoWindow, reinterpret_cast<void**>(&video))) && video) {
             video->put_AutoShow(OAFALSE);
             video->put_Visible(OAFALSE);
+            video->put_WindowState(SW_HIDE);
+            video->SetWindowPosition(-32000, -32000, 1, 1);
             video->Release();
         }
+        IBasicVideo* basic = nullptr;
+        if (graph && SUCCEEDED(graph->QueryInterface(IID_IBasicVideo, reinterpret_cast<void**>(&basic))) && basic) {
+            basic->SetDestinationPosition(-32000, -32000, 1, 1);
+            basic->Release();
+        }
+    }
+
+    static void FreeMediaType(AM_MEDIA_TYPE& media) {
+        if (media.cbFormat) CoTaskMemFree(media.pbFormat);
+        if (media.pUnk) media.pUnk->Release();
+        ZeroMemory(&media, sizeof(media));
+    }
+
+    // Survivor's legacy renderer can present directly into the game surface,
+    // bypassing IVideoWindow visibility and producing alternating old/new
+    // frames. Replace only terminal video renderers with DirectShow's null
+    // renderer. Unlike removing the renderer, this keeps the video branch
+    // connected so audio, timing and EC_COMPLETE continue to work.
+    static bool ReplaceDirectShowVideoRenderersWithNull(IGraphBuilder* graph) {
+        if (!graph) return false;
+        IEnumFilters* filters = nullptr;
+        if (FAILED(graph->EnumFilters(&filters)) || !filters) return false;
+        std::vector<IBaseFilter*> renderers;
+        IBaseFilter* filter = nullptr;
+        while (filters->Next(1, &filter, nullptr) == S_OK) {
+            IEnumPins* pins = nullptr;
+            bool connectedVideoInput = false;
+            bool hasOutput = false;
+            if (SUCCEEDED(filter->EnumPins(&pins)) && pins) {
+                IPin* pin = nullptr;
+                while (pins->Next(1, &pin, nullptr) == S_OK) {
+                    PIN_DIRECTION direction = PINDIR_INPUT;
+                    pin->QueryDirection(&direction);
+                    if (direction == PINDIR_OUTPUT) {
+                        hasOutput = true;
+                    } else {
+                        IPin* peer = nullptr;
+                        AM_MEDIA_TYPE media = {};
+                        if (SUCCEEDED(pin->ConnectedTo(&peer)) && peer) {
+                            if (SUCCEEDED(pin->ConnectionMediaType(&media))) {
+                                connectedVideoInput = media.majortype == MEDIATYPE_Video;
+                                FreeMediaType(media);
+                            }
+                            peer->Release();
+                        }
+                    }
+                    pin->Release();
+                }
+                pins->Release();
+            }
+            if (connectedVideoInput && !hasOutput) {
+                renderers.push_back(filter);  // keep enumeration reference
+            } else {
+                filter->Release();
+            }
+            filter = nullptr;
+        }
+        filters->Release();
+        bool replaced = false;
+        for (IBaseFilter* renderer : renderers) {
+            IPin* oldInput = nullptr;
+            IPin* upstream = nullptr;
+            AM_MEDIA_TYPE media = {};
+            IEnumPins* pins = nullptr;
+            if (SUCCEEDED(renderer->EnumPins(&pins)) && pins) {
+                IPin* pin = nullptr;
+                while (pins->Next(1, &pin, nullptr) == S_OK) {
+                    PIN_DIRECTION direction = PINDIR_OUTPUT;
+                    pin->QueryDirection(&direction);
+                    IPin* peer = nullptr;
+                    AM_MEDIA_TYPE candidate = {};
+                    if (direction == PINDIR_INPUT && SUCCEEDED(pin->ConnectedTo(&peer)) && peer &&
+                        SUCCEEDED(pin->ConnectionMediaType(&candidate)) && candidate.majortype == MEDIATYPE_Video) {
+                        oldInput = pin;
+                        upstream = peer;
+                        media = candidate;
+                        break;
+                    }
+                    if (peer) peer->Release();
+                    FreeMediaType(candidate);
+                    pin->Release();
+                }
+                pins->Release();
+            }
+
+            IBaseFilter* nullRenderer = nullptr;
+            IPin* nullInput = nullptr;
+            HRESULT hr = oldInput && upstream
+                ? CoCreateInstance(CLSID_SurvivorNullRenderer, nullptr, CLSCTX_INPROC_SERVER,
+                    IID_IBaseFilter, reinterpret_cast<void**>(&nullRenderer))
+                : E_FAIL;
+            if (SUCCEEDED(hr)) hr = graph->AddFilter(nullRenderer, L"Survivor Null Video Renderer");
+            if (SUCCEEDED(hr)) {
+                IEnumPins* nullPins = nullptr;
+                if (SUCCEEDED(nullRenderer->EnumPins(&nullPins)) && nullPins) {
+                    IPin* pin = nullptr;
+                    while (nullPins->Next(1, &pin, nullptr) == S_OK) {
+                        PIN_DIRECTION direction = PINDIR_OUTPUT;
+                        pin->QueryDirection(&direction);
+                        if (direction == PINDIR_INPUT) { nullInput = pin; break; }
+                        pin->Release();
+                    }
+                    nullPins->Release();
+                }
+                if (!nullInput) hr = E_NOINTERFACE;
+            }
+            if (SUCCEEDED(hr)) {
+                graph->Disconnect(upstream);
+                graph->Disconnect(oldInput);
+                hr = graph->ConnectDirect(upstream, nullInput, &media);
+                if (FAILED(hr)) hr = graph->Connect(upstream, nullInput);
+                if (SUCCEEDED(hr)) {
+                    const HRESULT removeHr = graph->RemoveFilter(renderer);
+                    replaced = true;
+                    LogLine("[MOVIE] replaced DirectShow video renderer with null renderer: connect=%08lX remove=%08lX",
+                        static_cast<unsigned long>(hr), static_cast<unsigned long>(removeHr));
+                } else {
+                    graph->Disconnect(upstream);
+                    graph->Disconnect(nullInput);
+                    HRESULT restoreHr = graph->ConnectDirect(upstream, oldInput, &media);
+                    if (FAILED(restoreHr)) restoreHr = graph->Connect(upstream, oldInput);
+                    graph->RemoveFilter(nullRenderer);
+                    LogLine("[MOVIE] null renderer connection failed: %08lX; restored legacy renderer: %08lX",
+                        static_cast<unsigned long>(hr), static_cast<unsigned long>(restoreHr));
+                }
+            } else if (nullRenderer) {
+                graph->RemoveFilter(nullRenderer);
+                LogLine("[MOVIE] null renderer creation failed: %08lX", static_cast<unsigned long>(hr));
+            }
+            if (nullInput) nullInput->Release();
+            if (nullRenderer) nullRenderer->Release();
+            if (upstream) upstream->Release();
+            if (oldInput) oldInput->Release();
+            FreeMediaType(media);
+            renderer->Release();
+        }
+        return replaced;
     }
 
     struct HideVideoRequest { IGraphBuilder* graph = nullptr; };
@@ -184,8 +329,10 @@ namespace
                 st->pGraph->QueryInterface(IID_IMediaEvent, (void**)&st->pEvent);
                 CreateThread(NULL, 0, KillMovieThread, st, 0, NULL);
             }
-            // Run may re-enable the renderer's window. Hide it afterwards so
-            // the legacy video cannot flash over the FFmpeg overlay.
+            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive())
+                ReplaceDirectShowVideoRenderersWithNull(st->pGraph);
+            // Retain the window suppression as a fallback for unusual graphs
+            // whose renderer could not be detached.
             const HRESULT hr = real->Run();
             if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive()) HideDirectShowVideo(st->pGraph);
             return hr;

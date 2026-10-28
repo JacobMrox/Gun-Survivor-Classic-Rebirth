@@ -647,9 +647,15 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
 		} else {
 			ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0xFF000000u | sf::g_config.bloodColor);
-			ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+			if (sf::g_config.bloodColor == 0x00FFFFFFu) {
+				ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+				ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+			} else {
+				// Replace RGB instead of multiplying the already-red artwork: red x
+				// green is black. Texture alpha still preserves its soft shape.
+				ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+				ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
+			}
 		}
 		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);

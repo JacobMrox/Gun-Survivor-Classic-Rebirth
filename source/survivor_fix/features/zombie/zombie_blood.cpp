@@ -137,10 +137,12 @@ void SpawnHeadBlood(void* s, const uint8_t* o) {
   if (!manager || !BoneWorld(o, 3, head)) return;
   head[1] += 120.0f;  // PC world Y increases downward: head joint -> neck
   auto create = reinterpret_cast<CreateEffectFn>(game::kEffectCreate);
-  create(manager, nullptr, reinterpret_cast<const char*>(0x005BAFAC),
+  const int index = create(manager, nullptr, reinterpret_cast<const char*>(0x005BAFAC),
          0.1f, 0.1f, 600.0f, 600.0f, 0.8f,
          reinterpret_cast<const char*>(0x005BAFB4), 32, 32, 0,
          head[0], head[1], head[2], 1, 1);
+  auto** effects = game::Read<void**>(manager, game::kEffectList);
+  if (index >= 0 && effects && effects[index]) g_blood[effects[index]] = {ps1::BloodSequence::B, 0};
 }
 
 void SpawnHeadBurst(void* s, const uint8_t* o) {
@@ -156,13 +158,18 @@ void SpawnHeadBurst(void* s, const uint8_t* o) {
   const char* blood2 = reinterpret_cast<const char*>(0x005BAFB4);
   const char* blood1 = "RESOURCE\\blood1.BMP";
 
+  auto spawn = [&](ps1::BloodSequence sequence, float side, const char* bitmap, int cell,
+                   float x, float y, float z) {
+    const int index = create(manager, nullptr, name, 0.1f, 0.1f, side, side, 0.8f,
+                             bitmap, cell, cell, 0, x, y, z, 1, 1);
+    auto** effects = game::Read<void**>(manager, game::kEffectList);
+    if (index >= 0 && effects && effects[index]) g_blood[effects[index]] = {sequence, 0};
+  };
+
   // Broad impact cloud at the sever point, followed by the longer neck spray.
-  create(manager, nullptr, name, 0.1f, 0.1f, 760.0f, 760.0f, 0.82f,
-         blood1, 40, 40, 0, head[0], head[1] + 35.0f, head[2], 1, 1);
-  create(manager, nullptr, name, 0.1f, 0.1f, 540.0f, 540.0f, 0.8f,
-         blood2, 32, 32, 0, head[0] - 90.0f, head[1] + 120.0f, head[2] + 45.0f, 1, 1);
-  create(manager, nullptr, name, 0.1f, 0.1f, 540.0f, 540.0f, 0.8f,
-         blood2, 32, 32, 0, head[0] + 90.0f, head[1] + 120.0f, head[2] - 45.0f, 1, 1);
+  spawn(ps1::BloodSequence::A, 760.0f, blood1, 40, head[0], head[1] + 35.0f, head[2]);
+  spawn(ps1::BloodSequence::B, 540.0f, blood2, 32, head[0] - 90.0f, head[1] + 120.0f, head[2] + 45.0f);
+  spawn(ps1::BloodSequence::B, 540.0f, blood2, 32, head[0] + 90.0f, head[1] + 120.0f, head[2] - 45.0f);
   // Do not create EF03_0 through the generic sprite manager here. Unlike the
   // two blood sheets above, its lifetime/layout is not compatible with this
   // call site and can leave the game's BMP decoder reading a stale source
