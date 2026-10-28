@@ -27,42 +27,11 @@ constexpr int kNoReactionRequest = 0x0C;  // one of the requests that 0043A8A0 d
 constexpr unsigned kHeadBone = 3;
 constexpr float kLethalHeadRadius = 250.0f;
 
-// A short embedded wet pop. The shipped cue tried previously is only a few
-// milliseconds long and disappears under the simultaneous death voice.
 void PlayHeadPop() {
-  // Use RE2 PC enemy00.sap entry 0002 when the packaged reference cue is
-  // available. Keep the generated cue as a safe fallback for older installs.
-  if (PlaySoundA("FIXRES\\headpop.wav", nullptr,
-                 SND_FILENAME | SND_ASYNC | SND_NODEFAULT)) return;
-  static std::vector<uint8_t> wave;
-  if (wave.empty()) {
-    constexpr uint32_t rate = 11025;
-    constexpr uint32_t samples = rate * 18 / 100;
-    constexpr uint32_t bytes = samples * 2;
-    wave.resize(44 + bytes);
-    auto w16 = [&](size_t at, uint16_t v) { wave[at] = uint8_t(v); wave[at + 1] = uint8_t(v >> 8); };
-    auto w32 = [&](size_t at, uint32_t v) {
-      wave[at] = uint8_t(v); wave[at + 1] = uint8_t(v >> 8);
-      wave[at + 2] = uint8_t(v >> 16); wave[at + 3] = uint8_t(v >> 24);
-    };
-    std::memcpy(wave.data(), "RIFF", 4); w32(4, 36 + bytes);
-    std::memcpy(wave.data() + 8, "WAVEfmt ", 8); w32(16, 16); w16(20, 1); w16(22, 1);
-    w32(24, rate); w32(28, rate * 2); w16(32, 2); w16(34, 16);
-    std::memcpy(wave.data() + 36, "data", 4); w32(40, bytes);
-    uint32_t noise = 0x51F15EEDu;
-    for (uint32_t i = 0; i < samples; ++i) {
-      noise = noise * 1664525u + 1013904223u;
-      const float t = float(i) / rate;
-      const float decay = std::exp(-t * 25.0f);
-      const float body = std::sin(6.2831853f * (115.0f - 230.0f * t) * t) * 0.72f;
-      const float grit = (float(int(noise >> 16) - 32768) / 32768.0f) * 0.38f;
-      const int value = int((body + grit) * decay * 28000.0f);
-      const int16_t sample = int16_t((std::max)(-32768, (std::min)(32767, value)));
-      w16(44 + i * 2, uint16_t(sample));
-    }
-  }
-  PlaySoundA(reinterpret_cast<LPCSTR>(wave.data()), nullptr,
-             SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+  // The packaged RE2 cue is the only added sound. If it is absent, leave the
+  // game's native weapon/death audio untouched instead of synthesizing a pop.
+  PlaySoundA("FIXRES\\headpop.wav", nullptr,
+             SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
 }
 
 bool IsLethalHeadHit(const uint8_t* o) {

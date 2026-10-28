@@ -216,6 +216,8 @@ char WinDir[MAX_PATH + 1];
         // accepts this z=1 probe, making the glow appear only at the first visible hit.
         dev->SetRenderState(D3DRS_ZFUNC, D3DCMP_GREATER);
         dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+        dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        dev->SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
         dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
         dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
         dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
@@ -225,20 +227,23 @@ char WinDir[MAX_PATH + 1];
         dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
         struct GlowVertex { float x, y, z, rhw; DWORD color; };
         const BYTE r = GetRValue(gLaserColor), g = GetGValue(gLaserColor), b = GetBValue(gLaserColor);
-        // Probe the existing depth buffer in three deliberately separated
-        // bands. The previous 0.985 halo threshold passed for practically all
-        // room geometry, so every impact looked close. Near surfaces pass all
-        // three probes; distant surfaces only pass the compact core.
-        const float radii[] = { 18.0f, 10.0f, 3.5f };
-        const float depth[] = { 0.80f, 0.93f, 0.9999f };
-        const BYTE alpha[] = { 42, 88, 245 };
-        for (int i = 0; i < 3; ++i) {
-            const float s = radii[i];
-            const DWORD color = D3DCOLOR_ARGB(alpha[i], r, g, b);
-            const float z = depth[i];
-            GlowVertex v[4] = {{x-s,y-s,z,1,color},{x+s,y-s,z,1,color},{x-s,y+s,z,1,color},{x+s,y+s,z,1,color}};
-            dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(GlowVertex));
-        }
+        constexpr int segments = 32;
+        auto drawDisc = [&](float radius, float centreZ, float rimZ, BYTE centreAlpha) {
+            GlowVertex vertices[segments + 2]{};
+            vertices[0] = {x, y, centreZ, 1.0f, D3DCOLOR_ARGB(centreAlpha, r, g, b)};
+            for (int i = 0; i <= segments; ++i) {
+                const float angle = 6.283185307f * static_cast<float>(i) / segments;
+                vertices[i + 1] = {x + cosf(angle) * radius, y + sinf(angle) * radius,
+                                   rimZ, 1.0f, D3DCOLOR_ARGB(0, r, g, b)};
+            }
+            dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, segments, vertices, sizeof(GlowVertex));
+        };
+        // The glow's probe depth now changes continuously from centre to rim.
+        // Against a nearer depth-buffer value progressively more of the disc
+        // passes, producing a smoothly larger circular impact instead of three
+        // discrete square states. Clear depth (1.0) rejects the entire dot.
+        drawDisc(20.0f, 0.9999f, 0.55f, 150);
+        drawDisc(3.5f, 0.9999f, 0.9999f, 245);
         dev->ApplyStateBlock(state);
         dev->DeleteStateBlock(state);
     }
