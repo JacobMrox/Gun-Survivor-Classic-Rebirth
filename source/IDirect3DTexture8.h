@@ -6,6 +6,8 @@ class m_IDirect3DTexture8 : public IDirect3DTexture8, public AddressLookupTableO
 private:
 	LPDIRECT3DTEXTURE8 ProxyInterface;
 	m_IDirect3DDevice8* m_pDevice;
+	bool bloodTextureCandidate = false;
+	bool bloodTextureRecolored = false;
 
 public:
 	// Effect replacement textures are bound at the known draw path, not by
@@ -18,6 +20,7 @@ public:
 	~m_IDirect3DTexture8() {}
 
 	LPDIRECT3DTEXTURE8 GetProxyInterface() { return ProxyInterface; }
+	void MarkBloodTextureCandidate() { bloodTextureCandidate = true; }
 
 	/*** IUnknown methods ***/
 	STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj);

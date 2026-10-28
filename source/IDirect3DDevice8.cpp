@@ -24,11 +24,73 @@
 #include "survivor_fix/config.h"
 #include "resource.h"
 #include "d3dx8tex.h"
+#include <algorithm>
+#include <cmath>
+#include <unordered_set>
 
 extern HMODULE g_hWrapperModule;
 
 namespace {
 IDirect3DTexture8* gEnemySurfaceTextures[3] = {};
+std::unordered_set<IDirect3DBaseTexture8*> gHueShiftedBloodEffects;
+
+struct HsvColour { float h, s, v; };
+
+HsvColour RgbToHsv(BYTE r8, BYTE g8, BYTE b8) {
+    const float r = r8 / 255.0f, g = g8 / 255.0f, b = b8 / 255.0f;
+    const float hi = (std::max)({r, g, b});
+    const float lo = (std::min)({r, g, b});
+    const float d = hi - lo;
+    float h = 0.0f;
+    if (d > 0.0001f) {
+        if (hi == r) h = std::fmod((g - b) / d, 6.0f);
+        else if (hi == g) h = ((b - r) / d) + 2.0f;
+        else h = ((r - g) / d) + 4.0f;
+        h /= 6.0f;
+        if (h < 0.0f) h += 1.0f;
+    }
+    return {h, hi > 0.0f ? d / hi : 0.0f, hi};
+}
+
+DWORD HsvToArgb(float h, float s, float v, BYTE alpha) {
+    const float scaled = h * 6.0f;
+    const int sector = static_cast<int>(std::floor(scaled)) % 6;
+    const float f = scaled - std::floor(scaled);
+    const float p = v * (1.0f - s);
+    const float q = v * (1.0f - f * s);
+    const float t = v * (1.0f - (1.0f - f) * s);
+    float r = v, g = t, b = p;
+    switch (sector) {
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    case 5: r = v; g = p; b = q; break;
+    }
+    const auto byte = [](float x) { return static_cast<BYTE>(std::clamp(x, 0.0f, 1.0f) * 255.0f + 0.5f); };
+    return (DWORD(alpha) << 24) | (DWORD(byte(r)) << 16) | (DWORD(byte(g)) << 8) | byte(b);
+}
+
+bool HueShiftBloodTexture(IDirect3DTexture8* texture, DWORD rgb) {
+    if (!texture || rgb == 0x00FFFFFFu) return true;
+    const HsvColour target = RgbToHsv(BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
+    D3DSURFACE_DESC8 desc = {};
+    D3DLOCKED_RECT lock = {};
+    if (FAILED(texture->GetLevelDesc(0, &desc)) || desc.Format != D3DFMT_A8R8G8B8 ||
+        FAILED(texture->LockRect(0, &lock, nullptr, 0))) return false;
+    for (UINT y = 0; y < desc.Height; ++y) {
+        auto* row = reinterpret_cast<DWORD*>(static_cast<BYTE*>(lock.pBits) + y * lock.Pitch);
+        for (UINT x = 0; x < desc.Width; ++x) {
+            const DWORD pixel = row[x];
+            const HsvColour source = RgbToHsv(BYTE(pixel >> 16), BYTE(pixel >> 8), BYTE(pixel));
+            // Replace hue, but retain each texel's value variation.  The chosen
+            // saturation/value control the strength and brightness naturally.
+            row[x] = HsvToArgb(target.h, target.s, source.v * target.v, BYTE(pixel >> 24));
+        }
+    }
+    texture->UnlockRect(0);
+    return true;
+}
 
 IDirect3DTexture8* EnemySurfaceTexture(IDirect3DDevice8* device, int surface) {
     if (surface < 1 || surface > 3) return nullptr;
@@ -45,8 +107,12 @@ IDirect3DTexture8* EnemySurfaceTexture(IDirect3DDevice8* device, int surface) {
                 "\\FIXRES\\%s", names[surface - 1]);
             // Loose files remain user/mod overrides. Only fall back to the
             // copy embedded in d3d8.dll when the override is absent or bad.
-            if (SUCCEEDED(D3DXCreateTextureFromFileA(device, loosePath, &texture)) && texture)
+            if (SUCCEEDED(D3DXCreateTextureFromFileExA(device, loosePath, D3DX_DEFAULT, D3DX_DEFAULT,
+                1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, D3DX_DEFAULT, D3DX_DEFAULT, 0,
+                nullptr, nullptr, &texture)) && texture) {
+                if (surface > 1) HueShiftBloodTexture(texture, sf::g_config.bloodColor);
                 return texture;
+            }
         }
     }
     const int ids[] = {IDR_PS1_SHADOW_PNG, IDR_PS1_BLOODX1_PNG, IDR_PS1_BLOODX2_PNG};
@@ -54,9 +120,20 @@ IDirect3DTexture8* EnemySurfaceTexture(IDirect3DDevice8* device, int surface) {
     HGLOBAL data = info ? LoadResource(g_hWrapperModule, info) : nullptr;
     const void* bytes = data ? LockResource(data) : nullptr;
     const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
-    if (bytes && size) D3DXCreateTextureFromFileInMemory(device, bytes, size, &texture);
+    if (bytes && size) {
+        D3DXCreateTextureFromFileInMemoryEx(device, bytes, size, D3DX_DEFAULT, D3DX_DEFAULT,
+            1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, D3DX_DEFAULT, D3DX_DEFAULT, 0,
+            nullptr, nullptr, &texture);
+        if (surface > 1) HueShiftBloodTexture(texture, sf::g_config.bloodColor);
+    }
     return texture;
 }
+}
+
+// Native BLOOD1/BLOOD2 textures are created and uploaded by the game rather
+// than by EnemySurfaceTexture.  Their wrapper calls this after the upload.
+void SurvivorHueShiftBloodTexture(IDirect3DTexture8* texture) {
+    HueShiftBloodTexture(texture, sf::g_config.bloodColor);
 }
 
 // somewhere global
@@ -647,6 +724,15 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 		ProxyInterface->GetTextureStageState(0, D3DTSS_ALPHAOP, &aop);
 		ProxyInterface->GetTextureStageState(0, D3DTSS_ALPHAARG1, &aarg1);
 		ProxyInterface->GetTextureStageState(0, D3DTSS_ALPHAARG2, &aarg2);
+		// Impact/headshot BLOOD1/BLOOD2 draws are identified synchronously by
+		// DrawEffectDetour (surface id 4). Recolour the texture that is actually
+		// bound, once, so this works regardless of how the game loaded or padded
+		// the BMP and retains the native dense alpha rendering.
+		if (enemySurface == 4 && oldTexture && oldTexture->GetType() == D3DRTYPE_TEXTURE &&
+			gHueShiftedBloodEffects.find(oldTexture) == gHueShiftedBloodEffects.end()) {
+			if (HueShiftBloodTexture(static_cast<IDirect3DTexture8*>(oldTexture), sf::g_config.bloodColor))
+				gHueShiftedBloodEffects.insert(oldTexture);
+		}
 		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
@@ -661,16 +747,10 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
 			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
 		} else {
-			ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0xFF000000u | sf::g_config.bloodColor);
-			if (sf::g_config.bloodColor == 0x00FFFFFFu) {
-				ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-				ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-			} else {
-				// Replace RGB instead of multiplying the already-red artwork: red x
-				// green is black. Texture alpha still preserves its soft shape.
-				ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-				ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
-			}
+			// Blood textures are hue-shifted once when loaded.  Draw their real RGB
+			// here; applying another fixed-function tint would flatten the result.
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
 		}
 		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);

@@ -173,6 +173,9 @@ static HANDLE WINAPI Hook_CreateFileA(
 {
     if (name)
     {
+		// Report every resource open, not only the special CD executable
+		// redirection below. Texture fixes rely on the actual asset identity.
+		NotifyFileOpenA(name);
         //Call alpha-fix file open notifier
         //AlphaFix_OnFileOpenA(name);
 
@@ -195,8 +198,6 @@ static HANDLE WINAPI Hook_CreateFileA(
             char buf[700];
             sprintf_s(buf, "[CD] Redirect %s -> %s", name, localExe);
             //LogFileA(buf);
-
-            NotifyFileOpenA(name);
 
             return Real_CreateFileA
                 ? Real_CreateFileA(localExe, access, share, sa, creation, flags, templateFile)

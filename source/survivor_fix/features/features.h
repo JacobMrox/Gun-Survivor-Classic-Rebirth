@@ -35,6 +35,8 @@ void ApplyInputDeviceFix();
 // Native CONDITION FLC array bound; keeps the native timing and D3D.
 bool InstallHudConditionBounds();
 bool InstallMovieSkip();
+// F5/F6 game-aware quick save/load and F8 resolution cycling.
+bool InstallQuickSave();
 bool InstallTitleFade();
 bool InstallMouseInput();
 bool InstallPs1Cadence();

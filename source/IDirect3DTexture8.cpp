@@ -16,6 +16,8 @@
 
 #include "d3d8.h"
 
+void SurvivorHueShiftBloodTexture(IDirect3DTexture8* texture);
+
 HRESULT m_IDirect3DTexture8::QueryInterface(THIS_ REFIID riid, void** ppvObj)
 {
 	if ((riid == IID_IDirect3DTexture8 || riid == IID_IUnknown || riid == IID_IDirect3DResource8 || riid == IID_IDirect3DBaseTexture8) && ppvObj)
@@ -134,7 +136,13 @@ HRESULT m_IDirect3DTexture8::LockRect(THIS_ UINT Level, D3DLOCKED_RECT* pLockedR
 }
 HRESULT m_IDirect3DTexture8::UnlockRect(THIS_ UINT Level)
 {
-	return ProxyInterface->UnlockRect(Level);
+	const HRESULT hr = ProxyInterface->UnlockRect(Level);
+	if (SUCCEEDED(hr) && Level == 0 && bloodTextureCandidate && !bloodTextureRecolored)
+	{
+		SurvivorHueShiftBloodTexture(ProxyInterface);
+		bloodTextureRecolored = true;
+	}
+	return hr;
 }
 
 HRESULT m_IDirect3DTexture8::AddDirtyRect(THIS_ CONST RECT* pDirtyRect)

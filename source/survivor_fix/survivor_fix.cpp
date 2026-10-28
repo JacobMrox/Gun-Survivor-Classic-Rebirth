@@ -72,6 +72,7 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
   // The room hook also tells the zombie code when a room changes.
   InstallRoomWalls();
   InstallMovieSkip();
+  InstallQuickSave();
   InstallMouseInput();
   InstallTitleFade(); // Verify native frame helpers before InstallScreenFx hooks EndFrame.
   if (c.biteFromBehind) InstallBiteFromBehind();

@@ -255,6 +255,12 @@ inline constexpr uint8_t kReadCollisionTriangleBytes[] = {0x81,0xEC,0xD8,0,0,0,0
 constexpr uintptr_t kRoomTick = 0x0046A520;
 inline constexpr uint8_t kRoomTickBytes[] = {0xA1, 0x60, 0xE0, 0x5B, 0x00, 0x83, 0xEC, 0x40, 0x53};
 constexpr size_t kGameStatsHp = 0x08;  // int in [5FD0DC]
+// Gameplay room dispatcher. It invokes one room function and returns after that
+// room has performed its native cleanup, making its next entry a safe reload boundary.
+constexpr uintptr_t kRoomDispatcher = 0x0046AFE0;
+inline constexpr uint8_t kRoomDispatcherBytes[] = {0x53, 0x56, 0x8B, 0xF1, 0x33, 0xDB};
+constexpr size_t kLiveSaveRecord = 0x3C;
+constexpr size_t kLiveSaveRecordSize = 0x4D;
 // 0042C3D0: __thiscall(hud), RET: draws the room HUD (crosshair, CONDITION 0042C160, weapons).
 constexpr uintptr_t kDrawHud = 0x0042C3D0;
 inline constexpr uint8_t kDrawHudBytes[] = {0x56, 0x57, 0x8B, 0xF9, 0x8A, 0x47, 0x28, 0x84};

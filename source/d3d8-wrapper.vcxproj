@@ -233,6 +233,7 @@
     <ClCompile Include="survivor_fix\features\input_device_fix.cpp" />
     <ClCompile Include="survivor_fix\features\title_fade.cpp" />
     <ClCompile Include="survivor_fix\features\movie_skip.cpp" />
+    <ClCompile Include="survivor_fix\features\quick_save.cpp" />
     <ClCompile Include="survivor_fix\features\mouse_input.cpp" />
     <ClCompile Include="survivor_fix\features\player.cpp" />
     <ClCompile Include="survivor_fix\features\ps1_cadence.cpp" />

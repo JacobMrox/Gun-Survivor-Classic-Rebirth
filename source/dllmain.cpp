@@ -24,6 +24,7 @@
 #include "iathook.h"
 #include "helpers.h"
 #include "cd_bypass.h"
+#include "file_events.h"
 #include "aim_shared.h"
 #include "debug.h"
 #include "survivor_pc.h"
@@ -812,7 +813,17 @@ HRESULT m_IDirect3DDevice8::CreateTexture(
     if (FAILED(hr) || !ppTexture || !*ppTexture)
         return hr;
 
-    *ppTexture = new m_IDirect3DTexture8(*ppTexture, this);
+    auto* wrapped = new m_IDirect3DTexture8(*ppTexture, this);
+    // Native impact/headshot sheets may be expanded by the loader to a
+    // power-of-two 256x64 allocation. Pair the exact preceding file-open event
+    // with either the source or padded size instead of guessing globally.
+    const bool nativeBloodSize = (Width == 240 && Height == 40) ||
+        (Width == 193 && Height == 32) || (Width == 256 && Height == 64);
+    if (nativeBloodSize && HasPendingBloodTextureOpen()) {
+        wrapped->MarkBloodTextureCandidate();
+        ConsumePendingBloodTextureOpen();
+    }
+    *ppTexture = wrapped;
 
     return hr;
 }
