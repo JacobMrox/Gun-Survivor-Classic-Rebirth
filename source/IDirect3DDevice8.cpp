@@ -76,19 +76,60 @@ bool HueShiftBloodTexture(IDirect3DTexture8* texture, DWORD rgb) {
     const HsvColour target = RgbToHsv(BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
     D3DSURFACE_DESC8 desc = {};
     D3DLOCKED_RECT lock = {};
-    if (FAILED(texture->GetLevelDesc(0, &desc)) || desc.Format != D3DFMT_A8R8G8B8 ||
-        FAILED(texture->LockRect(0, &lock, nullptr, 0))) return false;
+    if (FAILED(texture->GetLevelDesc(0, &desc))) return false;
+    const bool argb32 = desc.Format == D3DFMT_A8R8G8B8 || desc.Format == D3DFMT_X8R8G8B8;
+    const bool rgb16 = desc.Format == D3DFMT_A4R4G4B4 || desc.Format == D3DFMT_A1R5G5B5 ||
+                       desc.Format == D3DFMT_X1R5G5B5 || desc.Format == D3DFMT_R5G6B5;
+    if ((!argb32 && !rgb16) || FAILED(texture->LockRect(0, &lock, nullptr, 0))) {
+        sf::Log("BloodColor: cannot hue-shift %ux%u format=%u", desc.Width, desc.Height,
+                static_cast<unsigned>(desc.Format));
+        return false;
+    }
+    auto shift = [&](BYTE r, BYTE g, BYTE b, BYTE a) {
+        const HsvColour source = RgbToHsv(r, g, b);
+        return HsvToArgb(target.h, target.s, source.v * target.v, a);
+    };
     for (UINT y = 0; y < desc.Height; ++y) {
-        auto* row = reinterpret_cast<DWORD*>(static_cast<BYTE*>(lock.pBits) + y * lock.Pitch);
-        for (UINT x = 0; x < desc.Width; ++x) {
-            const DWORD pixel = row[x];
-            const HsvColour source = RgbToHsv(BYTE(pixel >> 16), BYTE(pixel >> 8), BYTE(pixel));
-            // Replace hue, but retain each texel's value variation.  The chosen
-            // saturation/value control the strength and brightness naturally.
-            row[x] = HsvToArgb(target.h, target.s, source.v * target.v, BYTE(pixel >> 24));
+        BYTE* bytes = static_cast<BYTE*>(lock.pBits) + y * lock.Pitch;
+        if (argb32) {
+            auto* row = reinterpret_cast<DWORD*>(bytes);
+            for (UINT x = 0; x < desc.Width; ++x) {
+                const DWORD p = row[x];
+                const BYTE a = desc.Format == D3DFMT_X8R8G8B8 ? 0xFF : BYTE(p >> 24);
+                row[x] = shift(BYTE(p >> 16), BYTE(p >> 8), BYTE(p), a);
+            }
+        } else {
+            auto* row = reinterpret_cast<WORD*>(bytes);
+            for (UINT x = 0; x < desc.Width; ++x) {
+                const WORD p = row[x];
+                BYTE r, g, b, a;
+                if (desc.Format == D3DFMT_A4R4G4B4) {
+                    a = BYTE(((p >> 12) & 0xF) * 17); r = BYTE(((p >> 8) & 0xF) * 17);
+                    g = BYTE(((p >> 4) & 0xF) * 17); b = BYTE((p & 0xF) * 17);
+                } else if (desc.Format == D3DFMT_R5G6B5) {
+                    a = 0xFF; r = BYTE(((p >> 11) & 0x1F) * 255 / 31);
+                    g = BYTE(((p >> 5) & 0x3F) * 255 / 63); b = BYTE((p & 0x1F) * 255 / 31);
+                } else {
+                    a = desc.Format == D3DFMT_A1R5G5B5 ? ((p & 0x8000) ? 0xFF : 0) : 0xFF;
+                    r = BYTE(((p >> 10) & 0x1F) * 255 / 31); g = BYTE(((p >> 5) & 0x1F) * 255 / 31);
+                    b = BYTE((p & 0x1F) * 255 / 31);
+                }
+                const DWORD q = shift(r, g, b, a);
+                if (desc.Format == D3DFMT_A4R4G4B4) {
+                    row[x] = WORD(((q >> 28) << 12) | (((q >> 20) & 0xF) << 8) |
+                                  (((q >> 12) & 0xF) << 4) | ((q >> 4) & 0xF));
+                } else if (desc.Format == D3DFMT_R5G6B5) {
+                    row[x] = WORD((((q >> 19) & 0x1F) << 11) | (((q >> 10) & 0x3F) << 5) | ((q >> 3) & 0x1F));
+                } else {
+                    row[x] = WORD((desc.Format == D3DFMT_A1R5G5B5 && (q >> 24) >= 0x80 ? 0x8000 : 0) |
+                                  (((q >> 19) & 0x1F) << 10) | (((q >> 11) & 0x1F) << 5) | ((q >> 3) & 0x1F));
+                }
+            }
         }
     }
     texture->UnlockRect(0);
+    sf::Log("BloodColor: hue-shifted %ux%u format=%u to %u,%u,%u", desc.Width, desc.Height,
+            static_cast<unsigned>(desc.Format), BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
     return true;
 }
 

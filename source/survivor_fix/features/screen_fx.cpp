@@ -253,7 +253,7 @@ int __fastcall RoomTickDetour(void* game, void* edx, uint32_t* pad, uint32_t* pr
                               int p7, float p8) {
   g_roomTicked = true;
   const int result = g_roomTick(game, edx, pad, prev, turns, p5, scene, p7, p8);
-  if (!g_config.ps1PlayerDeath) return result;
+  if (!g_config.ps1PlayerDeath) return QuickSaveAfterRoomTick(game, result);
   if (g_dying) {
     DeathTick();
     if (!ps1::PlayerDeathDone(g_death)) return 1;
@@ -276,7 +276,7 @@ int __fastcall RoomTickDetour(void* game, void* edx, uint32_t* pad, uint32_t* pr
     Log("Ps1PlayerDeath: health at 0, PS1 sequence (fall, red flash, zoom, black)");
     return 1;
   }
-  return result;
+  return QuickSaveAfterRoomTick(game, result);
 }
 
 void __fastcall DrawHudDetour(void* hud, void* edx) {

@@ -65,7 +65,7 @@ CONTROL         "Show Config on Launch", IDC_SHOW_CONFIG, "Button", BS_AUTOCHECK
 CONTROL         "Enable Logging", IDC_ENABLE_LOG, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 220, 194, 100, 10
 
 GROUPBOX        "In-Game Hotkeys", IDC_STATIC, 7, 230, 406, 34
-CTEXT           "F1  Options     F5  Quick Save     F6  Quick Load     F8  Change Resolution     F9  Quit", IDC_STATIC, 15, 244, 390, 10
+CTEXT           "F1  Options     F5  Quick Save     F6  Quick Load     F8  Window / Fullscreen     F9  Quit", IDC_STATIC, 15, 244, 390, 10
 
 CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.1.2 © Jacob Qarooni @Mehrqarox\nGiuseppe Marsiglia @Trigger117", IDC_STATIC, 7, 270, 406, 20, WS_DISABLED
 

@@ -1,14 +1,15 @@
 #include <windows.h>
 
 #include <array>
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <string>
 
 #include "../game.h"
-#include "../hooks.h"
 #include "../log.h"
 #include "features.h"
+#include "../../aim_shared.h"
 
 namespace sf { extern std::wstring g_dir; }
 extern int ForceWidth, ForceHeight;
@@ -16,11 +17,6 @@ extern bool bForceWindowedMode, bBorderlessFullscreen;
 
 namespace sf::features {
 namespace {
-
-using RoomTickFn = int(__fastcall*)(void*, void*, int, int, int, int, int, int, int);
-using RoomDispatcherFn = void(__fastcall*)(void*, void*);
-RoomTickFn g_roomTick = nullptr;
-RoomDispatcherFn g_roomDispatcher = nullptr;
 
 #pragma pack(push, 1)
 struct QuickState {
@@ -34,16 +30,22 @@ struct QuickState {
 };
 #pragma pack(pop)
 
-QuickState g_pending = {};
-bool g_reloadAtNextDispatch = false;
 bool g_f5Down = false;
 bool g_f6Down = false;
 bool g_f8Down = false;
+RECT g_windowedRect = {};
+bool g_haveWindowedRect = false;
+std::array<char, 64> g_notice = {};
+DWORD g_noticeStarted = 0;
 
-struct Resolution { int width, height; };
-constexpr Resolution kResolutions[] = {
-    {320, 240}, {640, 480}, {800, 600}, {960, 720}, {1024, 768}, {1280, 960},
-    {1280, 720}, {1600, 900}, {1920, 1080}, {2560, 1440}, {3840, 2160}};
+constexpr DWORD kNoticeFadeInMs = 220;
+constexpr DWORD kNoticeHoldMs = 1500;
+constexpr DWORD kNoticeFadeOutMs = 420;
+
+void Notify(const char* text) {
+  strncpy_s(g_notice.data(), g_notice.size(), text ? text : "", _TRUNCATE);
+  g_noticeStarted = GetTickCount();
+}
 
 bool Foreground() {
   DWORD pid = 0;
@@ -64,9 +66,8 @@ uint32_t Checksum(const QuickState& state) {
 }
 
 bool WriteState(const QuickState& state) {
-  const std::wstring path = StatePath();
   CreateDirectoryW((sf::g_dir + L"Save").c_str(), nullptr);
-  HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+  HANDLE file = CreateFileW(StatePath().c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) return false;
   DWORD written = 0;
@@ -89,33 +90,54 @@ bool ReadState(QuickState* state) {
 void SaveNow() {
   void* stats = *reinterpret_cast<void**>(game::kGameStats);
   void* gameState = *reinterpret_cast<void**>(game::kGameState);
-  if (!stats || !gameState) return;
+  if (!stats || !gameState) {
+    Notify("F5  QUICK SAVE UNAVAILABLE");
+    Log("QuickSave: F5 ignored because gameplay state is unavailable");
+    return;
+  }
   QuickState state;
   state.scene = *reinterpret_cast<int*>(game::kSceneId);
   state.difficulty = *game::Field<uint8_t>(gameState, 0x42);
   std::memcpy(state.record.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord), state.record.size());
   state.checksum = Checksum(state);
   if (WriteState(state)) {
-    MessageBeep(MB_OK);
+    Notify("F5  QUICK SAVE SAVED");
     Log("QuickSave: saved scene %02X to Save\\QUICK.SAV", state.scene);
   } else {
-    MessageBeep(MB_ICONHAND);
+    Notify("F5  QUICK SAVE FAILED");
     Log("QuickSave: failed to write Save\\QUICK.SAV (%lu)", GetLastError());
   }
 }
 
-bool QueueLoad() {
+void LoadNow() {
   QuickState state;
-  if (!ReadState(&state)) {
-    MessageBeep(MB_ICONHAND);
-    Log("QuickSave: QUICK.SAV missing or invalid");
-    return false;
+  void* stats = *reinterpret_cast<void**>(game::kGameStats);
+  void* gameObject = *reinterpret_cast<void**>(game::kGameState);
+  if (!stats || !gameObject) {
+    Notify("F6  QUICK LOAD UNAVAILABLE");
+    Log("QuickSave: F6 ignored because gameplay state is unavailable");
+    return;
   }
-  g_pending = state;
-  g_reloadAtNextDispatch = true;
-  MessageBeep(MB_OK);
-  Log("QuickSave: queued load of scene %02X", state.scene);
-  return true;
+  if (!ReadState(&state)) {
+    Notify("F6  QUICK LOAD INVALID");
+    Log("QuickSave: QUICK.SAV missing or invalid");
+    return;
+  }
+  const int currentScene = *reinterpret_cast<int*>(game::kSceneId);
+  if (state.scene != currentScene) {
+    Notify("F6  QUICK LOAD WRONG ROOM");
+    Log("QuickSave: refused cross-room restore from scene %02X while in scene %02X",
+        state.scene, currentScene);
+    return;
+  }
+  // Restore the game's native POD record after its update. Do not return zero
+  // from RoomTick: zero is explicitly the game's YOU DIED exit.
+  std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+              state.record.data(), state.record.size());
+  *game::Field<uint8_t>(gameObject, 0x42) = state.difficulty;
+  Notify("F6  QUICK LOAD RESTORED");
+  Log("QuickSave: restored native record in scene %02X (saved scene %02X)",
+      currentScene, state.scene);
 }
 
 void ResizeClient(HWND window, int width, int height) {
@@ -126,83 +148,142 @@ void ResizeClient(HWND window, int width, int height) {
                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void CycleResolution() {
-  size_t current = 0;
-  for (size_t i = 0; i < _countof(kResolutions); ++i) {
-    if (kResolutions[i].width == ForceWidth && kResolutions[i].height == ForceHeight) {
-      current = i;
-      break;
-    }
+void ToggleFullscreen() {
+  HWND window = g_hFocusWindow;
+  if (!window || !IsWindow(window)) {
+    Notify("F8  DISPLAY SWITCH FAILED");
+    Log("QuickSave: F8 ignored because the game window is unavailable");
+    return;
   }
-  const Resolution next = kResolutions[(current + 1) % _countof(kResolutions)];
-  ForceWidth = next.width;
-  ForceHeight = next.height;
+  if (bBorderlessFullscreen) {
+    SetWindowLongPtrW(window, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+    SetWindowLongPtrW(window, GWL_EXSTYLE, WS_EX_APPWINDOW);
+    if (g_haveWindowedRect) {
+      SetWindowPos(window, HWND_NOTOPMOST, g_windowedRect.left, g_windowedRect.top,
+                   g_windowedRect.right - g_windowedRect.left, g_windowedRect.bottom - g_windowedRect.top,
+                   SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    } else {
+      MONITORINFO info = {sizeof info};
+      GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info);
+      const int workW = info.rcWork.right - info.rcWork.left;
+      const int workH = info.rcWork.bottom - info.rcWork.top;
+      int clientW = ForceWidth > 0 ? ForceWidth : 1280;
+      int clientH = ForceHeight > 0 ? ForceHeight : 720;
+      const double scaleW = workW * 0.85 / clientW;
+      const double scaleH = workH * 0.85 / clientH;
+      double scale = scaleW < scaleH ? scaleW : scaleH;
+      if (scale > 1.0) scale = 1.0;
+      clientW = static_cast<int>(clientW * scale + 0.5);
+      clientH = static_cast<int>(clientH * scale + 0.5);
+      ResizeClient(window, clientW, clientH);
+      RECT placed = {};
+      GetWindowRect(window, &placed);
+      const int outerW = placed.right - placed.left;
+      const int outerH = placed.bottom - placed.top;
+      SetWindowPos(window, HWND_NOTOPMOST,
+                   info.rcWork.left + (workW - outerW) / 2,
+                   info.rcWork.top + (workH - outerH) / 2,
+                   0, 0, SWP_NOSIZE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    }
+    bBorderlessFullscreen = false;
+  } else {
+    GetWindowRect(window, &g_windowedRect);
+    g_haveWindowedRect = true;
+    MONITORINFO info = {sizeof info};
+    GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info);
+    SetWindowLongPtrW(window, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    SetWindowLongPtrW(window, GWL_EXSTYLE, WS_EX_APPWINDOW);
+    SetWindowPos(window, HWND_NOTOPMOST, info.rcMonitor.left, info.rcMonitor.top,
+                 info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top,
+                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    bBorderlessFullscreen = true;
+  }
+  bForceWindowedMode = true;
   const std::wstring ini = sf::g_dir + L"config.ini";
-  wchar_t value[16] = {};
-  _itow_s(ForceWidth, value, 10);
-  WritePrivateProfileStringW(L"Graphics", L"ForceWidth", value, ini.c_str());
-  _itow_s(ForceHeight, value, 10);
-  WritePrivateProfileStringW(L"Graphics", L"ForceHeight", value, ini.c_str());
-  if (bForceWindowedMode && !bBorderlessFullscreen) ResizeClient(GetForegroundWindow(), ForceWidth, ForceHeight);
-  MessageBeep(MB_OK);
-  Log("QuickSave: F8 resolution %dx%d%s", ForceWidth, ForceHeight,
-      (bForceWindowedMode && !bBorderlessFullscreen) ? " applied" : " saved for next device reset");
-}
-
-int __fastcall RoomTick(void* gameObject, void* edx, int a1, int a2, int a3, int a4, int a5, int a6, int a7) {
-  const int result = g_roomTick(gameObject, edx, a1, a2, a3, a4, a5, a6, a7);
-  const bool active = Foreground();
-  const bool f5 = active && (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
-  const bool f6 = active && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
-  const bool f8 = active && (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
-  if (f5 && !g_f5Down) SaveNow();
-  if (f8 && !g_f8Down) CycleResolution();
-  if (f6 && !g_f6Down && QueueLoad()) {
-    // Every room treats a zero RoomTick result as its normal exit path and
-    // releases models, effects, audio and collision before the dispatcher returns.
-    g_f5Down = f5;
-    g_f6Down = f6;
-    g_f8Down = f8;
-    return 0;
-  }
-  g_f5Down = f5;
-  g_f6Down = f6;
-  g_f8Down = f8;
-  return result;
-}
-
-void __fastcall RoomDispatcher(void* gameObject, void* edx) {
-  if (g_reloadAtNextDispatch) {
-    void* stats = *reinterpret_cast<void**>(game::kGameStats);
-    if (stats) {
-      std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
-                  g_pending.record.data(), g_pending.record.size());
-      *reinterpret_cast<int*>(game::kSceneId) = g_pending.scene;
-      *game::Field<uint8_t>(gameObject, 0x42) = g_pending.difficulty;
-      *game::Field<uint8_t>(gameObject, game::kMainState) = 6;
-      Log("QuickSave: restored native record; dispatching scene %02X", g_pending.scene);
-    }
-    g_reloadAtNextDispatch = false;
-  }
-  g_roomDispatcher(gameObject, edx);
+  WritePrivateProfileStringW(L"Window", L"ForceWindowedMode", L"1", ini.c_str());
+  WritePrivateProfileStringW(L"Window", L"BorderlessFullscreen",
+                             bBorderlessFullscreen ? L"1" : L"0", ini.c_str());
+  Notify(bBorderlessFullscreen ? "F8  FULLSCREEN ENABLED" : "F8  WINDOWED MODE ENABLED");
+  Log("QuickSave: F8 switched to %s", bBorderlessFullscreen ? "borderless fullscreen" : "windowed mode");
 }
 
 }  // namespace
 
-bool InstallQuickSave() {
-  const game::ByteSignature checks[] = {
-      {game::kRoomTick, game::kRoomTickBytes, sizeof game::kRoomTickBytes},
-      {game::kRoomDispatcher, game::kRoomDispatcherBytes, sizeof game::kRoomDispatcherBytes}};
-  for (const auto& check : checks) {
-    if (!game::CheckBytes(check)) {
-      Log("QuickSave: unexpected executable bytes; F5/F6/F8 disabled");
-      return false;
-    }
+int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
+  const bool active = Foreground();
+  const bool f5 = active && (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
+  const bool f6 = active && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
+  if (f5 && !g_f5Down) SaveNow();
+  if (f6 && !g_f6Down) LoadNow();
+  g_f5Down = f5;
+  g_f6Down = f6;
+  return nativeResult;
+}
+
+void QuickSavePollWindowToggle() {
+  const bool f8 = Foreground() && (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
+  if (f8 && !g_f8Down) ToggleFullscreen();
+  g_f8Down = f8;
+}
+
+bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t lparam) {
+  const bool isHotkey = wparam == VK_F1 || wparam == VK_F5 || wparam == VK_F6 ||
+                        wparam == VK_F8 || wparam == VK_F9;
+  if (!isHotkey) return false;
+  if (message == WM_KEYUP || message == WM_SYSKEYUP) {
+    if (wparam == VK_F5) g_f5Down = false;
+    if (wparam == VK_F6) g_f6Down = false;
+    if (wparam == VK_F8) g_f8Down = false;
+    return wparam == VK_F5 || wparam == VK_F6 || wparam == VK_F8;
   }
-  return Hook("QuickSaveRoomTick", game::kRoomTick, reinterpret_cast<void*>(&RoomTick),
-              reinterpret_cast<void**>(&g_roomTick)) &&
-         Hook("QuickSaveDispatcher", game::kRoomDispatcher, reinterpret_cast<void*>(&RoomDispatcher),
-              reinterpret_cast<void**>(&g_roomDispatcher));
+  if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) return false;
+  const bool repeated = (static_cast<uintptr_t>(lparam) & (uintptr_t{1} << 30)) != 0;
+  if (repeated) return wparam == VK_F5 || wparam == VK_F6 || wparam == VK_F8;
+  switch (wparam) {
+    case VK_F1:
+      Notify("F1  OPTIONS");
+      return false;  // Let the game keep its native Options handling.
+    case VK_F5:
+      if (!g_f5Down) SaveNow();
+      g_f5Down = true;
+      return true;
+    case VK_F6:
+      if (!g_f6Down) LoadNow();
+      g_f6Down = true;
+      return true;
+    case VK_F8:
+      if (!g_f8Down) ToggleFullscreen();
+      g_f8Down = true;
+      return true;
+    case VK_F9:
+      Notify("F9  QUIT GAME");
+      return false;  // The native quit path must still receive F9.
+    default:
+      return false;
+  }
+}
+
+bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha) {
+  if (!text || capacity == 0 || !alpha || g_notice[0] == '\0') return false;
+  const DWORD elapsed = GetTickCount() - g_noticeStarted;
+  const DWORD fadeOutStart = kNoticeFadeInMs + kNoticeHoldMs;
+  const DWORD end = fadeOutStart + kNoticeFadeOutMs;
+  if (elapsed >= end) return false;
+  float value = 1.0f;
+  if (elapsed < kNoticeFadeInMs) {
+    value = static_cast<float>(elapsed) / static_cast<float>(kNoticeFadeInMs);
+  } else if (elapsed > fadeOutStart) {
+    value = 1.0f - static_cast<float>(elapsed - fadeOutStart) /
+                       static_cast<float>(kNoticeFadeOutMs);
+  }
+  strncpy_s(text, capacity, g_notice.data(), _TRUNCATE);
+  *alpha = std::clamp(value, 0.0f, 1.0f);
+  return true;
+}
+
+bool InstallQuickSave() {
+  Log("QuickSave: F1/F5/F6/F8/F9 notifications active; F5/F6/F8 handled by window and render paths");
+  return true;
 }
 
 }  // namespace sf::features

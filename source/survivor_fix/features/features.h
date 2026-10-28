@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 
 #include "../ps1/nav_logic.h"
 #include "../ps1/wall_logic.h"
@@ -35,8 +36,14 @@ void ApplyInputDeviceFix();
 // Native CONDITION FLC array bound; keeps the native timing and D3D.
 bool InstallHudConditionBounds();
 bool InstallMovieSkip();
-// F5/F6 game-aware quick save/load and F8 resolution cycling.
+// F5/F6 game-aware quick save/load and F8 window/fullscreen toggle.
 bool InstallQuickSave();
+int QuickSaveAfterRoomTick(void* gameObject, int nativeResult);
+void QuickSavePollWindowToggle();
+bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t lparam);
+// Returns the current user-facing hotkey/result notice and its fade alpha.
+// Routine diagnostics stay in hook.log; this channel is only for actions and actionable failures.
+bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha);
 bool InstallTitleFade();
 bool InstallMouseInput();
 bool InstallPs1Cadence();

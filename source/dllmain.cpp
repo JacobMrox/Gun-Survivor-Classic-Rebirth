@@ -29,6 +29,7 @@
 #include "debug.h"
 #include "survivor_pc.h"
 #include "survivor_fix/survivor_fix.h"
+#include "survivor_fix/features/features.h"
 //#include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
@@ -155,6 +156,7 @@ char WinDir[MAX_PATH + 1];
 
     LPDIRECT3DTEXTURE8 gCrossTex = nullptr;
     bool gCrossLoaded = false;
+    LPDIRECT3DTEXTURE8 gHotkeyFontTex = nullptr;
     //bool gStage0IsAlphaFix = false;
 
     // Forward declarations (prevents "undefined" if order changes)
@@ -205,7 +207,7 @@ char WinDir[MAX_PATH + 1];
         dev->DeleteStateBlock(state);
     }
 
-    void DrawLaserImpactDot(LPDIRECT3DDEVICE8 dev, float x, float y)
+    void DrawLaserImpactDot(LPDIRECT3DDEVICE8 dev, float x, float y, float xCompensation)
     {
         DWORD state = 0;
         if (FAILED(dev->CreateStateBlock(D3DSBT_ALL, &state))) return;
@@ -234,7 +236,7 @@ char WinDir[MAX_PATH + 1];
             vertices[0] = {x, y, centreZ, 1.0f, D3DCOLOR_ARGB(centreAlpha, r, g, b)};
             for (int i = 0; i <= segments; ++i) {
                 const float angle = 6.283185307f * static_cast<float>(i) / segments;
-                vertices[i + 1] = {x + cosf(angle) * radius, y + sinf(angle) * radius,
+                vertices[i + 1] = {x + cosf(angle) * radius * xCompensation, y + sinf(angle) * radius,
                                    rimZ, 1.0f, D3DCOLOR_ARGB(0, r, g, b)};
             }
             dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, segments, vertices, sizeof(GlowVertex));
@@ -340,6 +342,176 @@ char WinDir[MAX_PATH + 1];
         dev->SetRenderState(D3DRS_ALPHABLENDENABLE, oldAlpha);
         dev->SetRenderState(D3DRS_SRCBLEND, oldSrc);
         dev->SetRenderState(D3DRS_DESTBLEND, oldDst);
+    }
+
+    // The game normally renders a 4:3 backbuffer and the wrapper presents it at the selected
+    // output aspect. Convert an X size in backbuffer pixels so sprites and glyphs stay square
+    // after that final stretch. This also follows arbitrary future window/resolution sizes.
+    float BackBufferXCompensation(UINT backWidth, UINT backHeight)
+    {
+        if (!g_hFocusWindow || !backWidth || !backHeight) return 1.0f;
+        RECT client = {};
+        if (!GetClientRect(g_hFocusWindow, &client)) return 1.0f;
+        const int clientWidth = client.right - client.left;
+        const int clientHeight = client.bottom - client.top;
+        if (clientWidth <= 0 || clientHeight <= 0) return 1.0f;
+        const float xStretch = (static_cast<float>(clientWidth) / backWidth) /
+                               (static_cast<float>(clientHeight) / backHeight);
+        return xStretch > 0.01f ? 1.0f / xStretch : 1.0f;
+    }
+
+    struct FontVertex8
+    {
+        float x, y, z, rhw;
+        DWORD color;
+        float u, v;
+    };
+    #define FVF_FONTVERTEX8 (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
+
+    int NativeFontGlyph(char ch)
+    {
+        if (ch >= '0' && ch <= '9') return 12 + (ch - '0');
+        if (ch >= 'A' && ch <= 'Z') return 29 + (ch - 'A');
+        if (ch >= 'a' && ch <= 'z') return 61 + (ch - 'a');
+        switch (ch)
+        {
+        case ':': return 22;
+        case '.': return 23;
+        case ',': return 24;
+        case '"': return 25;
+        case '!': return 26;
+        case '?': return 27;
+        case '[': return 55;
+        case '/': return 56;
+        case ']': return 57;
+        case '\'': return 58;
+        case '-': return 59;
+        default: return -1;
+        }
+    }
+
+    void EnsureHotkeyFontTexture(LPDIRECT3DDEVICE8 dev)
+    {
+        if (gHotkeyFontTex || !dev) return;
+        char fontPath[MAX_PATH] = "Resource\\FONT000.bmp";
+        HRESULT hr = D3DXCreateTextureFromFileExA(
+            dev, fontPath, D3DX_DEFAULT, D3DX_DEFAULT, 1, 0, D3DFMT_A8R8G8B8,
+            D3DPOOL_MANAGED, D3DX_FILTER_POINT, D3DX_FILTER_POINT,
+            D3DCOLOR_ARGB(255, 0, 0, 0), nullptr, nullptr, &gHotkeyFontTex);
+        if (SUCCEEDED(hr)) return;
+
+        if (GetModuleFileNameA(g_hWrapperModule, fontPath, MAX_PATH))
+        {
+            char* slash = strrchr(fontPath, '\\');
+            if (slash)
+            {
+                strcpy_s(slash + 1,
+                    MAX_PATH - static_cast<size_t>(slash + 1 - fontPath),
+                    "Resource\\FONT000.bmp");
+                D3DXCreateTextureFromFileExA(
+                    dev, fontPath, D3DX_DEFAULT, D3DX_DEFAULT, 1, 0, D3DFMT_A8R8G8B8,
+                    D3DPOOL_MANAGED, D3DX_FILTER_POINT, D3DX_FILTER_POINT,
+                    D3DCOLOR_ARGB(255, 0, 0, 0), nullptr, nullptr, &gHotkeyFontTex);
+            }
+        }
+    }
+
+    void DrawNativeFontGlyph(LPDIRECT3DDEVICE8 dev, int glyph, float x, float y,
+                             float width, float height, UINT textureWidth, UINT textureHeight, DWORD color)
+    {
+        if (glyph < 0) return;
+        constexpr float cell = 14.0f;
+        constexpr int columns = 18;
+        const float left = static_cast<float>((glyph % columns) * 14);
+        const float top = static_cast<float>((glyph / columns) * 14);
+        // Half-texel inset keeps neighbouring atlas glyphs out when the notice is scaled.
+        const float u0 = (left + 0.5f) / textureWidth;
+        const float v0 = (top + 0.5f) / textureHeight;
+        const float u1 = (left + cell - 0.5f) / textureWidth;
+        const float v1 = (top + cell - 0.5f) / textureHeight;
+        FontVertex8 vertices[4] =
+        {
+            {x,        y,        0.0f, 1.0f, color, u0, v0},
+            {x + width, y,          0.0f, 1.0f, color, u1, v0},
+            {x,         y + height, 0.0f, 1.0f, color, u0, v1},
+            {x + width, y + height, 0.0f, 1.0f, color, u1, v1},
+        };
+        dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vertices, sizeof(FontVertex8));
+    }
+
+    void DrawHotkeyNotification(LPDIRECT3DDEVICE8 dev)
+    {
+        char text[64] = {};
+        float alpha = 0.0f;
+        if (!sf::features::QuickSaveGetNotification(text, sizeof text, &alpha) || alpha <= 0.0f)
+            return;
+        EnsureHotkeyFontTexture(dev);
+        if (!gHotkeyFontTex) return;
+
+        IDirect3DSurface8* backBuffer = nullptr;
+        D3DSURFACE_DESC8 backDesc = {};
+        D3DSURFACE_DESC8 fontDesc = {};
+        if (FAILED(dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)) || !backBuffer)
+            return;
+        const HRESULT backResult = backBuffer->GetDesc(&backDesc);
+        backBuffer->Release();
+        if (FAILED(backResult) || FAILED(gHotkeyFontTex->GetLevelDesc(0, &fontDesc))) return;
+
+        const float scale = std::clamp(backDesc.Height / 720.0f, 0.9f, 1.8f);
+        const float xCompensation = BackBufferXCompensation(backDesc.Width, backDesc.Height);
+        const float glyphHeight = 14.0f * scale;
+        const float glyphWidth = glyphHeight * xCompensation;
+        const float marginY = 18.0f * scale;
+        const float marginX = marginY * xCompensation;
+        const size_t length = strlen(text);
+        float x = static_cast<float>(backDesc.Width) - marginX - glyphWidth * static_cast<float>(length);
+        const float y = marginY;
+        if (x < marginX) x = marginX;
+
+        DWORD state = 0;
+        if (FAILED(dev->CreateStateBlock(D3DSBT_ALL, &state))) return;
+        dev->SetTexture(0, gHotkeyFontTex);
+        dev->SetVertexShader(FVF_FONTVERTEX8);
+        dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+        dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+        dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+        dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+        dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(D3DTSS_MINFILTER), D3DTEXF_POINT);
+        dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(D3DTSS_MAGFILTER), D3DTEXF_POINT);
+        dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(D3DTSS_ADDRESSU), D3DTADDRESS_CLAMP);
+        dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(D3DTSS_ADDRESSV), D3DTADDRESS_CLAMP);
+
+        const BYTE a = static_cast<BYTE>(std::clamp(alpha, 0.0f, 1.0f) * 255.0f + 0.5f);
+        const DWORD shadow = D3DCOLOR_ARGB(static_cast<BYTE>(a * 0.75f), 0, 0, 0);
+        const DWORD white = D3DCOLOR_ARGB(a, 255, 255, 255);
+        const float shadowOffsetY = (std::max)(1.0f, scale);
+        const float shadowOffsetX = shadowOffsetY * xCompensation;
+        for (size_t i = 0; i < length; ++i)
+        {
+            const int glyph = NativeFontGlyph(text[i]);
+            if (glyph >= 0)
+                DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i + shadowOffsetX,
+                    y + shadowOffsetY, glyphWidth, glyphHeight,
+                    fontDesc.Width, fontDesc.Height, shadow);
+        }
+        for (size_t i = 0; i < length; ++i)
+        {
+            const int glyph = NativeFontGlyph(text[i]);
+            if (glyph >= 0)
+                DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i, y, glyphWidth, glyphHeight,
+                    fontDesc.Width, fontDesc.Height, white);
+        }
+        dev->ApplyStateBlock(state);
+        dev->DeleteStateBlock(state);
     }
 
 // ---------------------------------------------------------
@@ -700,6 +872,7 @@ static void UpdateCursorClip()
 // -----------------------------------------------------------------
 HRESULT m_IDirect3DDevice8::EndScene()
 {
+    sf::features::QuickSavePollWindowToggle();
     UpdateCursorClip();
 
     if (bDisplayFPSCounter)
@@ -718,6 +891,11 @@ HRESULT m_IDirect3DDevice8::EndScene()
         }
         if (bbW && bbH) RenderMovie(bbW, bbH);
     }
+
+    // Native FONT000.BMP feedback for function-key actions and actionable failures.
+    // Draw after the movie surface so the notice is never hidden by an overlay frame.
+    if (g_hFocusWindow)
+        DrawHotkeyNotification(ProxyInterface);
 
     if (gDrawOverlayCrosshair && g_hFocusWindow && !movieWasPlaying)
     {
@@ -748,6 +926,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
 
         if (bbW > 0 && bbH > 0)
         {
+            const float xCompensation = BackBufferXCompensation(bbW, bbH);
             if (!gAimInit)
             {
                 gAimX = (float)bbW * 0.5f;
@@ -770,7 +949,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
                 SurvivorPc_SyncGameAim(gAimX, gAimY);//the game's aim follows the crosshair
                 if (drawCross && bLaserTrail) {
                     DrawLaserTrail(ProxyInterface, gAimX, gAimY);
-                    DrawLaserImpactDot(ProxyInterface, gAimX, gAimY);
+                    DrawLaserImpactDot(ProxyInterface, gAimX, gAimY, xCompensation);
                 }
 
                 // --- PATCHED SCALE LOGIC ---
@@ -778,7 +957,7 @@ HRESULT m_IDirect3DDevice8::EndScene()
                 if (drawCross && SUCCEEDED(gCrossTex->GetLevelDesc(0, &texDesc)))
                 {
                     // Use original PNG size multiplied by the scale from the Config Window
-                    float finalW = (float)texDesc.Width * fCrosshairScale;
+                    float finalW = (float)texDesc.Width * fCrosshairScale * xCompensation;
                     float finalH = (float)texDesc.Height * fCrosshairScale;
 
                     // Draw centered on current Aim coordinates
@@ -1071,6 +1250,9 @@ LRESULT WINAPI CustomWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 {
     if (hWnd == g_hFocusWindow || _fnIsTopLevelWindow(hWnd)) // skip child windows like buttons, edit boxes, etc. 
     {
+        if (hWnd == g_hFocusWindow &&
+            sf::features::QuickSaveHandleWindowMessage(uMsg, wParam, lParam))
+            return 0;
         if (bAlwaysOnTop)
         {
             if ((GetWindowLong(hWnd, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0)

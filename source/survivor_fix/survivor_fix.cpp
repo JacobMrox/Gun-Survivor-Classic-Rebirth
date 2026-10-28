@@ -80,7 +80,8 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
       c.ps1ZombieWorld || c.ps1PlayerDeath) {
     InstallPlayer();
   }
-  if (c.ps1PlayerDeath || c.ps1DoorFade) InstallScreenFx();
+  // ScreenFx owns RoomTick and also services the F5/F6/F8 hotkeys.
+  InstallScreenFx();
   if (c.hudConditionBounds) InstallHudConditionBounds();
   if (c.ps1Cadence) InstallPs1Cadence();
   ApplyItemGlitterCadence();
