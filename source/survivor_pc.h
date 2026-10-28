@@ -41,6 +41,9 @@ void SurvivorPc_OnHudVertexUnlock(void* vb);
 // Ps1ShadowBlend: SetRenderState reports its caller; the next DrawPrimitive after the shadow's
 // SetRenderState(ALPHABLENDENABLE, 0) at 0043CBD2 is drawn with the PS1 blend (survivor_pc.cpp).
 void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsigned long value);
+// Armed only by the living-enemy shadow branch. Blood pools skip that branch
+// and must retain their native red texture/blending.
+void SurvivorPc_ArmEnemyShadowDraw();
 bool SurvivorPc_TakeShadowDraw();
 
 // True when the running executable is the PC port of Resident Evil Survivor (gun_bio.exe, checked by bytes).

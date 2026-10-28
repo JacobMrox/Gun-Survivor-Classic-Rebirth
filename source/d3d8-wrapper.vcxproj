@@ -252,7 +252,8 @@
     <ClCompile Include="survivor_fix\features\zombie\zombie_walk.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_world_pc.cpp" />
     <ClCompile Include="survivor_fix\features\zombie_life.cpp" />
-    <ClCompile Include="survivor_fix\features\zombie_shadow.cpp" />
+      <ClCompile Include="survivor_fix\features\zombie_shadow.cpp" />
+      <ClCompile Include="survivor_fix\features\item_glitter.cpp" />
     <ClCompile Include="survivor_fix\game.cpp" />
     <ClCompile Include="survivor_fix\hooks.cpp" />
     <ClCompile Include="survivor_fix\log.cpp" />

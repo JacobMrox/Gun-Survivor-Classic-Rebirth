@@ -31,6 +31,7 @@
 //#include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
+#include "resource.h"
 #include "AviFfmpegHook.h" // Access to g_Video
 #include "globals.h"
 #include <string.h>
@@ -73,6 +74,31 @@ HMODULE g_hWrapperModule = NULL;
 char gConfigPath[MAX_PATH] = {};//config.ini next to d3d8.dll (Survivor Fix reads it again after the config window)
 
 HMODULE d3d8dll = NULL;
+
+static void RestoreEmbeddedMiscIfMissing()
+{
+    char modulePath[MAX_PATH]{};
+    if (!GetModuleFileNameA(g_hWrapperModule, modulePath, MAX_PATH)) return;
+    char* slash = strrchr(modulePath, '\\');
+    if (!slash) return;
+    strcpy_s(slash + 1, MAX_PATH - static_cast<size_t>(slash + 1 - modulePath), "FIXRES");
+    CreateDirectoryA(modulePath, nullptr);
+    strcat_s(modulePath, "\\MISC.BMP");
+    if (GetFileAttributesA(modulePath) != INVALID_FILE_ATTRIBUTES) return;
+
+    HRSRC info = FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(IDR_MISC_BMP), RT_RCDATA);
+    HGLOBAL resource = info ? LoadResource(g_hWrapperModule, info) : nullptr;
+    const void* bytes = resource ? LockResource(resource) : nullptr;
+    const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
+    if (!bytes || !size) return;
+    HANDLE file = CreateFileA(modulePath, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return;
+    DWORD written = 0;
+    WriteFile(file, bytes, size, &written, nullptr);
+    CloseHandle(file);
+    if (written != size) DeleteFileA(modulePath);
+}
 
 // Use the D3D9 texture type from d3d9.h
 IDirect3DTexture9* g_MovieTex = nullptr;
@@ -199,11 +225,13 @@ char WinDir[MAX_PATH + 1];
         dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
         struct GlowVertex { float x, y, z, rhw; DWORD color; };
         const BYTE r = GetRValue(gLaserColor), g = GetGValue(gLaserColor), b = GetBValue(gLaserColor);
-        // Each ring probes a different depth. Near surfaces pass all three rings and
-        // receive the broad glow; distant surfaces pass only the compact core.
-        const float radii[] = { 14.0f, 8.0f, 3.0f };
-        const float depth[] = { 0.30f, 0.70f, 0.9999f };
-        const BYTE alpha[] = { 24, 62, 235 };
+        // Probe the existing depth buffer in three deliberately separated
+        // bands. The previous 0.985 halo threshold passed for practically all
+        // room geometry, so every impact looked close. Near surfaces pass all
+        // three probes; distant surfaces only pass the compact core.
+        const float radii[] = { 18.0f, 10.0f, 3.5f };
+        const float depth[] = { 0.80f, 0.93f, 0.9999f };
+        const BYTE alpha[] = { 42, 88, 245 };
         for (int i = 0; i < 3; ++i) {
             const float s = radii[i];
             const DWORD color = D3DCOLOR_ARGB(alpha[i], r, g, b);
@@ -218,6 +246,24 @@ char WinDir[MAX_PATH + 1];
 
     std::string lastLoadedPath = "";
 
+    int EmbeddedCrosshairId(const std::string& path)
+    {
+        if (path.find("crosshair_pc.png") != std::string::npos) return IDR_CROSSHAIR_PC;
+        if (path.find("crosshair_old.png") != std::string::npos) return IDR_CROSSHAIR_OLD;
+        if (path.find("crosshair_psx.png") != std::string::npos) return IDR_CROSSHAIR_PSX;
+        if (path.find("crosshair_uc_big.png") != std::string::npos) return IDR_CROSSHAIR_UC_BIG;
+        return 0;
+    }
+
+    HRESULT LoadEmbeddedTexture(LPDIRECT3DDEVICE8 dev, int id, LPDIRECT3DTEXTURE8* texture)
+    {
+        HRSRC info = FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(id), RT_RCDATA);
+        HGLOBAL data = info ? LoadResource(g_hWrapperModule, info) : nullptr;
+        const void* bytes = data ? LockResource(data) : nullptr;
+        const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
+        return bytes && size ? D3DXCreateTextureFromFileInMemory(dev, bytes, size, texture) : E_FAIL;
+    }
+
     void EnsureCrosshairTexture(LPDIRECT3DDEVICE8 dev)
     {
         // Reload if not loaded OR if the path has changed in the config window
@@ -230,9 +276,12 @@ char WinDir[MAX_PATH + 1];
 
         HRESULT hr = D3DXCreateTextureFromFileA(dev, sCrosshairPath.c_str(), &gCrossTex);
         if (FAILED(hr)) {
-            // The skins offered by the config window (crosshair_psx/pc/old/uc_big.png) are not shipped
-            // in FIXRES: without this the crosshair disappears after choosing one. Use the stock one.
+            const int embedded = EmbeddedCrosshairId(sCrosshairPath);
+            if (embedded) hr = LoadEmbeddedTexture(dev, embedded, &gCrossTex);
+        }
+        if (FAILED(hr)) {
             hr = D3DXCreateTextureFromFileA(dev, "FIXRES/crosshair.png", &gCrossTex);
+            if (FAILED(hr)) hr = LoadEmbeddedTexture(dev, IDR_CROSSHAIR_PSX, &gCrossTex);
         }
         if (SUCCEEDED(hr)) {
             lastLoadedPath = sCrosshairPath;
@@ -1769,6 +1818,14 @@ void WINAPI DebugSetMute()
 // -----------------------------------------------------------------
 IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion)
 {
+    // The game's original MISC sheet contains the broken crosshair.  Preserve
+    // user-supplied replacements, but restore our masked sheet when a package
+    // has accidentally omitted the loose FIXRES file.
+    static bool restoredEmbeddedAssets = false;
+    if (!restoredEmbeddedAssets) {
+        RestoreEmbeddedMiscIfMissing();
+        restoredEmbeddedAssets = true;
+    }
     // 1. Config Window (Only once)
     static bool bConfigShown = false;
     if (!bConfigShown) {

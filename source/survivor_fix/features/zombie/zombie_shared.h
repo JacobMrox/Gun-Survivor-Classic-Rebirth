@@ -31,6 +31,11 @@
 
 namespace sf::features::zombie {
 
+// Survivor's ENEM0 through ENEM10 are all zombie models.  The narrower
+// ps1::IsPcZombie predicate is intentionally retained for animation/AI
+// replacement because model IDs 3 and 7 have no verified PS1 clip mapping.
+constexpr bool IsHeadshotZombie(int type) { return type >= 0 && type <= 10; }
+
 using MapAnimFn = int(__fastcall*)(void* s, void* edx, int request);
 using UpdateEnemyFn = int(__fastcall*)(void* s, void* edx);
 using AccumulateFn = void(__fastcall*)(void* o, void* edx, float x, float y, float z);
@@ -243,6 +248,7 @@ bool InstallZombieDeath();
 // zombie_blood.cpp
 void SetBloodSubject(void* s);
 void SpawnHeadBlood(void* s, const uint8_t* o);
+void SpawnHeadBurst(void* s, const uint8_t* o);
 bool InstallZombieBlood();
 
 // zombie_pose.cpp

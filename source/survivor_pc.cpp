@@ -353,13 +353,19 @@ void SurvivorPc_OnHudVertexUnlock(void* vb) {
 namespace {
 constexpr uintptr_t kShadowBlendOffReturn = 0x0043CBD8;  // after SetRenderState(ALPHABLENDENABLE, 0)
 bool gShadowPending = false;
+bool gShadowArmed = false;
 }  // namespace
+
+void SurvivorPc_ArmEnemyShadowDraw() { gShadowArmed = true; }
 
 void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsigned long value) {
   if (!gPs1ShadowBlend) return;
   if (reinterpret_cast<uintptr_t>(returnAddress) == kShadowBlendOffReturn && state == 27 /* ALPHABLENDENABLE */ &&
       value == 0 && IsSurvivorExe()) {
-    gShadowPending = true;  // the next DrawPrimitive (0043CC8C) is this entity's shadow
+    // The blood-pool path reaches this same state call, but skips the shadow
+    // transform branch at 0043C903. Only a draw armed there is a shadow.
+    gShadowPending = gShadowArmed;
+    gShadowArmed = false;
   }
 }
 

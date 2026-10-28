@@ -9,6 +9,7 @@
 #include "../ps1/shadow_logic.h"
 #include "../ps1/zombie_profile.h"
 #include "features.h"
+#include "../../survivor_pc.h"
 
 namespace sf::features {
 
@@ -21,6 +22,7 @@ const float* __cdecl PrepareZombieShadowTransform(void* manager, int index, cons
   if (!actors || count < 1 || count > 30 || index >= count || !actors[index]) return original;
   auto* s = actors[index];
   if (game::Read<int>(s, 0x5C) != 0 || !ps1::IsPcZombie(game::Read<int>(s, 0x14))) return original;
+  SurvivorPc_ArmEnemyShadowDraw();
   thread_local float matrix[16];
   return ps1::ZombieShadowMatrix(original, matrix) ? matrix : original;
 }

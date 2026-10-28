@@ -132,6 +132,28 @@ void SpawnHeadBlood(void* s, const uint8_t* o) {
          head[0], head[1], head[2], 1, 1);
 }
 
+void SpawnHeadBurst(void* s, const uint8_t* o) {
+  // RE2's head loss combines its detached-head event with the regular hit
+  // cloud. Survivor cannot safely draw a detached model part yet, so preserve
+  // the real hidden head and add the two native blood sequences as a short,
+  // denser decapitation burst rather than inventing a foreign particle format.
+  void* manager = s ? game::Read<void*>(s, 0x08) : nullptr;
+  float head[3];
+  if (!manager || !BoneWorld(o, 3, head)) return;
+  auto create = reinterpret_cast<CreateEffectFn>(game::kEffectCreate);
+  const char* name = reinterpret_cast<const char*>(0x005BAFAC);
+  const char* blood2 = reinterpret_cast<const char*>(0x005BAFB4);
+  const char* blood1 = "RESOURCE\\blood1.BMP";
+
+  // Broad impact cloud at the sever point, followed by the longer neck spray.
+  create(manager, nullptr, name, 0.1f, 0.1f, 760.0f, 760.0f, 0.82f,
+         blood1, 40, 40, 0, head[0], head[1] + 35.0f, head[2], 1, 1);
+  create(manager, nullptr, name, 0.1f, 0.1f, 540.0f, 540.0f, 0.8f,
+         blood2, 32, 32, 0, head[0] - 90.0f, head[1] + 120.0f, head[2] + 45.0f, 1, 1);
+  create(manager, nullptr, name, 0.1f, 0.1f, 540.0f, 540.0f, 0.8f,
+         blood2, 32, 32, 0, head[0] + 90.0f, head[1] + 120.0f, head[2] - 45.0f, 1, 1);
+}
+
 bool InstallZombieBlood() {
   if (!g_config.ps1ZombieBlood) return false;
   const game::ByteSignature checks[] = {

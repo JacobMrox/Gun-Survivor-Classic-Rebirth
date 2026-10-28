@@ -8,8 +8,8 @@ private:
 	m_IDirect3DDevice8* m_pDevice;
 
 public:
-	//bool isAlphaFixTexture = false;//ALPHA FIX
-	//AlphaFixTag alphaFixTag = AFT_None;//ALPHA FIX
+	// Effect replacement textures are bound at the known draw path, not by
+	// guessing which asynchronous CreateTexture follows a file open.
 
 	m_IDirect3DTexture8(LPDIRECT3DTEXTURE8 pTexture8, m_IDirect3DDevice8* pDevice) : ProxyInterface(pTexture8), m_pDevice(pDevice)
 	{

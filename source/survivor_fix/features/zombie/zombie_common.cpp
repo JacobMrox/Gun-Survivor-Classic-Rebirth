@@ -396,7 +396,8 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   UpdateBiteSequence(s);
   SeparateZombie(s);
   ScaleWalk(s);
-  if (ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) {
+  if (ps1::IsPcZombie(game::Read<int>(s, game::S::kType)) ||
+      (g_config.lethalZombieHeadshots && IsHeadshotZombie(game::Read<int>(s, game::S::kType)))) {
     static const Entry kNoEntry;
     auto pose = g_entries.find(s);
     UpdatePose(s, pose != g_entries.end() ? pose->second : kNoEntry);

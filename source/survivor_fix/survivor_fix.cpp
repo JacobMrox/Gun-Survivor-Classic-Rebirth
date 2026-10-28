@@ -82,6 +82,7 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
   if (c.ps1PlayerDeath || c.ps1DoorFade) InstallScreenFx();
   if (c.hudConditionBounds) InstallHudConditionBounds();
   if (c.ps1Cadence) InstallPs1Cadence();
+  ApplyItemGlitterCadence();
   if (c.ps1ZombieShadowSize) InstallPs1ZombieShadowSize();
   if (c.exitCrashFix) InstallExitCrashFix();
   if (c.ps1ZombieWorld || c.ps1ZombieStumble || c.ps1ZombieBackFall || c.ps1ZombieNavigation || c.ps1ZombieWalk ||

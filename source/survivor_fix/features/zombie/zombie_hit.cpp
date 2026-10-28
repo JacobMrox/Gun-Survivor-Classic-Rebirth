@@ -30,6 +30,10 @@ constexpr float kLethalHeadRadius = 250.0f;
 // A short embedded wet pop. The shipped cue tried previously is only a few
 // milliseconds long and disappears under the simultaneous death voice.
 void PlayHeadPop() {
+  // Use RE2 PC enemy00.sap entry 0002 when the packaged reference cue is
+  // available. Keep the generated cue as a safe fallback for older installs.
+  if (PlaySoundA("FIXRES\\headpop.wav", nullptr,
+                 SND_FILENAME | SND_ASYNC | SND_NODEFAULT)) return;
   static std::vector<uint8_t> wave;
   if (wave.empty()) {
     constexpr uint32_t rate = 11025;
@@ -98,26 +102,33 @@ int HitMapRequest(void* s, int request) {
 
 HitGate HitBefore(void* s) {
   HitGate g;
-  if (!ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) return g;
+  const int type = game::Read<int>(s, game::S::kType);
+  const bool mappedZombie = ps1::IsPcZombie(type);
+  if (!mappedZombie && !(g_config.lethalZombieHeadshots && IsHeadshotZombie(type))) return g;
   uint8_t *o, *t;
   if (!GetObjects(s, o, t) || game::Read<uint8_t>(o, game::O::kHitFlag) == 0) return g;
   const float hp = game::Read<float>(o, game::O::kHealth);
   if (g_config.lethalZombieHeadshots && hp > 0.0f && IsLethalHeadHit(o)) {
     Entry& e = g_entries[s];
-    if (++e.headshotCount >= 2) {
+    const float incomingDamage = game::Read<float>(o, game::O::kHitDamage);
+    // A naturally lethal high-powered hit (shotgun/magnum) pops immediately.
+    // Weaker weapons retain the requested two-headshot minimum.
+    if (++e.headshotCount >= 2 || incomingDamage >= hp) {
       *game::Field<float>(o, game::O::kHitDamage) = hp;
       e.lethalHeadshot = true;
       PlayHeadPop();
-      SpawnHeadBlood(s, o);
-      Log("ZombieHeadshots: S=%p lethal head hit %u; head removed", s, e.headshotCount);
+      SpawnHeadBurst(s, o);
+      Log("ZombieHeadshots: S=%p lethal head hit %u damage=%.1f hp=%.1f; head removed",
+          s, e.headshotCount, incomingDamage, hp);
     } else {
-      // Even a high-powered weapon cannot kill on the first qualifying head
-      // hit. Preserve its normal damage unless that would leave no health.
-      const float damage = game::Read<float>(o, game::O::kHitDamage);
-      *game::Field<float>(o, game::O::kHitDamage) = (std::min)(damage, (std::max)(0.0f, hp - 1.0f));
+      *game::Field<float>(o, game::O::kHitDamage) =
+          (std::min)(incomingDamage, (std::max)(0.0f, hp - 1.0f));
       Log("ZombieHeadshots: S=%p head hit 1; guaranteed survivor", s);
     }
   }
+  // IDs 3 and 7 are zombies and can use the self-contained headshot feature,
+  // but must not enter the PS1 hit-reaction mapper whose clips are unknown.
+  if (!mappedZombie) return g;
   const float damage = game::Read<float>(o, game::O::kHitDamage);
   if (!g_config.ps1ZombieHit) return g;
   if (!(hp - damage > 0.0f)) return g;  // deadly hit: native death

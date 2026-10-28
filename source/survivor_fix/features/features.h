@@ -38,6 +38,7 @@ bool InstallMovieSkip();
 bool InstallTitleFade();
 bool InstallMouseInput();
 bool InstallPs1Cadence();
+bool ApplyItemGlitterCadence();
 // One stamp per native gameplay loop; not a render frame or per-actor update.
 bool Ps1LogicFrame(uint32_t* tick);
 bool InstallPs1ZombieShadowSize();
