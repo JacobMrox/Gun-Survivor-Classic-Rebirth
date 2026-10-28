@@ -206,6 +206,8 @@ namespace
     {
         bool skipTriggered = false;
         bool ffmpegVideo = false;
+        unsigned long ffmpegGeneration = 0;
+        unsigned long overlayGeneration = 0;
         HWND gameHWnd = NULL;
         IGraphBuilder* pGraph = nullptr;
         IMediaControl* pControl = nullptr;
@@ -250,7 +252,9 @@ namespace
             IMediaControl* control = st ? st->pControl : nullptr;
             IMediaEvent* event = st ? st->pEvent : nullptr;
             const bool ffmpegVideo = st && st->ffmpegVideo;
-            const bool gameOverlay = AviFfmpegHook::IsGameOverlayActive();
+            const unsigned long ffmpegGeneration = st ? st->ffmpegGeneration : 0;
+            const unsigned long overlayGeneration = st ? st->overlayGeneration : 0;
+            const bool gameOverlay = AviFfmpegHook::IsGameOverlayActive(overlayGeneration);
             const HWND gameHWnd = st ? st->gameHWnd : NULL;
             if (graph) graph->AddRef();
             if (control) control->AddRef();
@@ -269,54 +273,23 @@ namespace
             HANDLE hEv = NULL;
             if (event) event->GetEventHandle((OAEVENT*)&hEv);
 
-            bool skipTriggered = false;
-
-            if (gSkipMovies) {
-                Sleep(150);
-            }
-            else {
-                while (true) {
-                    if ((GetAsyncKeyState(VK_SPACE) & 0x8000) || (GetAsyncKeyState(VK_RETURN) & 0x8000)) {
-                        if (ffmpegVideo) AviFfmpegHook::StopForDirectShow();
-                        if (gameOverlay) AviFfmpegHook::StopForGameOverlay();
-                        control->Stop();
-                        skipTriggered = true;
-                        LogLine("[MOVIE] Manual skip triggered by user.");
-                        break;
-                    }
-                    // Once FFmpeg has finished, or DirectShow reports a terminal
-                    // event, retire the polling thread before title input begins.
-                    if (ffmpegVideo && !AviFfmpegHook::IsGameOverlayActive()) break;
-                    if (gameOverlay) {
-                        if (!AviFfmpegHook::IsGameOverlayActive()) break;
-                        // DirectShow can show its renderer again after graph
-                        // state changes. Keep it suppressed for the lifetime
-                        // of the replacement overlay, not only at Run().
-                        HideDirectShowVideo(graph);
-                    }
-                    long code = 0;
-                    LONG_PTR p1 = 0, p2 = 0;
-                    if (event && event->GetEvent(&code, &p1, &p2, 0) == S_OK) {
-                        event->FreeEventParams(code, p1, p2);
-                        if (code == EC_COMPLETE || code == EC_USERABORT || code == EC_ERRORABORT) break;
-                    }
-                    Sleep(15);
+            // Input and configured skipping are handled exclusively by the
+            // native MovieDone hook on the game's thread. This worker only
+            // keeps the legacy renderer hidden and observes graph completion;
+            // posting another EC_COMPLETE can be consumed by the next movie.
+            while (!gSkipMovies) {
+                if (ffmpegVideo && !AviFfmpegHook::IsDirectShowActive(ffmpegGeneration)) break;
+                if (gameOverlay) {
+                    if (!AviFfmpegHook::IsGameOverlayActive(overlayGeneration)) break;
+                    HideDirectShowVideo(graph);
                 }
-            }
-
-            if (gSkipMovies || skipTriggered) {
-                IBasicAudio* pBA = nullptr;
-                if (SUCCEEDED(graph->QueryInterface(IID_IBasicAudio, (void**)&pBA))) {
-                    pBA->put_Volume(-10000); pBA->Release();
+                long code = 0;
+                LONG_PTR p1 = 0, p2 = 0;
+                if (event && event->GetEvent(&code, &p1, &p2, 0) == S_OK) {
+                    event->FreeEventParams(code, p1, p2);
+                    if (code == EC_COMPLETE || code == EC_USERABORT || code == EC_ERRORABORT) break;
                 }
-                IMediaSeeking* pMS = nullptr;
-                if (SUCCEEDED(graph->QueryInterface(IID_IMediaSeeking, (void**)&pMS))) {
-                    LONGLONG dur = 0;
-                    if (SUCCEEDED(pMS->GetDuration(&dur)))
-                        pMS->SetPositions(&dur, AM_SEEKING_AbsolutePositioning, NULL, AM_SEEKING_NoPositioning);
-                    pMS->Release();
-                }
-                if (gameHWnd) PostMessageA(gameHWnd, 0x8001, (WPARAM)EC_COMPLETE, 0);
+                Sleep(15);
             }
             finish();
             return 0;
@@ -329,12 +302,12 @@ namespace
                 st->pGraph->QueryInterface(IID_IMediaEvent, (void**)&st->pEvent);
                 CreateThread(NULL, 0, KillMovieThread, st, 0, NULL);
             }
-            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive())
+            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive(st->overlayGeneration))
                 ReplaceDirectShowVideoRenderersWithNull(st->pGraph);
             // Retain the window suppression as a fallback for unusual graphs
             // whose renderer could not be detached.
             const HRESULT hr = real->Run();
-            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive()) HideDirectShowVideo(st->pGraph);
+            if (st->ffmpegVideo || AviFfmpegHook::IsGameOverlayActive(st->overlayGeneration)) HideDirectShowVideo(st->pGraph);
             return hr;
         }
 
@@ -342,8 +315,9 @@ namespace
         HRESULT STDMETHODCALLTYPE Pause() override { return real->Pause(); }
         HRESULT STDMETHODCALLTYPE Stop() override {
             st->skipTriggered = true;
-            if (st->ffmpegVideo) AviFfmpegHook::StopForDirectShow();
-            if (AviFfmpegHook::IsGameOverlayActive()) AviFfmpegHook::StopForGameOverlay();
+            if (st->ffmpegVideo) AviFfmpegHook::StopForDirectShow(st->ffmpegGeneration);
+            if (AviFfmpegHook::IsGameOverlayActive(st->overlayGeneration))
+                AviFfmpegHook::StopForGameOverlay(st->overlayGeneration);
             return real->Stop();
         }
         HRESULT STDMETHODCALLTYPE GetState(LONG ms, OAFilterState* pfs) override { return real->GetState(ms, pfs); }
@@ -362,8 +336,8 @@ namespace
 
         GraphBuilderProxy(IGraphBuilder* r) : real(r) { if (real) real->AddRef(); st.pGraph = r; }
         ~GraphBuilderProxy() {
-            if (st.ffmpegVideo) AviFfmpegHook::StopForDirectShow();
-            if (AviFfmpegHook::IsGameOverlayActive()) AviFfmpegHook::StopForGameOverlay();
+            if (st.ffmpegVideo) AviFfmpegHook::StopForDirectShow(st.ffmpegGeneration);
+            if (st.overlayGeneration) AviFfmpegHook::StopForGameOverlay(st.overlayGeneration);
             if (real) real->Release();
             if (st.pEvent) st.pEvent->Release();
         }
@@ -402,7 +376,8 @@ namespace
         HRESULT STDMETHODCALLTYPE RenderFile(LPCWSTR f, LPCWSTR p) override {
             const HRESULT hr = real->RenderFile(f, p);
             if (SUCCEEDED(hr) && IsMovieFile(f)) {
-                st.ffmpegVideo = AviFfmpegHook::StartForDirectShow(f);
+                st.ffmpegGeneration = gSkipMovies ? 0 : AviFfmpegHook::StartForDirectShow(f);
+                st.ffmpegVideo = st.ffmpegGeneration != 0;
                 if (st.ffmpegVideo) {
                     HideDirectShowVideo(real);
                     LogLine("[MOVIE] FFmpeg display replacing DirectShow video: %S", f);
@@ -414,8 +389,9 @@ namespace
         }
         HRESULT STDMETHODCALLTYPE AddSourceFilter(LPCWSTR f, LPCWSTR n, IBaseFilter** p) override {
             const HRESULT hr = real->AddSourceFilter(f, n, p);
-            if (SUCCEEDED(hr) && IsMovieFile(f) && AviFfmpegHook::StartForGameOverlay(f)) {
-                QueueDirectShowVideoHide(real);
+            if (SUCCEEDED(hr) && IsMovieFile(f) && !gSkipMovies) {
+                st.overlayGeneration = AviFfmpegHook::StartForGameOverlay(f);
+                if (st.overlayGeneration) QueueDirectShowVideoHide(real);
             }
             return hr;
         }

@@ -10,6 +10,7 @@
 #include "survivor_pc.h"
 #include <mmsystem.h>
 #include <string>
+#include <algorithm>
 
 DEFINE_GUID(IID_IAVIFile, 0x00020420, 0x0000, 0x0000, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46);
 DEFINE_GUID(IID_IAVIStream, 0x00020421, 0x0000, 0x0000, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46);
@@ -300,8 +301,21 @@ namespace {
 }
 
 namespace AviFfmpegHook {
-    struct OverlayState { std::string path; HWND parent = nullptr; volatile LONG stop = FALSE; };
+    static volatile LONG g_directShowGeneration = 0;
+    static volatile LONG g_activeDirectShowGeneration = 0;
+
+    struct OverlayState {
+        std::string path;
+        HWND parent = nullptr;
+        volatile LONG stop = FALSE;
+        unsigned long generation = 0;
+        uint8_t* pixels = nullptr;
+        BITMAPINFO info{};
+        int sourceWidth = 0;
+        int sourceHeight = 0;
+    };
     static OverlayState* g_overlay = nullptr;
+    static volatile LONG g_overlayGeneration = 0;
 
     static LRESULT CALLBACK OverlayWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         // A STATIC/SS_BLACKRECT child erases itself to black whenever Windows
@@ -311,7 +325,15 @@ namespace AviFfmpegHook {
         if (message == WM_ERASEBKGND) return 1;
         if (message == WM_PAINT) {
             PAINTSTRUCT paint{};
-            BeginPaint(window, &paint);
+            HDC dc = BeginPaint(window, &paint);
+            auto* state = reinterpret_cast<OverlayState*>(GetWindowLongPtrA(window, GWLP_USERDATA));
+            if (state && state->pixels && state->sourceWidth > 0 && state->sourceHeight > 0) {
+                RECT rc{};
+                GetClientRect(window, &rc);
+                StretchDIBits(dc, 0, 0, rc.right, rc.bottom, 0, 0,
+                    state->sourceWidth, state->sourceHeight, state->pixels,
+                    &state->info, DIB_RGB_COLORS, SRCCOPY);
+            }
             EndPaint(window, &paint);
             return 0;
         }
@@ -336,6 +358,22 @@ namespace AviFfmpegHook {
         return TRUE;
     }
 
+    static void PresentOverlayFrame(OverlayState* state, HWND overlay) {
+        if (!state || !overlay || !state->parent || !state->pixels) return;
+        // Direct3D presents and legacy renderer state changes can cover a GDI
+        // child between source-video frames. Keep the replacement above every
+        // native child and repaint the held FFmpeg frame without erasing it.
+        EnumChildWindows(state->parent, HideNativeMovieChild, reinterpret_cast<LPARAM>(overlay));
+        RECT client{};
+        GetClientRect(state->parent, &client);
+        POINT origin{client.left, client.top};
+        ClientToScreen(state->parent, &origin);
+        SetWindowPos(overlay, HWND_TOP, origin.x, origin.y,
+            client.right - client.left, client.bottom - client.top,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        RedrawWindow(overlay, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+    }
+
     static DWORD WINAPI OverlayThread(LPVOID argument) {
         auto* state = static_cast<OverlayState*>(argument);
         AVFormatContext* format = nullptr;
@@ -351,6 +389,9 @@ namespace AviFfmpegHook {
         AVRational rate{};
         DWORD delay = 33;
         int lastClientW = 0, lastClientH = 0;
+        int64_t firstPts = AV_NOPTS_VALUE;
+        uint64_t frameNumber = 0;
+        ULONGLONG playbackStart = 0;
 
         if (avformat_open_input(&format, state->path.c_str(), nullptr, nullptr) != 0 || avformat_find_stream_info(format, nullptr) < 0) goto done;
         for (unsigned i = 0; i < format->nb_streams; ++i) if (format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) { stream = static_cast<int>(i); break; }
@@ -365,11 +406,24 @@ namespace AviFfmpegHook {
         if (!state->parent) state->parent = GetForegroundWindow();
         if (!state->parent) goto done;
         if (!EnsureOverlayWindowClass()) goto done;
-        overlay = CreateWindowExA(WS_EX_NOPARENTNOTIFY, "SurvivorFfmpegOverlay", "", WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 1, 1, state->parent, nullptr, GetModuleHandleA(nullptr), nullptr);
+        // A child HWND shares the game's presentation hierarchy and can be
+        // covered by a Direct3D/native-video present. An owned layered popup
+        // has its own compositor surface while still following/minimizing with
+        // the game window, so its last decoded frame cannot flicker to black.
+        overlay = CreateWindowExA(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
+            "SurvivorFfmpegOverlay", "", WS_POPUP, 0, 0, 1, 1,
+            state->parent, nullptr, GetModuleHandleA(nullptr), nullptr);
         if (!overlay) goto done;
+        SetLayeredWindowAttributes(overlay, 0, 255, LWA_ALPHA);
+        SetWindowLongPtrA(overlay, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
         info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = codec->width; info.bmiHeader.biHeight = -codec->height; info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
+        state->pixels = pixels;
+        state->info = info;
+        state->sourceWidth = codec->width;
+        state->sourceHeight = codec->height;
         rate = format->streams[stream]->avg_frame_rate;
         delay = rate.num > 0 && rate.den > 0 ? static_cast<DWORD>(1000.0 * rate.den / rate.num + 0.5) : 33;
+        playbackStart = GetTickCount64();
         sf::Log("FFmpeg overlay started: %s", state->path.c_str());
         while (!InterlockedCompareExchange(&state->stop, FALSE, FALSE)) {
             AVPacket packet{}; bool got = false;
@@ -379,39 +433,83 @@ namespace AviFfmpegHook {
                 av_packet_unref(&packet);
             }
             if (!got) break;
+            const int64_t pts = frame->best_effort_timestamp;
+            if (firstPts == AV_NOPTS_VALUE && pts != AV_NOPTS_VALUE) firstPts = pts;
+            double targetMs = static_cast<double>(frameNumber) * delay;
+            if (pts != AV_NOPTS_VALUE && firstPts != AV_NOPTS_VALUE) {
+                targetMs = static_cast<double>(pts - firstPts) *
+                    av_q2d(format->streams[stream]->time_base) * 1000.0;
+                if (targetMs < 0.0) targetMs = 0.0;
+            }
+            ++frameNumber;
+
+            // Pace from the absolute stream timestamp. Decode/conversion and
+            // window-management time no longer accumulates once per frame.
+            // If decoding falls substantially behind audio, discard the late
+            // video frame and catch up to the next timestamp.
+            double elapsedMs = static_cast<double>(GetTickCount64() - playbackStart);
+            const double lateLimit = (std::max)(80.0, static_cast<double>(delay) * 2.0);
+            if (elapsedMs > targetMs + lateLimit) continue;
+            DWORD nextHeldFrameRefresh = GetTickCount() + 8;
+            while (!InterlockedCompareExchange(&state->stop, FALSE, FALSE) && elapsedMs + 0.5 < targetMs) {
+                MSG message{};
+                while (PeekMessageA(&message, nullptr, 0, 0, PM_REMOVE)) {
+                    TranslateMessage(&message);
+                    DispatchMessageA(&message);
+                }
+                const DWORD now = GetTickCount();
+                if (state->pixels && static_cast<LONG>(now - nextHeldFrameRefresh) >= 0) {
+                    PresentOverlayFrame(state, overlay);
+                    nextHeldFrameRefresh = now + 8;
+                }
+                Sleep(1);
+                elapsedMs = static_cast<double>(GetTickCount64() - playbackStart);
+            }
+            if (InterlockedCompareExchange(&state->stop, FALSE, FALSE)) break;
             sws_scale(scale, frame->data, frame->linesize, 0, codec->height, rgb->data, rgb->linesize);
             RECT rc{}; GetClientRect(state->parent, &rc);
             if (rc.right != lastClientW || rc.bottom != lastClientH) {
                 lastClientW = rc.right; lastClientH = rc.bottom;
-                SetWindowPos(overlay, HWND_TOP, 0, 0, rc.right, rc.bottom, SWP_NOACTIVATE | SWP_SHOWWINDOW);
             }
-            HDC dc = GetDC(overlay); StretchDIBits(dc, 0, 0, rc.right, rc.bottom, 0, 0, codec->width, codec->height, pixels, &info, DIB_RGB_COLORS, SRCCOPY); ReleaseDC(overlay, dc);
+            PresentOverlayFrame(state, overlay);
             // Keep native audio and completion handling, but retire the old video
             // surface only after this decoded FFmpeg frame is actually visible.
             EnumChildWindows(state->parent, HideNativeMovieChild, reinterpret_cast<LPARAM>(overlay));
-            Sleep(delay ? delay : 1);
         }
     done:
-        if (overlay) DestroyWindow(overlay); if (scale) sws_freeContext(scale); if (pixels) av_free(pixels); if (rgb) av_frame_free(&rgb); if (frame) av_frame_free(&frame); if (codec) avcodec_free_context(&codec); if (format) avformat_close_input(&format);
+        state->pixels = nullptr;
+        if (overlay) { SetWindowLongPtrA(overlay, GWLP_USERDATA, 0); DestroyWindow(overlay); }
+        if (scale) sws_freeContext(scale); if (pixels) av_free(pixels); if (rgb) av_frame_free(&rgb); if (frame) av_frame_free(&frame); if (codec) avcodec_free_context(&codec); if (format) avformat_close_input(&format);
         if (g_overlay == state) g_overlay = nullptr; delete state; return 0;
     }
 
-    bool StartForGameOverlay(const char* filename) {
-        if (!filename || !*filename) return false;
+    unsigned long StartForGameOverlay(const char* filename) {
+        if (!filename || !*filename) return 0;
         StopForGameOverlay();
-        auto* state = new OverlayState{}; state->path = filename; state->parent = GetActiveWindow(); g_overlay = state;
-        if (!CreateThread(nullptr, 0, OverlayThread, state, 0, nullptr)) { g_overlay = nullptr; delete state; return false; }
-        return true;
+        auto* state = new OverlayState{};
+        state->path = filename;
+        state->parent = GetActiveWindow();
+        state->generation = static_cast<unsigned long>(InterlockedIncrement(&g_overlayGeneration));
+        g_overlay = state;
+        if (!CreateThread(nullptr, 0, OverlayThread, state, 0, nullptr)) { g_overlay = nullptr; delete state; return 0; }
+        return state->generation;
     }
 
-    bool StartForGameOverlay(const wchar_t* filename) {
-        if (!filename || !*filename) return false;
+    unsigned long StartForGameOverlay(const wchar_t* filename) {
+        if (!filename || !*filename) return 0;
         char path[MAX_PATH * 4] = {};
-        return WideCharToMultiByte(CP_ACP, 0, filename, -1, path, sizeof(path), nullptr, nullptr) && StartForGameOverlay(path);
+        if (!WideCharToMultiByte(CP_ACP, 0, filename, -1, path, sizeof(path), nullptr, nullptr)) return 0;
+        return StartForGameOverlay(path);
     }
 
-    void StopForGameOverlay() { if (g_overlay) InterlockedExchange(&g_overlay->stop, TRUE); }
-    bool IsGameOverlayActive() { return g_overlay != nullptr; }
+    void StopForGameOverlay(unsigned long generation) {
+        OverlayState* state = g_overlay;
+        if (state && (!generation || state->generation == generation)) InterlockedExchange(&state->stop, TRUE);
+    }
+    bool IsGameOverlayActive(unsigned long generation) {
+        OverlayState* state = g_overlay;
+        return state && (!generation || state->generation == generation);
+    }
 
     bool Install() {
         static DummyAVIFile s_DummyFile;
@@ -423,20 +521,39 @@ namespace AviFfmpegHook {
         return true;
     }
 
-    bool StartForDirectShow(const wchar_t* filename) {
-        if (!filename || !*filename) return false;
+    unsigned long StartForDirectShow(const wchar_t* filename) {
+        if (!filename || !*filename) return 0;
         char path[MAX_PATH * 4] = {};
         if (!WideCharToMultiByte(CP_ACP, 0, filename, -1, path, sizeof(path), nullptr, nullptr)) {
             LogLine("AviFfmpegHook: could not convert DirectShow movie path");
-            return false;
+            return 0;
         }
-        return OpenVideo(path);
+        const LONG generation = InterlockedIncrement(&g_directShowGeneration);
+        // Claim ownership before OpenVideo closes the previous decoder. A late
+        // Stop from the previous graph will now see a different generation.
+        InterlockedExchange(&g_activeDirectShowGeneration, generation);
+        if (!OpenVideo(path)) {
+            InterlockedCompareExchange(&g_activeDirectShowGeneration, 0, generation);
+            return 0;
+        }
+        return static_cast<unsigned long>(generation);
     }
 
-    void StopForDirectShow() {
+    void StopForDirectShow(unsigned long generation) {
+        const LONG active = InterlockedCompareExchange(&g_activeDirectShowGeneration, 0, 0);
+        if (generation && active != static_cast<LONG>(generation)) return;
+        if (generation)
+            InterlockedCompareExchange(&g_activeDirectShowGeneration, 0, static_cast<LONG>(generation));
+        else
+            InterlockedExchange(&g_activeDirectShowGeneration, 0);
         if (g_Video.isPlaying || g_Video.pFormatCtx) {
             LogLine("AviFfmpegHook: FFmpeg display stopped");
             CloseVideo();
         }
+    }
+
+    bool IsDirectShowActive(unsigned long generation) {
+        return generation != 0 && g_Video.isPlaying &&
+            InterlockedCompareExchange(&g_activeDirectShowGeneration, 0, 0) == static_cast<LONG>(generation);
     }
 }
