@@ -7,6 +7,9 @@ IDR_CROSSHAIR_OLD    RCDATA "..\\data\\FIXRES\\crosshair_old.png"
 IDR_CROSSHAIR_PSX    RCDATA "..\\data\\FIXRES\\crosshair_psx.png"
 IDR_CROSSHAIR_UC_BIG RCDATA "..\\data\\FIXRES\\crosshair_uc_big.png"
 IDR_MISC_BMP         RCDATA "..\\data\\FIXRES\\MISC.BMP"
+IDR_PS1_SHADOW_PNG   RCDATA "..\\data\\FIXRES\\ps1_shadow.png"
+IDR_PS1_BLOODX1_PNG  RCDATA "..\\data\\FIXRES\\ps1_bloodx1.png"
+IDR_PS1_BLOODX2_PNG  RCDATA "..\\data\\FIXRES\\ps1_bloodx2.png"
 
 1 RT_MANIFEST "Fluent.manifest"
 
@@ -33,10 +36,11 @@ CONTROL         "Lock Cursor", IDC_LOCK_CURSOR, "Button", BS_AUTOCHECKBOX | WS_T
 CONTROL         "Primary Monitor Only", IDC_PRIMARY_MON, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 120, 100, 10
 CONTROL         "Keep Aspect Ratio", IDC_KEEP_ASPECT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 137, 100, 10
 
-GROUPBOX        "Fixes", IDC_STATIC, 7, 160, 198, 52
+GROUPBOX        "Fixes", IDC_STATIC, 7, 160, 198, 65
 CONTROL         "Skip FMV Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 177, 100, 10
 CONTROL         "Smooth Model Lighting", IDC_SMOOTH_MODEL_LIGHTING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 177, 95, 10
 CONTROL         "Lethal Zombie Headshots", IDC_ZOMBIE_HEADSHOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 194, 130, 10
+CONTROL         "Detached Zombie Heads", IDC_DETACHED_HEADS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 210, 130, 10
 
 GROUPBOX        "Crosshair", IDC_STATIC, 212, 7, 201, 148
 LTEXT           "Type:", IDC_STATIC, 220, 22, 20, 8

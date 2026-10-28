@@ -116,10 +116,12 @@ HitGate HitBefore(void* s) {
     if (++e.headshotCount >= 2 || incomingDamage >= hp) {
       *game::Field<float>(o, game::O::kHitDamage) = hp;
       e.lethalHeadshot = true;
-      PlayHeadPop();
-      SpawnHeadBurst(s, o);
-      Log("ZombieHeadshots: S=%p lethal head hit %u damage=%.1f hp=%.1f; head removed",
-          s, e.headshotCount, incomingDamage, hp);
+      if (g_config.detachedZombieHeads) {
+        PlayHeadPop();
+        SpawnHeadBurst(s, o);
+      }
+      Log("ZombieHeadshots: S=%p lethal head hit %u damage=%.1f hp=%.1f; detached=%d",
+          s, e.headshotCount, incomingDamage, hp, g_config.detachedZombieHeads ? 1 : 0);
     } else {
       *game::Field<float>(o, game::O::kHitDamage) =
           (std::min)(incomingDamage, (std::max)(0.0f, hp - 1.0f));

@@ -152,6 +152,12 @@ void SpawnHeadBurst(void* s, const uint8_t* o) {
          blood2, 32, 32, 0, head[0] - 90.0f, head[1] + 120.0f, head[2] + 45.0f, 1, 1);
   create(manager, nullptr, name, 0.1f, 0.1f, 540.0f, 540.0f, 0.8f,
          blood2, 32, 32, 0, head[0] + 90.0f, head[1] + 120.0f, head[2] - 45.0f, 1, 1);
+  // EF03_0 is Survivor's eight-cell flesh/debris burst. It is the native
+  // analogue of RE2's extra decapitation debris and remains tied only to a
+  // confirmed lethal head hit.
+  create(manager, nullptr, "head_debris", 0.12f, 0.12f, 680.0f, 680.0f, 0.82f,
+         "RESOURCE\\EF03_0.BMP", 32, 32, 0,
+         head[0], head[1] + 45.0f, head[2], 1, 1);
 }
 
 bool InstallZombieBlood() {

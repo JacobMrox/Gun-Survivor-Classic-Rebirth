@@ -44,7 +44,9 @@ void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsig
 // Armed only by the living-enemy shadow branch. Blood pools skip that branch
 // and must retain their native red texture/blending.
 void SurvivorPc_ArmEnemyShadowDraw();
-bool SurvivorPc_TakeShadowDraw();
+void SurvivorPc_ArmEnemyPoolDraw(int texture);
+// 0 none, 1 shadow, 2 BLOODX1, 3 BLOODX2.
+int SurvivorPc_TakeEnemySurfaceDraw();
 
 // True when the running executable is the PC port of Resident Evil Survivor (gun_bio.exe, checked by bytes).
 bool SurvivorPc_IsSurvivorExe();

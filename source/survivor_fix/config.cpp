@@ -62,6 +62,7 @@ void LoadConfig(const char* iniPath) {
   c.ps1DoorFade = Read("Ps1DoorFade", true);
   c.ps1TitleFade = Read("Ps1TitleFade", true);
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
+  c.detachedZombieHeads = GetPrivateProfileIntA("Fixes", "DetachedZombieHeads", 1, iniPath) != 0;
   c.ps1Cadence = Read("Ps1FrameRate", true);
 
   c.inputDeviceFix = Read("InputDeviceFix", true);

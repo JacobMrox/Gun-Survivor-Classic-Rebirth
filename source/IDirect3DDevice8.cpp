@@ -21,6 +21,27 @@
 #include "d3d8.h"
 #include "survivor_pc.h"
 #include "survivor_fix/log.h"
+#include "resource.h"
+#include "d3dx8tex.h"
+
+extern HMODULE g_hWrapperModule;
+
+namespace {
+IDirect3DTexture8* gEnemySurfaceTextures[3] = {};
+
+IDirect3DTexture8* EnemySurfaceTexture(IDirect3DDevice8* device, int surface) {
+    if (surface < 1 || surface > 3) return nullptr;
+    IDirect3DTexture8*& texture = gEnemySurfaceTextures[surface - 1];
+    if (texture) return texture;
+    const int ids[] = {IDR_PS1_SHADOW_PNG, IDR_PS1_BLOODX1_PNG, IDR_PS1_BLOODX2_PNG};
+    HRSRC info = FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(ids[surface - 1]), RT_RCDATA);
+    HGLOBAL data = info ? LoadResource(g_hWrapperModule, info) : nullptr;
+    const void* bytes = data ? LockResource(data) : nullptr;
+    const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
+    if (bytes && size) D3DXCreateTextureFromFileInMemory(device, bytes, size, &texture);
+    return texture;
+}
+}
 
 // somewhere global
 
@@ -589,10 +610,14 @@ HRESULT m_IDirect3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveTyp
 
 HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
 {
-	if (SurvivorPc_TakeShadowDraw())
+	const int enemySurface = SurvivorPc_TakeEnemySurfaceDraw();
+	if (enemySurface)
 	{
-		// PS1 semi-transparency mode 0 for the enemy shadow (survivor_pc.cpp, Ps1ShadowBlend).
+		// Bind the exact repaired shadow/pool PNG only for this verified native
+		// draw. This retains linear alpha without global file/upload tagging.
 		DWORD blend, src, dst, alphaTest, alphaFunc, alphaRef, factor, cop, carg1, carg2, aop, aarg1, aarg2;
+		IDirect3DBaseTexture8* oldTexture = nullptr;
+		ProxyInterface->GetTexture(0, &oldTexture);
 		ProxyInterface->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
 		ProxyInterface->GetRenderState(D3DRS_SRCBLEND, &src);
 		ProxyInterface->GetRenderState(D3DRS_DESTBLEND, &dst);
@@ -609,17 +634,22 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-		ProxyInterface->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-		ProxyInterface->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
-		ProxyInterface->SetRenderState(D3DRS_ALPHAREF, 1);
-		ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0x80404040);
-		ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-		ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
-		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+		// The repaired textures use a continuous alpha ramp; alpha testing was
+		// the source of the hard rings/squares in earlier attempts.
+		ProxyInterface->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+		if (auto* replacement = EnemySurfaceTexture(ProxyInterface, enemySurface))
+			ProxyInterface->SetTexture(0, replacement);
+		if (enemySurface == 1) {
+			ProxyInterface->SetRenderState(D3DRS_TEXTUREFACTOR, 0x80404040);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+			ProxyInterface->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+		}
+		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
 		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-		ProxyInterface->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
 		const HRESULT hr = ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
+		ProxyInterface->SetTexture(0, oldTexture);
+		if (oldTexture) oldTexture->Release();
 		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, blend);
 		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, src);
 		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, dst);

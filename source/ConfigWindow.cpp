@@ -10,6 +10,7 @@
 #include <uxtheme.h>
 #include <dwmapi.h>
 #include <gdiplus.h>
+#include <memory>
 
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -29,11 +30,13 @@ extern std::string sCrosshairPath;
 extern float fCrosshairScale;
 extern bool bLaserTrail;
 extern COLORREF gLaserColor;
+extern HMODULE g_hWrapperModule;
 
 static int mouseSensitivityPercent = 100;
 static bool keepAspect = true;
 static bool smoothModelLighting = true;
 static bool lethalZombieHeadshots = false;
+static bool detachedZombieHeads = true;
 
 static char cfgPath[MAX_PATH];
 bool bShowConfigOnLaunch = false;
@@ -218,7 +221,7 @@ bool EnableFluentTheme(HWND h) {
     for (const int id : {
         IDC_RES_COMBO, IDC_FPS_COMBO, IDC_REFRESH, IDC_FPS_COUNTER, IDC_WINDOWED,
         IDC_BORDERLESS, IDC_CENTER, IDC_ALWAYS_ONTOP, IDC_LOCK_CURSOR, IDC_PRIMARY_MON,
-        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_ZOMBIE_HEADSHOTS, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
+        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_ZOMBIE_HEADSHOTS, IDC_DETACHED_HEADS, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
         IDC_SHOW_CONFIG, IDC_CROSS_COMBO, IDC_CROSS_BROWSE, IDC_CROSS_SCALE, IDOK, IDCANCEL
     }) {
         if (HWND control = GetDlgItem(h, id)) SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
@@ -298,17 +301,35 @@ void PaintCrosshairPreview(HWND hStatic, HDC hdc) {
         if (slash != std::string::npos) previewPath = configDirectory.substr(0, slash + 1) + previewPath;
     }
     std::wstring widestr = std::wstring(previewPath.begin(), previewPath.end());
-    Image img(widestr.c_str());
+    std::unique_ptr<Image> img(new Image(widestr.c_str()));
+    IStream* embeddedStream = nullptr;
+    if (img->GetLastStatus() != Ok) {
+        int id = 0;
+        if (sCrosshairPath.find("crosshair_pc.png") != std::string::npos) id = IDR_CROSSHAIR_PC;
+        else if (sCrosshairPath.find("crosshair_old.png") != std::string::npos) id = IDR_CROSSHAIR_OLD;
+        else if (sCrosshairPath.find("crosshair_psx.png") != std::string::npos) id = IDR_CROSSHAIR_PSX;
+        else if (sCrosshairPath.find("crosshair_uc_big.png") != std::string::npos) id = IDR_CROSSHAIR_UC_BIG;
+        HRSRC info = id ? FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(id), RT_RCDATA) : nullptr;
+        HGLOBAL resource = info ? LoadResource(g_hWrapperModule, info) : nullptr;
+        const BYTE* bytes = resource ? static_cast<const BYTE*>(LockResource(resource)) : nullptr;
+        const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
+        if (bytes && size) {
+            embeddedStream = SHCreateMemStream(bytes, size);
+            if (embeddedStream) img.reset(new Image(embeddedStream));
+        }
+    }
 
-    if (img.GetLastStatus() == Ok) {
-        int newW = (int)(img.GetWidth() * fCrosshairScale);
-        int newH = (int)(img.GetHeight() * fCrosshairScale);
+    if (img->GetLastStatus() == Ok) {
+        int newW = (int)(img->GetWidth() * fCrosshairScale);
+        int newH = (int)(img->GetHeight() * fCrosshairScale);
 
         // Center the scaled image
         int x = (rect.right - newW) / 2;
         int y = (rect.bottom - newH) / 2;
-        graphics.DrawImage(&img, x, y, newW, newH);
+        graphics.DrawImage(img.get(), x, y, newW, newH);
     }
+    img.reset();
+    if (embeddedStream) embeddedStream->Release();
 }
 
 LRESULT CALLBACK CrosshairPreviewProc(HWND hStatic, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -350,6 +371,7 @@ void SyncConfig(bool save) {
         SetI("Window", "KeepAspectRatio", keepAspect);
         SetI("Fixes", "SmoothModelLighting", smoothModelLighting);
         SetI("Fixes", "LethalZombieHeadshots", lethalZombieHeadshots);
+        SetI("Fixes", "DetachedZombieHeads", detachedZombieHeads);
         const std::string sensitivity = std::to_string(static_cast<float>(mouseSensitivityPercent) / 100.0f);
         WritePrivateProfileStringA("Crosshair", "MouseSensitivity", sensitivity.c_str(), cfgPath);
         WritePrivateProfileStringA("Crosshair", "TexturePath", sCrosshairPath.c_str(), cfgPath);
@@ -407,6 +429,7 @@ void SyncConfig(bool save) {
         keepAspect = MigratedI("Window", "KeepAspectRatio", "SurvivorFix", "KeepAspect", 1) != 0;
         smoothModelLighting = MigratedI("Fixes", "SmoothModelLighting", "SurvivorFix", "SmoothModelLighting", 1) != 0;
         lethalZombieHeadshots = GetI("Fixes", "LethalZombieHeadshots", 0) != 0;
+        detachedZombieHeads = GetI("Fixes", "DetachedZombieHeads", 1) != 0;
         GetPrivateProfileStringA(Has("Crosshair", "MouseSensitivity") ? "Crosshair" : "SurvivorFix",
             "MouseSensitivity", "1.0", temp, MAX_PATH, cfgPath);
         mouseSensitivityPercent = std::clamp(static_cast<int>(std::atof(temp) * 100.0 + 0.5), 10, 500);
@@ -471,6 +494,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_SKIP_MOVIES, bSkipMovies);
         CheckDlgButton(h, IDC_SMOOTH_MODEL_LIGHTING, smoothModelLighting);
         CheckDlgButton(h, IDC_ZOMBIE_HEADSHOTS, lethalZombieHeadshots);
+        CheckDlgButton(h, IDC_DETACHED_HEADS, detachedZombieHeads);
         CheckDlgButton(h, IDC_LASER_TRAIL, bLaserTrail);
         CheckDlgButton(h, IDC_ENABLE_LOG, gEnableLogging);
         //CheckDlgButton(h, IDC_DISABLE_SHIM, bDirect3D8DisableMaximizedWindowedModeShim);
@@ -557,6 +581,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             bSkipMovies = IsDlgButtonChecked(h, IDC_SKIP_MOVIES);
             smoothModelLighting = IsDlgButtonChecked(h, IDC_SMOOTH_MODEL_LIGHTING);
             lethalZombieHeadshots = IsDlgButtonChecked(h, IDC_ZOMBIE_HEADSHOTS);
+            detachedZombieHeads = IsDlgButtonChecked(h, IDC_DETACHED_HEADS);
             bLaserTrail = IsDlgButtonChecked(h, IDC_LASER_TRAIL);
             gEnableLogging = IsDlgButtonChecked(h, IDC_ENABLE_LOG);
             //bDirect3D8DisableMaximizedWindowedModeShim = IsDlgButtonChecked(h, IDC_DISABLE_SHIM);

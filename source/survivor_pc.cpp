@@ -352,11 +352,12 @@ void SurvivorPc_OnHudVertexUnlock(void* vb) {
 // ---- Ps1ShadowBlend -------------------------------------------------------------------------------------
 namespace {
 constexpr uintptr_t kShadowBlendOffReturn = 0x0043CBD8;  // after SetRenderState(ALPHABLENDENABLE, 0)
-bool gShadowPending = false;
-bool gShadowArmed = false;
+int gEnemySurfacePending = 0;
+int gEnemySurfaceArmed = 0;
 }  // namespace
 
-void SurvivorPc_ArmEnemyShadowDraw() { gShadowArmed = true; }
+void SurvivorPc_ArmEnemyShadowDraw() { gEnemySurfaceArmed = 1; }
+void SurvivorPc_ArmEnemyPoolDraw(int texture) { gEnemySurfaceArmed = texture == 2 ? 3 : 2; }
 
 void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsigned long value) {
   if (!gPs1ShadowBlend) return;
@@ -364,8 +365,8 @@ void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsig
       value == 0 && IsSurvivorExe()) {
     // The blood-pool path reaches this same state call, but skips the shadow
     // transform branch at 0043C903. Only a draw armed there is a shadow.
-    gShadowPending = gShadowArmed;
-    gShadowArmed = false;
+    gEnemySurfacePending = gEnemySurfaceArmed;
+    gEnemySurfaceArmed = 0;
   }
 }
 
@@ -373,9 +374,9 @@ bool SurvivorPc_IsSurvivorExe() { return IsSurvivorExe(); }
 
 bool SurvivorPc_SmoothModelLighting() { return gSmoothModelLighting && IsSurvivorExe(); }
 
-bool SurvivorPc_TakeShadowDraw() {
-  const bool pending = gShadowPending;
-  gShadowPending = false;
+int SurvivorPc_TakeEnemySurfaceDraw() {
+  const int pending = gEnemySurfacePending;
+  gEnemySurfacePending = 0;
   return pending;
 }
 

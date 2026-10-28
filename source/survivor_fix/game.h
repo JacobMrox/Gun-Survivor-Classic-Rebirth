@@ -42,6 +42,8 @@ constexpr uintptr_t kZombieShadowBranch = 0x0043C903;
 inline constexpr uint8_t kZombieShadowBranchBytes[] = {0x8B, 0x48, 0x5C, 0x85, 0xC9, 0x75, 0x47, 0x8B, 0x58, 0x0C, 0x8B, 0x40, 0x10};
 constexpr uintptr_t kZombieShadowPush = 0x0043C924;
 inline constexpr uint8_t kZombieShadowPushBytes[] = {0x50, 0x68, 0x00, 0x01, 0x00, 0x00};
+constexpr uintptr_t kZombiePoolPush = 0x0043CB06;
+inline constexpr uint8_t kZombiePoolPushBytes[] = {0x51, 0x68, 0x00, 0x01, 0x00, 0x00};
 
 // ---------------------------------------------------------------------------
 // FUN_00436B40: animation request and application.

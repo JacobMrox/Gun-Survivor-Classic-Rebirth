@@ -90,6 +90,8 @@ struct Config {
   bool ps1TitleFade = true;
   // Optional restoration of the PS1 lethal head-part rule, exposed in the configuration window.
   bool lethalZombieHeadshots = false;
+  // Visual decapitation for lethal headshots. This also gates the detached/falling head effect.
+  bool detachedZombieHeads = true;
   // The game runs at the PS1 rate: two NTSC vertical blanks per frame, about 29.91 logic updates/s (VSync(2)).
   bool ps1Cadence = true;
 

@@ -30,8 +30,12 @@
 #define IDC_LASER_TRAIL           1027
 #define IDC_LASER_COLOR           1028
 #define IDC_ZOMBIE_HEADSHOTS      1029
+#define IDC_DETACHED_HEADS        1030
 #define IDR_CROSSHAIR_PC          2001
 #define IDR_CROSSHAIR_OLD         2002
 #define IDR_CROSSHAIR_PSX         2003
 #define IDR_CROSSHAIR_UC_BIG      2004
 #define IDR_MISC_BMP              2005
+#define IDR_PS1_SHADOW_PNG        2006
+#define IDR_PS1_BLOODX1_PNG       2007
+#define IDR_PS1_BLOODX2_PNG       2008

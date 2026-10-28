@@ -105,7 +105,8 @@ int DrawPosed(void* m, void* edx, int a, int b) {
   auto owner = g_subjectByModel.find(m);
   if (owner == g_subjectByModel.end()) return g_drawModel(m, edx, a, b);
   const auto entry = g_entries.find(owner->second);
-  const bool headless = g_config.lethalZombieHeadshots && entry != g_entries.end() && entry->second.lethalHeadshot;
+  const bool headless = g_config.lethalZombieHeadshots && g_config.detachedZombieHeads &&
+                        entry != g_entries.end() && entry->second.lethalHeadshot;
   auto pose = g_poseBySubject.find(owner->second);
   const bool hasPose = g_config.ps1ZombiePose && pose != g_poseBySubject.end() &&
                        GetTickCount() - pose->second.seen <= kAliveMs &&
