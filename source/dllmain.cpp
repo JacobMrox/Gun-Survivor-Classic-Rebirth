@@ -642,7 +642,7 @@ public:
         }
         else
         {
-            auto DrawTextOutline = [](ID3DXFont* pFont, FLOAT X, FLOAT Y, D3DXCOLOR dColor, CONST PCHAR cString, ...)
+            auto DrawTextOutline = [](ID3DXFont* pFont, LONG right, LONG Y, D3DXCOLOR dColor, CONST PCHAR cString, ...)
             {
                 const D3DXCOLOR BLACK(D3DCOLOR_XRGB(0, 0, 0));
                 CHAR cBuffer[101] = "";
@@ -654,29 +654,34 @@ public:
 
                 RECT Rect[5] =
                 {
-                    { X - 1, Y, X + 500.0f, Y + 50.0f },
-                    { X, Y - 1, X + 500.0f, Y + 50.0f },
-                    { X + 1, Y, X + 500.0f, Y + 50.0f },
-                    { X, Y + 1, X + 500.0f, Y + 50.0f },
-                    { X, Y, X + 500.0f, Y + 50.0f },
+                    { right - 501, Y, right - 1, Y + 50 },
+                    { right - 500, Y - 1, right, Y + 50 },
+                    { right - 499, Y, right + 1, Y + 50 },
+                    { right - 500, Y + 1, right, Y + 50 },
+                    { right - 500, Y, right, Y + 50 },
                 };
 
                 pFont->Begin();
                 if (dColor != BLACK)
                 {
                     for (auto i = 0; i < 4; i++)
-                        pFont->DrawText(cBuffer, -1, &Rect[i], DT_NOCLIP, BLACK);
+                        pFont->DrawText(cBuffer, -1, &Rect[i], DT_RIGHT | DT_NOCLIP, BLACK);
                 }
 
-                pFont->DrawText(cBuffer, -1, &Rect[4], DT_NOCLIP, dColor);
+                pFont->DrawText(cBuffer, -1, &Rect[4], DT_RIGHT | DT_NOCLIP, dColor);
                 pFont->End();
             };
             
             static char str_format_fps[] = "%02d";
             static char str_format_time[] = "%.01f ms";
             static const D3DXCOLOR YELLOW(D3DCOLOR_XRGB(0xF7, 0xF7, 0));
-            DrawTextOutline(pFPSFont, 10, 10, YELLOW, str_format_fps, fps);
-            DrawTextOutline(pTimeFont, 10, space, YELLOW, str_format_time, (1.0f / fps) * 1000.0f);
+            D3DDEVICE_CREATION_PARAMETERS cparams;
+            RECT rect = {};
+            device->GetCreationParameters(&cparams);
+            GetClientRect(cparams.hFocusWindow, &rect);
+            const LONG right = (std::max)(10L, rect.right - 10);
+            DrawTextOutline(pFPSFont, right, 10, YELLOW, str_format_fps, fps);
+            DrawTextOutline(pTimeFont, right, space, YELLOW, str_format_time, (1.0f / fps) * 1000.0f);
         }
     }
 

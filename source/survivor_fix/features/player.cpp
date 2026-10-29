@@ -4,6 +4,7 @@
 #include <intrin.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -28,12 +29,48 @@ namespace {
 using PhysicsFn = void(__fastcall*)(void* c, void* edx);
 using TransformFn = int(__fastcall*)(void* c, void* edx, int index, float tx, float ty, float tz,
                                      float rx, float ry, float rz);
+using ItemEffectAddFn = int(__fastcall*)(void* manager, void* edx, int itemId,
+                                         const float* position, const float* orientation,
+                                         int owner);
 PhysicsFn g_physics = nullptr;
 TransformFn g_transform = nullptr;
+ItemEffectAddFn g_itemEffectAdd = nullptr;
 
 int g_turnRequest = 0;  // -1/+1: direction asked by the command handler in this frame
 ps1::PlayerTurn g_turn;
 bool g_itemApproachPrompt = false;
+
+struct LiveItem {
+  int scene = -1;
+  int slot = -1;
+  int id = -1;
+  float position[3] = {};
+};
+
+std::array<LiveItem, 0x4E> g_liveItems = {};
+void* g_itemManager = nullptr;
+
+void ClearLiveItems(void* manager) {
+  g_itemManager = manager;
+  for (auto& item : g_liveItems) item = {};
+}
+
+int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
+                                   const float* position, const float* orientation, int owner) {
+  const int slot = g_itemEffectAdd(manager, edx, itemId, position, orientation, owner);
+  void* liveManager = *reinterpret_cast<void**>(game::kItemEffectManager);
+  if (manager != liveManager || itemId < 0 || itemId >= static_cast<int>(g_liveItems.size()) ||
+      !position || slot < 0 || !std::isfinite(position[0]) || !std::isfinite(position[2])) {
+    return slot;
+  }
+  if (g_itemManager != manager) ClearLiveItems(manager);
+  LiveItem& item = g_liveItems[itemId];
+  item.scene = *reinterpret_cast<int*>(game::kSceneId);
+  item.slot = slot;
+  item.id = itemId;
+  std::memcpy(item.position, position, sizeof item.position);
+  return slot;
+}
 
 uint8_t* Player(void* c, int* index) {
   auto** objects = game::Read<uint8_t**>(c, game::C::kObjects);
@@ -46,20 +83,25 @@ uint8_t* Player(void* c, int* index) {
 void UpdateItemApproachPrompt(const uint8_t* player) {
   g_itemApproachPrompt = false;
   if (!g_config.itemApproachPrompt || !player) return;
+  void* manager = *reinterpret_cast<void**>(game::kItemEffectManager);
+  if (!manager || manager != g_itemManager) {
+    ClearLiveItems(manager);
+    return;
+  }
   const float* position = game::Field<float>(const_cast<uint8_t*>(player), game::O::kPos);
   if (!std::isfinite(position[0]) || !std::isfinite(position[2])) return;
-  const double px = position[0];
-  const double pz = -position[2];  // ROOMENV uses the opposite Z axis.
-  for (const auto& event : CurrentRoomDoors()) {
-    if (!event.scripted || event.radius <= 0) continue;
-    const double dx = px - event.x;
-    const double dz = pz - event.z;
+  auto** effects = game::Read<uint8_t**>(manager, 0x1C);
+  const int count = game::Read<int>(manager, 0x20);
+  const int scene = *reinterpret_cast<int*>(game::kSceneId);
+  if (!effects || count <= 0 || count > 0x1000) return;
+  for (const auto& item : g_liveItems) {
+    if (item.scene != scene || item.slot < 0 || item.slot >= count || !effects[item.slot]) continue;
+    const double dx = static_cast<double>(position[0]) - item.position[0];
+    const double dz = static_cast<double>(position[2]) - item.position[2];
     const double distance = std::sqrt(dx * dx + dz * dz);
-    // 80079A28 has an outer 1000-unit square guard.  The extra 600-unit
-    // approach band is deliberately outside the real activation circle.
-    const double outer = (std::min)(1000.0, static_cast<double>(event.radius) + 600.0);
-    if (distance >= event.radius && distance < outer && std::fabs(dx) <= 1000.0 &&
-        std::fabs(dz) <= 1000.0) {
+    // The native pickup test begins at roughly 500 world units.  Keep this
+    // strictly outside it and provide about two walking steps of advance notice.
+    if (distance >= 520.0 && distance < 1400.0) {
       g_itemApproachPrompt = true;
       return;
     }
@@ -992,6 +1034,16 @@ int PlayerEyeBob() { return g_config.ps1HeadBob ? g_bobOffset : 0; }
 bool ItemApproachPromptVisible() { return g_config.itemApproachPrompt && g_itemApproachPrompt; }
 
 bool InstallPlayer() {
+  if (g_config.itemApproachPrompt) {
+    const game::ByteSignature itemAdd = {game::kItemEffectAdd, game::kItemEffectAddBytes,
+                                         sizeof(game::kItemEffectAddBytes)};
+    if (!game::CheckBytes(itemAdd) ||
+        !Hook("ItemEffectAdd", game::kItemEffectAdd, reinterpret_cast<void*>(&ItemEffectAddDetour),
+              reinterpret_cast<void**>(&g_itemEffectAdd))) {
+      Log("ItemApproachPrompt: live item hook unavailable; feature off");
+      g_config.itemApproachPrompt = false;
+    }
+  }
   const game::ByteSignature physics = {game::kPhysics, game::kPhysicsPrologue,
                                        sizeof(game::kPhysicsPrologue)};
   const game::ByteSignature transform = {game::kTransform, game::kTransformPrologue,

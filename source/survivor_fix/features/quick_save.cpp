@@ -21,12 +21,13 @@ namespace {
 #pragma pack(push, 1)
 struct QuickState {
   uint32_t magic = 0x31565351;  // QSV1
-  uint32_t version = 2;
+  uint32_t version = 3;
   int32_t scene = 0;
   int32_t roomArgument = 0;
   uint8_t difficulty = 0;
   uint8_t reserved[3] = {};
-  std::array<uint8_t, game::kLiveSaveRecordSize> record = {};
+  std::array<uint8_t, game::kGameStatsSize> stats = {};
+  std::array<uint8_t, game::kPersistentRoomStateSize> roomState = {};
   uint32_t checksum = 0;
 };
 #pragma pack(pop)
@@ -89,7 +90,7 @@ bool ReadState(QuickState* state) {
   DWORD read = 0;
   const BOOL ok = ReadFile(file, state, sizeof *state, &read, nullptr);
   CloseHandle(file);
-  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 2 &&
+  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 3 &&
          state->checksum == Checksum(*state) && state->scene >= 0 && state->scene <= 0x79;
 }
 
@@ -105,11 +106,15 @@ void SaveNow() {
   state.scene = *reinterpret_cast<int*>(game::kSceneId);
   state.roomArgument = *reinterpret_cast<int*>(kRoomArgument);
   state.difficulty = *game::Field<uint8_t>(gameState, 0x42);
-  std::memcpy(state.record.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord), state.record.size());
+  std::memcpy(state.stats.data(), stats, state.stats.size());
+  std::memcpy(state.roomState.data(),
+              game::Field<uint8_t>(gameState, game::kPersistentRoomState),
+              state.roomState.size());
   state.checksum = Checksum(state);
   if (WriteState(state)) {
     Notify("F5  QUICK SAVE SAVED");
-    Log("QuickSave: saved scene %02X to Save\\QUICK.SAV", state.scene);
+    Log("QuickSave: saved scene %02X with %zu bytes of stats and %zu bytes of room state",
+        state.scene, state.stats.size(), state.roomState.size());
   } else {
     Notify("F5  QUICK SAVE FAILED");
     Log("QuickSave: failed to write Save\\QUICK.SAV (%lu)", GetLastError());
@@ -304,8 +309,9 @@ bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
     Log("QuickSave: native stats disappeared before room reload");
     return false;
   }
-  std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
-              g_pendingReload.record.data(), g_pendingReload.record.size());
+  std::memcpy(stats, g_pendingReload.stats.data(), g_pendingReload.stats.size());
+  std::memcpy(game::Field<uint8_t>(gameObject, game::kPersistentRoomState),
+              g_pendingReload.roomState.data(), g_pendingReload.roomState.size());
   *game::Field<uint8_t>(gameObject, 0x42) = g_pendingReload.difficulty;
   *reinterpret_cast<int*>(kRoomArgument) = g_pendingReload.roomArgument;
   *scene = g_pendingReload.scene;
