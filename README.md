@@ -222,6 +222,8 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 # Project Status & To-do
 <img width="442" height="467" alt="image" src="https://github.com/user-attachments/assets/356e2032-1aa2-4945-a103-5f311813bba7" />
+<img width="402" height="338" alt="image" src="https://github.com/user-attachments/assets/515c39a4-5db3-4750-a3f8-8b678d8fce6a" />
+
 
 * Fix movie player by replacing DirectShow with ffmpeg (In progress...)- Done; only few movies not working (Jacob)
 * Remove old log printing shipped with the original game (debug.txt) - working on it.
