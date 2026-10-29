@@ -77,29 +77,44 @@ char gConfigPath[MAX_PATH] = {};//config.ini next to d3d8.dll (Survivor Fix read
 
 HMODULE d3d8dll = NULL;
 
+static bool WriteEmbeddedResourceIfMissing(const char* path, int resourceId)
+{
+    if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) return true;
+    HRSRC info = FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(resourceId), RT_RCDATA);
+    HGLOBAL resource = info ? LoadResource(g_hWrapperModule, info) : nullptr;
+    const void* bytes = resource ? LockResource(resource) : nullptr;
+    const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
+    if (!bytes || !size) return false;
+    HANDLE file = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    const BOOL wrote = WriteFile(file, bytes, size, &written, nullptr);
+    CloseHandle(file);
+    if (!wrote || written != size) {
+        DeleteFileA(path);
+        return false;
+    }
+    return true;
+}
+
 static void RestoreEmbeddedMiscIfMissing()
 {
     char modulePath[MAX_PATH]{};
     if (!GetModuleFileNameA(g_hWrapperModule, modulePath, MAX_PATH)) return;
     char* slash = strrchr(modulePath, '\\');
     if (!slash) return;
-    strcpy_s(slash + 1, MAX_PATH - static_cast<size_t>(slash + 1 - modulePath), "FIXRES");
+
+    // This PC build opens MISC.BMP from the process root.  Keep a FIXRES copy
+    // as well for packaged overrides and tools, but never replace a loose file.
+    strcpy_s(slash + 1, MAX_PATH - static_cast<size_t>(slash + 1 - modulePath), "MISC.BMP");
+    WriteEmbeddedResourceIfMissing(modulePath, IDR_MISC_BMP);
+
+    *slash = '\0';
+    strcat_s(modulePath, "\\FIXRES");
     CreateDirectoryA(modulePath, nullptr);
     strcat_s(modulePath, "\\MISC.BMP");
-    if (GetFileAttributesA(modulePath) != INVALID_FILE_ATTRIBUTES) return;
-
-    HRSRC info = FindResourceA(g_hWrapperModule, MAKEINTRESOURCEA(IDR_MISC_BMP), RT_RCDATA);
-    HGLOBAL resource = info ? LoadResource(g_hWrapperModule, info) : nullptr;
-    const void* bytes = resource ? LockResource(resource) : nullptr;
-    const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
-    if (!bytes || !size) return;
-    HANDLE file = CreateFileA(modulePath, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return;
-    DWORD written = 0;
-    WriteFile(file, bytes, size, &written, nullptr);
-    CloseHandle(file);
-    if (written != size) DeleteFileA(modulePath);
+    WriteEmbeddedResourceIfMissing(modulePath, IDR_MISC_BMP);
 }
 
 // Use the D3D9 texture type from d3d9.h
@@ -443,8 +458,9 @@ char WinDir[MAX_PATH + 1];
     {
         char text[64] = {};
         float alpha = 0.0f;
-        if (!sf::features::QuickSaveGetNotification(text, sizeof text, &alpha) || alpha <= 0.0f)
-            return;
+        const bool hotkey = sf::features::QuickSaveGetNotification(text, sizeof text, &alpha) && alpha > 0.0f;
+        const bool itemApproach = sf::features::ItemApproachPromptVisible();
+        if (!hotkey && !itemApproach) return;
         EnsureHotkeyFontTexture(dev);
         if (!gHotkeyFontTex) return;
 
@@ -463,11 +479,6 @@ char WinDir[MAX_PATH + 1];
         const float glyphWidth = glyphHeight * xCompensation;
         const float marginY = 18.0f * scale;
         const float marginX = marginY * xCompensation;
-        const size_t length = strlen(text);
-        float x = static_cast<float>(backDesc.Width) - marginX - glyphWidth * static_cast<float>(length);
-        const float y = marginY;
-        if (x < marginX) x = marginX;
-
         DWORD state = 0;
         if (FAILED(dev->CreateStateBlock(D3DSBT_ALL, &state))) return;
         dev->SetTexture(0, gHotkeyFontTex);
@@ -490,25 +501,38 @@ char WinDir[MAX_PATH + 1];
         dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(D3DTSS_ADDRESSU), D3DTADDRESS_CLAMP);
         dev->SetTextureStageState(0, static_cast<D3DTEXTURESTAGESTATETYPE>(D3DTSS_ADDRESSV), D3DTADDRESS_CLAMP);
 
-        const BYTE a = static_cast<BYTE>(std::clamp(alpha, 0.0f, 1.0f) * 255.0f + 0.5f);
-        const DWORD shadow = D3DCOLOR_ARGB(static_cast<BYTE>(a * 0.75f), 0, 0, 0);
-        const DWORD white = D3DCOLOR_ARGB(a, 255, 255, 255);
         const float shadowOffsetY = (std::max)(1.0f, scale);
         const float shadowOffsetX = shadowOffsetY * xCompensation;
-        for (size_t i = 0; i < length; ++i)
+        auto drawText = [&](const char* value, float x, float y, float opacity)
         {
-            const int glyph = NativeFontGlyph(text[i]);
-            if (glyph >= 0)
-                DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i + shadowOffsetX,
-                    y + shadowOffsetY, glyphWidth, glyphHeight,
-                    fontDesc.Width, fontDesc.Height, shadow);
-        }
-        for (size_t i = 0; i < length; ++i)
+            const size_t length = strlen(value);
+            const BYTE a = static_cast<BYTE>(std::clamp(opacity, 0.0f, 1.0f) * 255.0f + 0.5f);
+            const DWORD shadow = D3DCOLOR_ARGB(static_cast<BYTE>(a * 0.75f), 0, 0, 0);
+            const DWORD white = D3DCOLOR_ARGB(a, 255, 255, 255);
+            for (size_t i = 0; i < length; ++i)
+            {
+                const int glyph = NativeFontGlyph(value[i]);
+                if (glyph >= 0)
+                    DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i + shadowOffsetX,
+                        y + shadowOffsetY, glyphWidth, glyphHeight,
+                        fontDesc.Width, fontDesc.Height, shadow);
+            }
+            for (size_t i = 0; i < length; ++i)
+            {
+                const int glyph = NativeFontGlyph(value[i]);
+                if (glyph >= 0)
+                    DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i, y, glyphWidth, glyphHeight,
+                        fontDesc.Width, fontDesc.Height, white);
+            }
+        };
+        if (hotkey) drawText(text, marginX, marginY, alpha);
+        if (itemApproach)
         {
-            const int glyph = NativeFontGlyph(text[i]);
-            if (glyph >= 0)
-                DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i, y, glyphWidth, glyphHeight,
-                    fontDesc.Width, fontDesc.Height, white);
+            constexpr char prompt[] = "APPROACH TO PICK";
+            const float promptWidth = glyphWidth * static_cast<float>(strlen(prompt));
+            const float x = (static_cast<float>(backDesc.Width) - promptWidth) * 0.5f;
+            const float y = static_cast<float>(backDesc.Height) - marginY - glyphHeight * 2.0f;
+            drawText(prompt, (std::max)(marginX, x), y, 1.0f);
         }
         dev->ApplyStateBlock(state);
         dev->DeleteStateBlock(state);

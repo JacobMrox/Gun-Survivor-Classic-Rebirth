@@ -26,13 +26,11 @@
 #include "d3dx8tex.h"
 #include <algorithm>
 #include <cmath>
-#include <unordered_set>
 
 extern HMODULE g_hWrapperModule;
 
 namespace {
 IDirect3DTexture8* gEnemySurfaceTextures[3] = {};
-std::unordered_set<IDirect3DBaseTexture8*> gHueShiftedBloodEffects;
 
 struct HsvColour { float h, s, v; };
 
@@ -85,8 +83,19 @@ bool HueShiftBloodTexture(IDirect3DTexture8* texture, DWORD rgb) {
                 static_cast<unsigned>(desc.Format));
         return false;
     }
+    bool changed = false;
     auto shift = [&](BYTE r, BYTE g, BYTE b, BYTE a) {
         const HsvColour source = RgbToHsv(r, g, b);
+        const float rawDifference = std::fabs(source.h - target.h);
+        const float hueDifference = (std::min)(rawDifference, 1.0f - rawDifference);
+        // Makes the operation idempotent. Some native effect textures are
+        // uploaded again into an existing D3D object; checking only the pointer
+        // left those later uploads red, while blindly recolouring every draw
+        // repeatedly darkened the artwork.
+        if (source.s > 0.05f && hueDifference < 0.02f &&
+            std::fabs(source.s - target.s) < 0.08f)
+            return (DWORD(a) << 24) | (DWORD(r) << 16) | (DWORD(g) << 8) | b;
+        changed = true;
         return HsvToArgb(target.h, target.s, source.v * target.v, a);
     };
     for (UINT y = 0; y < desc.Height; ++y) {
@@ -128,8 +137,9 @@ bool HueShiftBloodTexture(IDirect3DTexture8* texture, DWORD rgb) {
         }
     }
     texture->UnlockRect(0);
-    sf::Log("BloodColor: hue-shifted %ux%u format=%u to %u,%u,%u", desc.Width, desc.Height,
-            static_cast<unsigned>(desc.Format), BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
+    if (changed)
+        sf::Log("BloodColor: hue-shifted %ux%u format=%u to %u,%u,%u", desc.Width, desc.Height,
+                static_cast<unsigned>(desc.Format), BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
     return true;
 }
 
@@ -769,11 +779,8 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 		// DrawEffectDetour (surface id 4). Recolour the texture that is actually
 		// bound, once, so this works regardless of how the game loaded or padded
 		// the BMP and retains the native dense alpha rendering.
-		if (enemySurface == 4 && oldTexture && oldTexture->GetType() == D3DRTYPE_TEXTURE &&
-			gHueShiftedBloodEffects.find(oldTexture) == gHueShiftedBloodEffects.end()) {
-			if (HueShiftBloodTexture(static_cast<IDirect3DTexture8*>(oldTexture), sf::g_config.bloodColor))
-				gHueShiftedBloodEffects.insert(oldTexture);
-		}
+		if (enemySurface == 4 && oldTexture && oldTexture->GetType() == D3DRTYPE_TEXTURE)
+			HueShiftBloodTexture(static_cast<IDirect3DTexture8*>(oldTexture), sf::g_config.bloodColor);
 		ProxyInterface->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 		ProxyInterface->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 		ProxyInterface->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);

@@ -44,6 +44,11 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
 // Returns the current user-facing hotkey/result notice and its fade alpha.
 // Routine diagnostics stay in hook.log; this channel is only for actions and actionable failures.
 bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha);
+bool QuickSaveReloadPending();
+bool QuickSaveReloadFadeStarted();
+void QuickSaveStartReloadFade();
+bool QuickSaveApplyPendingReload(void* gameObject, int* scene);
+bool QuickSaveConsumeRoomEntry();
 bool InstallTitleFade();
 bool InstallMouseInput();
 bool InstallPs1Cadence();
@@ -78,6 +83,9 @@ void SetDeathView(bool active, int eye, int pitch, int twist);
 void SetDeathSlide(int slide);
 // PS1 bob of the eyes in this frame (800A8634 + 0x640), 0 without Ps1HeadBob.
 int PlayerEyeBob();
+// True only in the outer approach band of an original scripted interaction,
+// never while the player is already inside its native activation radius.
+bool ItemApproachPromptVisible();
 // PS1 screen effects (screen_fx.cpp): Ps1PlayerDeath, Ps1DoorFade.
 bool InstallScreenFx();
 // The player is in PS1 state 3 (8008369C, Ps1PlayerDeath): no jolt or view rotation.

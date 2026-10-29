@@ -89,6 +89,8 @@ struct Config {
   bool ps1DoorFade = true;
   // Original title confirmation flash and fade.
   bool ps1TitleFade = true;
+  // Bottom-centre hint while near, but still outside, an original scripted interaction range.
+  bool itemApproachPrompt = true;
   // Optional restoration of the PS1 lethal head-part rule, exposed in the configuration window.
   bool lethalZombieHeadshots = false;
   // Original-trilogy-style head explosion: hide the head and emit the stable blood/pop effects.

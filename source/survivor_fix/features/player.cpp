@@ -33,6 +33,7 @@ TransformFn g_transform = nullptr;
 
 int g_turnRequest = 0;  // -1/+1: direction asked by the command handler in this frame
 ps1::PlayerTurn g_turn;
+bool g_itemApproachPrompt = false;
 
 uint8_t* Player(void* c, int* index) {
   auto** objects = game::Read<uint8_t**>(c, game::C::kObjects);
@@ -40,6 +41,29 @@ uint8_t* Player(void* c, int* index) {
   if (!objects || target < 0) return nullptr;
   if (index) *index = target;
   return objects[target];
+}
+
+void UpdateItemApproachPrompt(const uint8_t* player) {
+  g_itemApproachPrompt = false;
+  if (!g_config.itemApproachPrompt || !player) return;
+  const float* position = game::Field<float>(const_cast<uint8_t*>(player), game::O::kPos);
+  if (!std::isfinite(position[0]) || !std::isfinite(position[2])) return;
+  const double px = position[0];
+  const double pz = -position[2];  // ROOMENV uses the opposite Z axis.
+  for (const auto& event : CurrentRoomDoors()) {
+    if (!event.scripted || event.radius <= 0) continue;
+    const double dx = px - event.x;
+    const double dz = pz - event.z;
+    const double distance = std::sqrt(dx * dx + dz * dz);
+    // 80079A28 has an outer 1000-unit square guard.  The extra 600-unit
+    // approach band is deliberately outside the real activation circle.
+    const double outer = (std::min)(1000.0, static_cast<double>(event.radius) + 600.0);
+    if (distance >= event.radius && distance < outer && std::fabs(dx) <= 1000.0 &&
+        std::fabs(dz) <= 1000.0) {
+      g_itemApproachPrompt = true;
+      return;
+    }
+  }
 }
 
 bool Near(float a, float b) { return std::fabs(a - b) < 0.01f; }
@@ -856,13 +880,17 @@ void __fastcall PhysicsDetour(void* c, void* edx) {
   zombie::WorldPhysicsBegin(c);
   g_physics(c, edx);
   zombie::WorldPhysicsEnd(c);
-  if (!t) return;
+  if (!t) {
+    g_itemApproachPrompt = false;
+    return;
+  }
   if (g_moveStep > 0.0f) ClampMoveStep(t, before);
   if (g_deathSlide != 0) DeathSlideAfterPhysics(t);
   if (g_config.ps1PlayerWalls) ApplyPs1Walls(t, before);
   ++g_physicsFrames;
   if (g_wake.frame >= 0 && t == g_wake.o) ApplyWakeFrame();
   RefreshJoltView();
+  UpdateItemApproachPrompt(t);
 }
 
 // The rotation asked by the commands is not applied here: only its direction is taken, and
@@ -960,6 +988,8 @@ void SetDeathView(bool active, int eye, int pitch, int twist) {
 void SetDeathSlide(int slide) { g_deathSlide = slide; }
 
 int PlayerEyeBob() { return g_config.ps1HeadBob ? g_bobOffset : 0; }
+
+bool ItemApproachPromptVisible() { return g_config.itemApproachPrompt && g_itemApproachPrompt; }
 
 bool InstallPlayer() {
   const game::ByteSignature physics = {game::kPhysics, game::kPhysicsPrologue,

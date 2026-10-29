@@ -61,6 +61,7 @@ void LoadConfig(const char* iniPath) {
   c.ps1PlayerDeath = Read("Ps1PlayerDeath", true);
   c.ps1DoorFade = Read("Ps1DoorFade", true);
   c.ps1TitleFade = Read("Ps1TitleFade", true);
+  c.itemApproachPrompt = GetPrivateProfileIntA("Fixes", "ItemApproachPrompt", 1, iniPath) != 0;
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
   char uncensored[16] = {};
   GetPrivateProfileStringA("Fixes", "UncensoredHeadshots", "", uncensored, sizeof(uncensored), iniPath);

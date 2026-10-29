@@ -21,8 +21,9 @@ namespace {
 #pragma pack(push, 1)
 struct QuickState {
   uint32_t magic = 0x31565351;  // QSV1
-  uint32_t version = 1;
+  uint32_t version = 2;
   int32_t scene = 0;
+  int32_t roomArgument = 0;
   uint8_t difficulty = 0;
   uint8_t reserved[3] = {};
   std::array<uint8_t, game::kLiveSaveRecordSize> record = {};
@@ -37,6 +38,11 @@ RECT g_windowedRect = {};
 bool g_haveWindowedRect = false;
 std::array<char, 64> g_notice = {};
 DWORD g_noticeStarted = 0;
+enum class ReloadStage { None, Requested, Fading, WaitingForRoom };
+ReloadStage g_reloadStage = ReloadStage::None;
+QuickState g_pendingReload = {};
+
+constexpr uintptr_t kRoomArgument = 0x005F3DB0;
 
 constexpr DWORD kNoticeFadeInMs = 220;
 constexpr DWORD kNoticeHoldMs = 1500;
@@ -83,7 +89,7 @@ bool ReadState(QuickState* state) {
   DWORD read = 0;
   const BOOL ok = ReadFile(file, state, sizeof *state, &read, nullptr);
   CloseHandle(file);
-  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 1 &&
+  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 2 &&
          state->checksum == Checksum(*state) && state->scene >= 0 && state->scene <= 0x79;
 }
 
@@ -97,6 +103,7 @@ void SaveNow() {
   }
   QuickState state;
   state.scene = *reinterpret_cast<int*>(game::kSceneId);
+  state.roomArgument = *reinterpret_cast<int*>(kRoomArgument);
   state.difficulty = *game::Field<uint8_t>(gameState, 0x42);
   std::memcpy(state.record.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord), state.record.size());
   state.checksum = Checksum(state);
@@ -123,21 +130,18 @@ void LoadNow() {
     Log("QuickSave: QUICK.SAV missing or invalid");
     return;
   }
-  const int currentScene = *reinterpret_cast<int*>(game::kSceneId);
-  if (state.scene != currentScene) {
-    Notify("F6  QUICK LOAD WRONG ROOM");
-    Log("QuickSave: refused cross-room restore from scene %02X while in scene %02X",
-        state.scene, currentScene);
+  if (state.scene == 0) {
+    // Zero is also the native room-loop death sentinel.  It needs a separate
+    // dispatcher entry hook before it can safely be used as a reload target.
+    Notify("F6  QUICK LOAD UNSAFE ROOM");
+    Log("QuickSave: scene 00 reload withheld because zero is the native death sentinel");
     return;
   }
-  // Restore the game's native POD record after its update. Do not return zero
-  // from RoomTick: zero is explicitly the game's YOU DIED exit.
-  std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
-              state.record.data(), state.record.size());
-  *game::Field<uint8_t>(gameObject, 0x42) = state.difficulty;
-  Notify("F6  QUICK LOAD RESTORED");
-  Log("QuickSave: restored native record in scene %02X (saved scene %02X)",
-      currentScene, state.scene);
+  g_pendingReload = state;
+  g_reloadStage = ReloadStage::Requested;
+  Notify("F6  QUICK LOAD RESTORING");
+  Log("QuickSave: queued native room reload to scene %02X argument %d",
+      state.scene, state.roomArgument);
 }
 
 void ResizeClient(HWND window, int width, int height) {
@@ -278,6 +282,45 @@ bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha) {
   }
   strncpy_s(text, capacity, g_notice.data(), _TRUNCATE);
   *alpha = std::clamp(value, 0.0f, 1.0f);
+  return true;
+}
+
+bool QuickSaveReloadPending() {
+  return g_reloadStage == ReloadStage::Requested || g_reloadStage == ReloadStage::Fading;
+}
+
+bool QuickSaveReloadFadeStarted() { return g_reloadStage == ReloadStage::Fading; }
+
+void QuickSaveStartReloadFade() {
+  if (g_reloadStage == ReloadStage::Requested) g_reloadStage = ReloadStage::Fading;
+}
+
+bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
+  if (!QuickSaveReloadPending() || !gameObject || !scene) return false;
+  void* stats = *reinterpret_cast<void**>(game::kGameStats);
+  if (!stats) {
+    g_reloadStage = ReloadStage::None;
+    Notify("F6  QUICK LOAD FAILED");
+    Log("QuickSave: native stats disappeared before room reload");
+    return false;
+  }
+  std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+              g_pendingReload.record.data(), g_pendingReload.record.size());
+  *game::Field<uint8_t>(gameObject, 0x42) = g_pendingReload.difficulty;
+  *reinterpret_cast<int*>(kRoomArgument) = g_pendingReload.roomArgument;
+  *scene = g_pendingReload.scene;
+  g_reloadStage = ReloadStage::WaitingForRoom;
+  Notify("F6  QUICK LOAD RESTORED");
+  Log("QuickSave: native room exit requested for scene %02X argument %d",
+      g_pendingReload.scene, g_pendingReload.roomArgument);
+  return true;
+}
+
+bool QuickSaveConsumeRoomEntry() {
+  if (g_reloadStage != ReloadStage::WaitingForRoom) return false;
+  g_reloadStage = ReloadStage::None;
+  Log("QuickSave: reconstructed scene %02X through the native room dispatcher",
+      *reinterpret_cast<int*>(game::kSceneId));
   return true;
 }
 

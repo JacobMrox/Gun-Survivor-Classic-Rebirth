@@ -37,6 +37,7 @@ static bool keepAspect = true;
 static bool smoothModelLighting = true;
 static bool lethalZombieHeadshots = false;
 static bool detachedZombieHeads = true;
+static bool itemApproachPrompt = true;
 static COLORREF bloodColor = RGB(255, 255, 255);
 
 static char cfgPath[MAX_PATH];
@@ -373,6 +374,7 @@ void SyncConfig(bool save) {
         SetI("Fixes", "SmoothModelLighting", smoothModelLighting);
         SetI("Fixes", "LethalZombieHeadshots", lethalZombieHeadshots);
         SetI("Fixes", "UncensoredHeadshots", detachedZombieHeads);
+        SetI("Fixes", "ItemApproachPrompt", itemApproachPrompt);
         const std::string blood = std::to_string(GetRValue(bloodColor)) + "," +
             std::to_string(GetGValue(bloodColor)) + "," + std::to_string(GetBValue(bloodColor));
         WritePrivateProfileStringA("Fixes", "BloodColor", blood.c_str(), cfgPath);
@@ -438,6 +440,7 @@ void SyncConfig(bool save) {
             : (Has("Fixes", "ExplodingZombieHeads")
                 ? GetI("Fixes", "ExplodingZombieHeads", 1) != 0
                 : GetI("Fixes", "DetachedZombieHeads", 1) != 0);
+        itemApproachPrompt = GetI("Fixes", "ItemApproachPrompt", 1) != 0;
         GetPrivateProfileStringA("Fixes", "BloodColor", "255,255,255", temp, MAX_PATH, cfgPath);
         red = green = blue = 255;
         if (sscanf_s(temp, "%d,%d,%d", &red, &green, &blue) == 3)
@@ -507,6 +510,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_SMOOTH_MODEL_LIGHTING, smoothModelLighting);
         CheckDlgButton(h, IDC_ZOMBIE_HEADSHOTS, lethalZombieHeadshots);
         CheckDlgButton(h, IDC_DETACHED_HEADS, detachedZombieHeads);
+        CheckDlgButton(h, IDC_ITEM_APPROACH_PROMPT, itemApproachPrompt);
         CheckDlgButton(h, IDC_LASER_TRAIL, bLaserTrail);
         CheckDlgButton(h, IDC_ENABLE_LOG, gEnableLogging);
         //CheckDlgButton(h, IDC_DISABLE_SHIM, bDirect3D8DisableMaximizedWindowedModeShim);
@@ -594,6 +598,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             smoothModelLighting = IsDlgButtonChecked(h, IDC_SMOOTH_MODEL_LIGHTING);
             lethalZombieHeadshots = IsDlgButtonChecked(h, IDC_ZOMBIE_HEADSHOTS);
             detachedZombieHeads = IsDlgButtonChecked(h, IDC_DETACHED_HEADS);
+            itemApproachPrompt = IsDlgButtonChecked(h, IDC_ITEM_APPROACH_PROMPT);
             bLaserTrail = IsDlgButtonChecked(h, IDC_LASER_TRAIL);
             gEnableLogging = IsDlgButtonChecked(h, IDC_ENABLE_LOG);
             //bDirect3D8DisableMaximizedWindowedModeShim = IsDlgButtonChecked(h, IDC_DISABLE_SHIM);

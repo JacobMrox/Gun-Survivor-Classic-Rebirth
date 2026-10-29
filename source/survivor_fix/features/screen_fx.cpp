@@ -64,6 +64,7 @@ DWORD g_continueClock = 0;  // last timeGetTime seen by the Continue
 int g_gameOver = -1;        // PS1 frames since the end of the countdown (phase 2 of the PC Continue), -1 = no
 bool g_gameOverDone = false;
 bool g_gameOverLoaded = false;  // the PC has loaded GAME OVER (first step of phase 2)
+int g_roomScene = -1;
 
 // Outside the rooms (menus, doors) the PC draws more often than the PS1: PS1 frames are counted by time,
 // two NTSC VBlanks = 1 / 29.97 s.
@@ -71,6 +72,8 @@ LARGE_INTEGER g_frequency{};
 LARGE_INTEGER g_clock{};
 double g_pending = 0.0;
 constexpr double kPs1FrameSeconds = 2.0 * 3413.0 * 263.0 / 53693175.0;
+
+void Send();
 
 int ElapsedPs1Frames(bool reset) {
   LARGE_INTEGER now;
@@ -95,6 +98,23 @@ void WaitPs1Frame() {
     Sleep(1);
     QueryPerformanceCounter(&now);
   } while (now.QuadPart - start.QuadPart < ticks);
+}
+
+void FadeHeldRoomToBlack() {
+  ps1::FadeOut(g_fade, 0x10);
+  int frames = 0;
+  while (!ps1::FadeBlack(g_fade) && frames < 64) {
+    ps1::StepFade(g_fade);
+    Send();
+    if (!SurvivorPc_PresentHeldFrame()) break;
+    WaitPs1Frame();
+    ++frames;
+  }
+  if (!ps1::FadeBlack(g_fade)) {
+    ps1::FadeOut(g_fade, 0xFF);
+    ps1::StepFade(g_fade);
+    Send();
+  }
 }
 
 uint8_t* Game() { return *reinterpret_cast<uint8_t**>(game::kGameState); }
@@ -251,8 +271,37 @@ int __fastcall MouseClickDetour(void* mouse, void* edx, int a, int b, int c, int
 
 int __fastcall RoomTickDetour(void* game, void* edx, uint32_t* pad, uint32_t* prev, int* turns, float p5, int* scene,
                               int p7, float p8) {
+  const int activeScene = *reinterpret_cast<int*>(game::kSceneId);
+  if (activeScene != g_roomScene) {
+    if (g_roomScene >= 0 && g_config.ps1DoorFade && ps1::FadeBlack(g_fade)) {
+      ps1::FadeIn(g_fade, 0x80);
+      Log("ScreenFx: scene %02X entry fade from black", activeScene);
+    }
+    g_roomScene = activeScene;
+  }
+  if (QuickSaveConsumeRoomEntry() && g_config.ps1DoorFade) {
+    ps1::FadeIn(g_fade, 0x80);
+    Log("ScreenFx: quick-load room entry fade from black");
+  }
   g_roomTicked = true;
   const int result = g_roomTick(game, edx, pad, prev, turns, p5, scene, p7, p8);
+  if (QuickSaveReloadPending()) {
+    if (g_config.ps1DoorFade && !QuickSaveReloadFadeStarted()) {
+      ps1::FadeOut(g_fade, 0x10);
+      QuickSaveStartReloadFade();
+      Log("ScreenFx: quick-load fade to black started");
+    }
+    if (!g_config.ps1DoorFade || ps1::FadeBlack(g_fade)) {
+      if (QuickSaveApplyPendingReload(game, scene)) return 0;
+    }
+    return 1;
+  }
+  if (g_config.ps1DoorFade && result == 0 && scene && *scene != 0 && !ps1::FadeBlack(g_fade)) {
+    // Stairs and direct room changes do not all call the PC door-animation
+    // routine.  Fade the last live room frame at their common exit boundary.
+    FadeHeldRoomToBlack();
+    Log("ScreenFx: generic room transition %02X -> %02X faded to black", activeScene, *scene);
+  }
   if (!g_config.ps1PlayerDeath) return QuickSaveAfterRoomTick(game, result);
   if (g_dying) {
     DeathTick();
@@ -290,19 +339,7 @@ void __fastcall DoorAnimDetour(void* door, void* edx, const char* path, int kind
   if (g_config.ps1DoorFade) {
     // 8009016C steps 1-2: 80090BF0(0, 0x10) over the room; the PC room has already freed its objects,
     // so its last frame is drawn again (kept with keep).
-    ps1::FadeOut(g_fade, 0x10);
-    int frames = 0;
-    while (!ps1::FadeBlack(g_fade) && frames < 64) {
-      ps1::StepFade(g_fade);
-      Send();
-      if (!SurvivorPc_PresentHeldFrame()) break;
-      WaitPs1Frame();
-      ++frames;
-    }
-    if (!ps1::FadeBlack(g_fade)) {
-      ps1::FadeOut(g_fade, 0xFF);
-      ps1::StepFade(g_fade);
-    }
+    FadeHeldRoomToBlack();
     // Step 5: 80090B90(0, 0x10) with the door animation.
     ps1::FadeIn(g_fade, 0x10);
     Send();
