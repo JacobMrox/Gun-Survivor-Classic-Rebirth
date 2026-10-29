@@ -21,11 +21,13 @@ namespace {
 #pragma pack(push, 1)
 struct QuickState {
   uint32_t magic = 0x31565351;  // QSV1
-  uint32_t version = 3;
+  uint32_t version = 4;
   int32_t scene = 0;
   int32_t roomArgument = 0;
   uint8_t difficulty = 0;
-  uint8_t reserved[3] = {};
+  uint8_t playerValid = 0;
+  uint8_t reserved[2] = {};
+  PlayerQuickState player = {};
   std::array<uint8_t, game::kGameStatsSize> stats = {};
   std::array<uint8_t, game::kPersistentRoomStateSize> roomState = {};
   uint32_t checksum = 0;
@@ -90,7 +92,7 @@ bool ReadState(QuickState* state) {
   DWORD read = 0;
   const BOOL ok = ReadFile(file, state, sizeof *state, &read, nullptr);
   CloseHandle(file);
-  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 3 &&
+  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 4 &&
          state->checksum == Checksum(*state) && state->scene >= 0 && state->scene <= 0x79;
 }
 
@@ -106,6 +108,7 @@ void SaveNow() {
   state.scene = *reinterpret_cast<int*>(game::kSceneId);
   state.roomArgument = *reinterpret_cast<int*>(kRoomArgument);
   state.difficulty = *game::Field<uint8_t>(gameState, 0x42);
+  state.playerValid = CapturePlayerQuickState(&state.player) ? 1 : 0;
   std::memcpy(state.stats.data(), stats, state.stats.size());
   std::memcpy(state.roomState.data(),
               game::Field<uint8_t>(gameState, game::kPersistentRoomState),
@@ -113,8 +116,9 @@ void SaveNow() {
   state.checksum = Checksum(state);
   if (WriteState(state)) {
     Notify("F5  QUICK SAVE SAVED");
-    Log("QuickSave: saved scene %02X with %zu bytes of stats and %zu bytes of room state",
-        state.scene, state.stats.size(), state.roomState.size());
+    Log("QuickSave: saved scene %02X with %zu bytes of stats, %zu bytes of room state, player %s",
+        state.scene, state.stats.size(), state.roomState.size(),
+        state.playerValid ? "captured" : "unavailable");
   } else {
     Notify("F5  QUICK SAVE FAILED");
     Log("QuickSave: failed to write Save\\QUICK.SAV (%lu)", GetLastError());
@@ -325,6 +329,7 @@ bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
 bool QuickSaveConsumeRoomEntry() {
   if (g_reloadStage != ReloadStage::WaitingForRoom) return false;
   g_reloadStage = ReloadStage::None;
+  if (g_pendingReload.playerValid) QueuePlayerQuickStateRestore(g_pendingReload.player);
   Log("QuickSave: reconstructed scene %02X through the native room dispatcher",
       *reinterpret_cast<int*>(game::kSceneId));
   return true;

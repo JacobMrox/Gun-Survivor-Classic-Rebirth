@@ -39,6 +39,9 @@ ItemEffectAddFn g_itemEffectAdd = nullptr;
 int g_turnRequest = 0;  // -1/+1: direction asked by the command handler in this frame
 ps1::PlayerTurn g_turn;
 bool g_itemApproachPrompt = false;
+uint8_t* g_livePlayer = nullptr;
+bool g_playerRestorePending = false;
+PlayerQuickState g_playerRestore = {};
 
 struct LiveItem {
   int scene = -1;
@@ -99,9 +102,10 @@ void UpdateItemApproachPrompt(const uint8_t* player) {
     const double dx = static_cast<double>(position[0]) - item.position[0];
     const double dz = static_cast<double>(position[2]) - item.position[2];
     const double distance = std::sqrt(dx * dx + dz * dz);
-    // The native pickup test begins at roughly 500 world units.  Keep this
-    // strictly outside it and provide about two walking steps of advance notice.
-    if (distance >= 520.0 && distance < 1400.0) {
+    // Keep the prompt on the close side of the former threshold: the live
+    // item remains registered until it is actually taken, so this covers the
+    // final approach shown by the HUD without showing it across the room.
+    if (distance < 520.0) {
       g_itemApproachPrompt = true;
       return;
     }
@@ -903,6 +907,7 @@ void DeathSlideAfterPhysics(uint8_t* t) {
 void __fastcall PhysicsDetour(void* c, void* edx) {
   int index = -1;
   uint8_t* t = c ? Player(c, &index) : nullptr;
+  g_livePlayer = t;
   if (t) {
     const ps1::Gait gait = GaitOf(t);
     g_moveStep = 0.0f;  // set again by ApplyMove or by the death slide
@@ -929,6 +934,26 @@ void __fastcall PhysicsDetour(void* c, void* edx) {
   if (g_moveStep > 0.0f) ClampMoveStep(t, before);
   if (g_deathSlide != 0) DeathSlideAfterPhysics(t);
   if (g_config.ps1PlayerWalls) ApplyPs1Walls(t, before);
+  if (g_playerRestorePending) {
+    // Apply last, after the entrance frame's native physics and wall correction,
+    // so neither can drag the snapshot back toward the room spawn.
+    std::memcpy(t + game::O::kPos, g_playerRestore.position, sizeof g_playerRestore.position);
+    std::memcpy(t + game::O::kMatrix, g_playerRestore.matrix, sizeof g_playerRestore.matrix);
+    float* matrix = game::Field<float>(t, game::O::kMatrix);
+    matrix[3 * game::O::kMatrixRowFloats + 0] = g_playerRestore.position[0];
+    matrix[3 * game::O::kMatrixRowFloats + 1] = g_playerRestore.position[1];
+    matrix[3 * game::O::kMatrixRowFloats + 2] = g_playerRestore.position[2];
+    std::memset(t + game::O::kVelocity, 0, sizeof(float) * 3);
+    std::memset(t + game::O::kAccum, 0, sizeof(float) * 3);
+    *game::Field<uint8_t>(t, game::O::kTurnActive) = 0;
+    *game::Field<float>(t, game::O::kTurnYaw) = 0.0f;
+    *game::Field<float>(t, game::O::kTurnPitch) = 0.0f;
+    g_moveStep = 0.0f;
+    g_lastView.valid = false;
+    g_playerRestorePending = false;
+    Log("QuickSave: restored player at %.1f, %.1f, %.1f after room construction",
+        g_playerRestore.position[0], g_playerRestore.position[1], g_playerRestore.position[2]);
+  }
   ++g_physicsFrames;
   if (g_wake.frame >= 0 && t == g_wake.o) ApplyWakeFrame();
   RefreshJoltView();
@@ -1032,6 +1057,26 @@ void SetDeathSlide(int slide) { g_deathSlide = slide; }
 int PlayerEyeBob() { return g_config.ps1HeadBob ? g_bobOffset : 0; }
 
 bool ItemApproachPromptVisible() { return g_config.itemApproachPrompt && g_itemApproachPrompt; }
+
+bool CapturePlayerQuickState(PlayerQuickState* state) {
+  if (!state || !g_livePlayer) return false;
+  const float* position = game::Field<float>(g_livePlayer, game::O::kPos);
+  const float* matrix = game::Field<float>(g_livePlayer, game::O::kMatrix);
+  for (int i = 0; i < 3; ++i) {
+    if (!std::isfinite(position[i])) return false;
+  }
+  for (int i = 0; i < 16; ++i) {
+    if (!std::isfinite(matrix[i])) return false;
+  }
+  std::memcpy(state->position, position, sizeof state->position);
+  std::memcpy(state->matrix, matrix, sizeof state->matrix);
+  return true;
+}
+
+void QueuePlayerQuickStateRestore(const PlayerQuickState& state) {
+  g_playerRestore = state;
+  g_playerRestorePending = true;
+}
 
 bool InstallPlayer() {
   if (g_config.itemApproachPrompt) {

@@ -531,7 +531,9 @@ char WinDir[MAX_PATH + 1];
             constexpr char prompt[] = "APPROACH TO PICK";
             const float promptWidth = glyphWidth * static_cast<float>(strlen(prompt));
             const float x = (static_cast<float>(backDesc.Width) - promptWidth) * 0.5f;
-            const float y = static_cast<float>(backDesc.Height) - marginY - glyphHeight * 2.0f;
+            // Leave the native lower HUD unobstructed and place the contextual
+            // message directly above it at every output resolution.
+            const float y = static_cast<float>(backDesc.Height) - marginY - glyphHeight * 10.0f;
             drawText(prompt, (std::max)(marginX, x), y, 1.0f);
         }
         dev->ApplyStateBlock(state);
@@ -622,17 +624,24 @@ public:
         if (m_times.size() >= 2)
             fps = static_cast<uint32_t>(0.5f + (static_cast<float>(m_times.size() - 1) * static_cast<float>(frequency.QuadPart)) / static_cast<float>(m_times.back() - m_times.front()));
 
+        // D3DXFont draws in render-target coordinates, not client-window
+        // coordinates.  The two differ whenever a low-resolution back buffer
+        // is scaled to a larger window or a widescreen mode is selected.
+        D3DSURFACE_DESC8 renderDesc = {};
+        IDirect3DSurface8* renderTarget = nullptr;
+        if (FAILED(device->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &renderTarget)) || !renderTarget)
+            return;
+        const HRESULT descResult = renderTarget->GetDesc(&renderDesc);
+        renderTarget->Release();
+        if (FAILED(descResult) || renderDesc.Width == 0 || renderDesc.Height == 0)
+            return;
+
         static int space = 0;
         if (!pFPSFont || !pTimeFont)
         {
-            D3DDEVICE_CREATION_PARAMETERS cparams;
-            RECT rect;
-            device->GetCreationParameters(&cparams);
-            GetClientRect(cparams.hFocusWindow, &rect);
-            
-            LOGFONT fps_font = { rect.bottom / 20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, "Arial" };
-            LOGFONT time_font = { rect.bottom / 35, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, "Arial" };
-            space = rect.bottom / 20 + 5;
+            LOGFONT fps_font = { static_cast<LONG>(renderDesc.Height / 20), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, "Arial" };
+            LOGFONT time_font = { static_cast<LONG>(renderDesc.Height / 35), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, "Arial" };
+            space = static_cast<int>(renderDesc.Height / 20) + 5;
             
             if (D3DXCreateFontIndirect(device, &fps_font, &pFPSFont) != D3D_OK)
                 return;
@@ -675,11 +684,7 @@ public:
             static char str_format_fps[] = "%02d";
             static char str_format_time[] = "%.01f ms";
             static const D3DXCOLOR YELLOW(D3DCOLOR_XRGB(0xF7, 0xF7, 0));
-            D3DDEVICE_CREATION_PARAMETERS cparams;
-            RECT rect = {};
-            device->GetCreationParameters(&cparams);
-            GetClientRect(cparams.hFocusWindow, &rect);
-            const LONG right = (std::max)(10L, rect.right - 10);
+            const LONG right = static_cast<LONG>(renderDesc.Width > 10 ? renderDesc.Width - 10 : 10);
             DrawTextOutline(pFPSFont, right, 10, YELLOW, str_format_fps, fps);
             DrawTextOutline(pTimeFont, right, space, YELLOW, str_format_time, (1.0f / fps) * 1000.0f);
         }

@@ -67,7 +67,7 @@
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>rsc_CompanyName="ThirteenAG";rsc_LegalCopyright="MIT License";rsc_FileVersion="1.1.2.0";rsc_ProductVersion="1.1.2.0";rsc_InternalName="d3d8-wrapper";rsc_ProductName="d3d8-wrapper";rsc_OriginalFilename="d3d8.dll";rsc_FileDescription="https://thirteenag.github.io/wfp";rsc_UpdateUrl="https://github.com/ThirteenAG/d3d8-wrapper";NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>rsc_CompanyName="ThirteenAG";rsc_LegalCopyright="MIT License";rsc_FileVersion="1.2.0.0";rsc_ProductVersion="1.2.0.0";rsc_InternalName="d3d8-wrapper";rsc_ProductName="d3d8-wrapper";rsc_OriginalFilename="d3d8.dll";rsc_FileDescription="https://thirteenag.github.io/wfp";rsc_UpdateUrl="https://github.com/ThirteenAG/d3d8-wrapper";NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>..\source\dxsdk;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -78,7 +78,7 @@
       <AdditionalOptions>-std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>rsc_CompanyName=\"ThirteenAG\";rsc_LegalCopyright=\"MIT License\";rsc_FileVersion=\"1.1.2.0\";rsc_ProductVersion=\"1.1.2.0\";rsc_InternalName=\"d3d8-wrapper\";rsc_ProductName=\"d3d8-wrapper\";rsc_OriginalFilename=\"d3d8.dll\";rsc_FileDescription=\"https://thirteenag.github.io/wfp\";rsc_UpdateUrl=\"https://github.com/ThirteenAG/d3d8-wrapper\";NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>rsc_CompanyName=\"ThirteenAG\";rsc_LegalCopyright=\"MIT License\";rsc_FileVersion=\"1.2.0.0\";rsc_ProductVersion=\"1.2.0.0\";rsc_InternalName=\"d3d8-wrapper\";rsc_ProductName=\"d3d8-wrapper\";rsc_OriginalFilename=\"d3d8.dll\";rsc_FileDescription=\"https://thirteenag.github.io/wfp\";rsc_UpdateUrl=\"https://github.com/ThirteenAG/d3d8-wrapper\";NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>..\source\dxsdk;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
@@ -98,7 +98,7 @@
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>rsc_CompanyName="MehrQarox";rsc_LegalCopyright="MIT License";rsc_FileVersion="1.1.2.0";rsc_ProductVersion="1.1.2.0";rsc_InternalName="d3d8-wrapper";rsc_ProductName="d3d8-wrapper";rsc_OriginalFilename="d3d8.dll";rsc_FileDescription="https://thirteenag.github.io/wfp";rsc_UpdateUrl="https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth-Release";DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>rsc_CompanyName="MehrQarox";rsc_LegalCopyright="MIT License";rsc_FileVersion="1.2.0.0";rsc_ProductVersion="1.2.0.0";rsc_InternalName="d3d8-wrapper";rsc_ProductName="d3d8-wrapper";rsc_OriginalFilename="d3d8.dll";rsc_FileDescription="https://thirteenag.github.io/wfp";rsc_UpdateUrl="https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth-Release";DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>..\source\dxsdk;%(AdditionalIncludeDirectories);$(ProjectDir)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
@@ -106,7 +106,7 @@
       <AdditionalOptions>-std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>rsc_CompanyName=\"Mehrqarox\";rsc_LegalCopyright=\"MIT License\";rsc_FileVersion=\"1.1.2.0\";rsc_ProductVersion=\"1.1.2.0\";rsc_InternalName=\"d3d8-wrapper\";rsc_ProductName=\"d3d8-wrapper\";rsc_OriginalFilename=\"d3d8.dll\";rsc_FileDescription=\"https://thirteenag.github.io/wfp\";rsc_UpdateUrl=\"https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth-Release\";DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>rsc_CompanyName=\"Mehrqarox\";rsc_LegalCopyright=\"MIT License\";rsc_FileVersion=\"1.2.0.0\";rsc_ProductVersion=\"1.2.0.0\";rsc_InternalName=\"d3d8-wrapper\";rsc_ProductName=\"d3d8-wrapper\";rsc_OriginalFilename=\"d3d8.dll\";rsc_FileDescription=\"https://thirteenag.github.io/wfp\";rsc_UpdateUrl=\"https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth-Release\";DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>..\source\dxsdk;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>

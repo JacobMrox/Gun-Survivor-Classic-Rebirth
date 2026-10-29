@@ -73,6 +73,15 @@ const std::vector<ps1::VoiceProfile>& CurrentRoomVoiceProfiles();
 
 // Player (player.cpp): hooks 004609D0 (physics) and 004603F0 (rotation) for the PS1 movement, walls and view.
 bool InstallPlayer();
+// Player object state that is not part of the game's normal 77-byte save
+// record.  Restoring is deferred until the destination room has constructed
+// its player object, otherwise the native entrance spawn overwrites it.
+struct PlayerQuickState {
+  float position[3] = {};
+  float matrix[16] = {};
+};
+bool CapturePlayerQuickState(PlayerQuickState* state);
+void QueuePlayerQuickStateRestore(const PlayerQuickState& state);
 // PS1 view jolt on the bite (800830F8): direction offset (800A865E, 4096 per turn) and y of the look-at
 // point (800B3EF8, 500 at rest). The bite sequence sets it at every update.
 void SetDamageViewJolt(int yawUnits, int lookY);
