@@ -221,15 +221,20 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/c996912e-d21a-44c6-bed0-29a7f9ef2bf6" />
 
 # Project Status & To-do
-<img width="562" height="957" alt="image" src="https://github.com/user-attachments/assets/3f595689-5888-48c5-8587-4d23341b3cc3" />
+<img width="442" height="467" alt="image" src="https://github.com/user-attachments/assets/356e2032-1aa2-4945-a103-5f311813bba7" />
+<img width="402" height="338" alt="image" src="https://github.com/user-attachments/assets/515c39a4-5db3-4750-a3f8-8b678d8fce6a" />
 
-* Fix movie player by replacing DirectShow with ffmpeg (In progress...): Redirect avifil32.dll (Microsoft AVI File support library) and quartz.dll (DirectShow Runtime) to use FFMPEG - working on it (Mrox)
+
+* Fix movie player by replacing DirectShow with ffmpeg (In progress...)- Done; only few movies not working (Jacob)
 * Remove old log printing shipped with the original game (debug.txt) - working on it.
 * Remove the need for the game to have GBIO.CFG in the directory to launch - working on it.
-* Fix Zombie footstep sound - fixed (Trigger)
-* Fix NPC/enemy lighting/shader - fixed (Mrox)
+* Fix Zombie footstep sound - Done (Trigger)
+* Fix NPC/enemy lighting/shader - Done (Jacob)
 * Restore missing screen flash/fade effects for title and menus - Fixed (Trigger)
-* Add shooting screen flash (gun con flash simulation) effect
+* Add laser dot + trailer - Done (Jacob)
+* Add item pickup prompt option - Done (Jacob)
+* Blood Color option - Done (Jacob)
+* Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Fix enemy behaviour and animations - partially done (Trigger)
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
