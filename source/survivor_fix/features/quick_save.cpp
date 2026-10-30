@@ -7,6 +7,7 @@
 #include <string>
 
 #include "../game.h"
+#include "../hooks.h"
 #include "../log.h"
 #include "features.h"
 #include "../../aim_shared.h"
@@ -21,15 +22,18 @@ namespace {
 #pragma pack(push, 1)
 struct QuickState {
   uint32_t magic = 0x31565351;  // QSV1
-  uint32_t version = 4;
+  uint32_t version = 6;
   int32_t scene = 0;
   int32_t roomArgument = 0;
   uint8_t difficulty = 0;
   uint8_t playerValid = 0;
   uint8_t reserved[2] = {};
   PlayerQuickState player = {};
-  std::array<uint8_t, game::kGameStatsSize> stats = {};
+  int32_t playerHp = 0;
+  std::array<uint8_t, game::kLiveSaveRecordSize> saveRecord = {};
   std::array<uint8_t, game::kPersistentRoomStateSize> roomState = {};
+  uint32_t zombieCount = 0;
+  std::array<zombie::QuickState, 30> zombies = {};
   uint32_t checksum = 0;
 };
 #pragma pack(pop)
@@ -41,9 +45,12 @@ RECT g_windowedRect = {};
 bool g_haveWindowedRect = false;
 std::array<char, 64> g_notice = {};
 DWORD g_noticeStarted = 0;
-enum class ReloadStage { None, Requested, Fading, WaitingForRoom };
+enum class ReloadStage { None, Requested, Fading, CleanupInProgress, WaitingForRoom };
 ReloadStage g_reloadStage = ReloadStage::None;
 QuickState g_pendingReload = {};
+
+using RoomDispatcherFn = void(__fastcall*)(void* gameObject, void* edx);
+RoomDispatcherFn g_roomDispatcher = nullptr;
 
 constexpr uintptr_t kRoomArgument = 0x005F3DB0;
 
@@ -92,7 +99,7 @@ bool ReadState(QuickState* state) {
   DWORD read = 0;
   const BOOL ok = ReadFile(file, state, sizeof *state, &read, nullptr);
   CloseHandle(file);
-  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 4 &&
+  return ok && read == sizeof *state && state->magic == 0x31565351 && state->version == 6 &&
          state->checksum == Checksum(*state) && state->scene >= 0 && state->scene <= 0x79;
 }
 
@@ -109,16 +116,20 @@ void SaveNow() {
   state.roomArgument = *reinterpret_cast<int*>(kRoomArgument);
   state.difficulty = *game::Field<uint8_t>(gameState, 0x42);
   state.playerValid = CapturePlayerQuickState(&state.player) ? 1 : 0;
-  std::memcpy(state.stats.data(), stats, state.stats.size());
+  state.playerHp = game::Read<int>(stats, game::kGameStatsHp);
+  std::memcpy(state.saveRecord.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+              state.saveRecord.size());
   std::memcpy(state.roomState.data(),
               game::Field<uint8_t>(gameState, game::kPersistentRoomState),
               state.roomState.size());
+  state.zombieCount = static_cast<uint32_t>(
+      zombie::CaptureQuickStates(state.zombies.data(), state.zombies.size()));
   state.checksum = Checksum(state);
   if (WriteState(state)) {
     Notify("F5  QUICK SAVE SAVED");
-    Log("QuickSave: saved scene %02X with %zu bytes of stats, %zu bytes of room state, player %s",
-        state.scene, state.stats.size(), state.roomState.size(),
-        state.playerValid ? "captured" : "unavailable");
+    Log("QuickSave: saved scene %02X with %zu-byte native record, %zu bytes of room state, player %s, %u zombies",
+        state.scene, state.saveRecord.size(), state.roomState.size(),
+        state.playerValid ? "captured" : "unavailable", state.zombieCount);
   } else {
     Notify("F5  QUICK SAVE FAILED");
     Log("QuickSave: failed to write Save\\QUICK.SAV (%lu)", GetLastError());
@@ -306,24 +317,45 @@ void QuickSaveStartReloadFade() {
 
 bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
   if (!QuickSaveReloadPending() || !gameObject || !scene) return false;
+  // Only request the native room exit here. The room function still has to
+  // serialize and destroy the current room after RoomTick returns. Restoring
+  // gameplay state before that cleanup lets the cleanup overwrite the save.
+  *reinterpret_cast<int*>(kRoomArgument) = g_pendingReload.roomArgument;
+  *scene = g_pendingReload.scene;
+  g_reloadStage = ReloadStage::CleanupInProgress;
+  Log("QuickSave: native room exit requested for scene %02X argument %d; restore deferred until cleanup",
+      g_pendingReload.scene, g_pendingReload.roomArgument);
+  return true;
+}
+
+void __fastcall RoomDispatcherDetour(void* gameObject, void* edx) {
+  g_roomDispatcher(gameObject, edx);
+  if (g_reloadStage != ReloadStage::CleanupInProgress || !gameObject) return;
   void* stats = *reinterpret_cast<void**>(game::kGameStats);
   if (!stats) {
     g_reloadStage = ReloadStage::None;
     Notify("F6  QUICK LOAD FAILED");
-    Log("QuickSave: native stats disappeared before room reload");
-    return false;
+    Log("QuickSave: native stats unavailable at the post-room restore boundary");
+    return;
   }
-  std::memcpy(stats, g_pendingReload.stats.data(), g_pendingReload.stats.size());
+  // The old room has now finished its own persistence and destruction. This
+  // is the first boundary at which its writes can no longer corrupt the saved
+  // inventory, event flags, or enemy-presence state.
+  std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+              g_pendingReload.saveRecord.data(), g_pendingReload.saveRecord.size());
+  *game::Field<int>(stats, game::kGameStatsHp) = g_pendingReload.playerHp;
   std::memcpy(game::Field<uint8_t>(gameObject, game::kPersistentRoomState),
               g_pendingReload.roomState.data(), g_pendingReload.roomState.size());
   *game::Field<uint8_t>(gameObject, 0x42) = g_pendingReload.difficulty;
   *reinterpret_cast<int*>(kRoomArgument) = g_pendingReload.roomArgument;
-  *scene = g_pendingReload.scene;
+  *reinterpret_cast<int*>(game::kSceneId) = g_pendingReload.scene;
+  zombie::QueueQuickStateRestore(g_pendingReload.zombies.data(),
+                                 (std::min<size_t>)(g_pendingReload.zombieCount,
+                                                    g_pendingReload.zombies.size()));
   g_reloadStage = ReloadStage::WaitingForRoom;
   Notify("F6  QUICK LOAD RESTORED");
-  Log("QuickSave: native room exit requested for scene %02X argument %d",
-      g_pendingReload.scene, g_pendingReload.roomArgument);
-  return true;
+  Log("QuickSave: restored native record and room/event state after cleanup; scene %02X queued",
+      g_pendingReload.scene);
 }
 
 bool QuickSaveConsumeRoomEntry() {
@@ -336,6 +368,15 @@ bool QuickSaveConsumeRoomEntry() {
 }
 
 bool InstallQuickSave() {
+  const game::ByteSignature dispatcher = {game::kRoomDispatcher, game::kRoomDispatcherBytes,
+                                          sizeof(game::kRoomDispatcherBytes)};
+  if (!game::CheckBytes(dispatcher) ||
+      !Hook("RoomDispatcher", game::kRoomDispatcher,
+            reinterpret_cast<void*>(&RoomDispatcherDetour),
+            reinterpret_cast<void**>(&g_roomDispatcher))) {
+    Log("QuickSave: room dispatcher hook unavailable; F5/F6 disabled");
+    return false;
+  }
   Log("QuickSave: F1/F5/F6/F8/F9 notifications active; F5/F6/F8 handled by window and render paths");
   return true;
 }

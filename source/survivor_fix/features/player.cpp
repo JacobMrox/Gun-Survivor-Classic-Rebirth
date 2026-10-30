@@ -32,9 +32,11 @@ using TransformFn = int(__fastcall*)(void* c, void* edx, int index, float tx, fl
 using ItemEffectAddFn = int(__fastcall*)(void* manager, void* edx, int itemId,
                                          const float* position, const float* orientation,
                                          int owner);
+using ItemCommitFn = void(__fastcall*)(void* effect, void* edx);
 PhysicsFn g_physics = nullptr;
 TransformFn g_transform = nullptr;
 ItemEffectAddFn g_itemEffectAdd = nullptr;
+ItemCommitFn g_itemCommit = nullptr;
 
 int g_turnRequest = 0;  // -1/+1: direction asked by the command handler in this frame
 ps1::PlayerTurn g_turn;
@@ -47,10 +49,17 @@ struct LiveItem {
   int scene = -1;
   int slot = -1;
   int id = -1;
-  float position[3] = {};
+  bool taken = false;
+  void* effect = nullptr;
+  bool hasDistance = false;
+  double distance = 0.0;
 };
 
-std::array<LiveItem, 0x4E> g_liveItems = {};
+// The manager owns at most 0x14 simultaneous effects. Index by manager slot,
+// not by item id: rooms can contain more than one pickup with the same id.
+// Keying by id silently replaced the nearer pickup with a different instance,
+// which made the prompt appear at an apparently inverted distance.
+std::array<LiveItem, 0x14> g_liveItems = {};
 void* g_itemManager = nullptr;
 
 void ClearLiveItems(void* manager) {
@@ -59,20 +68,39 @@ void ClearLiveItems(void* manager) {
 }
 
 int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
-                                   const float* position, const float* orientation, int owner) {
-  const int slot = g_itemEffectAdd(manager, edx, itemId, position, orientation, owner);
+                                   const float* transform, const float* appearance, int owner) {
+  const int slot = g_itemEffectAdd(manager, edx, itemId, transform, appearance, owner);
   void* liveManager = *reinterpret_cast<void**>(game::kItemEffectManager);
-  if (manager != liveManager || itemId < 0 || itemId >= static_cast<int>(g_liveItems.size()) ||
-      !position || slot < 0 || !std::isfinite(position[0]) || !std::isfinite(position[2])) {
+  // The second argument is the item's 4x4 world transform, not a float3. Its
+  // translation is the final row written by 00595848 at offsets 30h..38h.
+  const float* position = transform ? transform + 12 : nullptr;
+  if (manager != liveManager || itemId < 0 || !position || slot < 0 ||
+      slot >= static_cast<int>(g_liveItems.size()) || !std::isfinite(position[0]) ||
+      !std::isfinite(position[2])) {
     return slot;
   }
   if (g_itemManager != manager) ClearLiveItems(manager);
-  LiveItem& item = g_liveItems[itemId];
+  LiveItem& item = g_liveItems[slot];
   item.scene = *reinterpret_cast<int*>(game::kSceneId);
   item.slot = slot;
   item.id = itemId;
-  std::memcpy(item.position, position, sizeof item.position);
+  item.taken = false;
+  void** effects = game::Read<void**>(manager, 0x1C);
+  item.effect = effects ? effects[slot] : nullptr;
+  item.hasDistance = false;
+  item.distance = 0.0;
   return slot;
+}
+
+void __fastcall ItemCommitDetour(void* effect, void* edx) {
+  const int slot = effect ? game::Read<int>(effect, 0x04) : -1;
+  const int itemId = effect ? game::Read<int>(effect, 0x1C) : -1;
+  g_itemCommit(effect, edx);
+  if (slot < 0 || slot >= static_cast<int>(g_liveItems.size())) return;
+  LiveItem& item = g_liveItems[slot];
+  if (item.scene == *reinterpret_cast<int*>(game::kSceneId) && item.id == itemId) {
+    item.taken = true;
+  }
 }
 
 uint8_t* Player(void* c, int* index) {
@@ -93,21 +121,33 @@ void UpdateItemApproachPrompt(const uint8_t* player) {
   }
   const float* position = game::Field<float>(const_cast<uint8_t*>(player), game::O::kPos);
   if (!std::isfinite(position[0]) || !std::isfinite(position[2])) return;
-  auto** effects = game::Read<uint8_t**>(manager, 0x1C);
-  const int count = game::Read<int>(manager, 0x20);
   const int scene = *reinterpret_cast<int*>(game::kSceneId);
-  if (!effects || count <= 0 || count > 0x1000) return;
-  for (const auto& item : g_liveItems) {
-    if (item.scene != scene || item.slot < 0 || item.slot >= count || !effects[item.slot]) continue;
-    const double dx = static_cast<double>(position[0]) - item.position[0];
-    const double dz = static_cast<double>(position[2]) - item.position[2];
-    const double distance = std::sqrt(dx * dx + dz * dz);
+  void** effects = game::Read<void**>(manager, 0x1C);
+  for (auto& item : g_liveItems) {
+    // Both the glitter object and its native availability bit disappear when
+    // the interaction begins, before collection. Keep the registered position
+    // until 0045CC80 performs the actual inventory/item-flag commit.
+    if (item.scene != scene || item.slot < 0 || item.taken) continue;
+    // 0045BC70 builds the effect's final model-view matrix at +38h. Its
+    // translation (+68h..+70h) is already camera-relative, so its horizontal
+    // length is the item-to-player distance. Keep the last good value when the
+    // native glitter object is temporarily removed at interaction range.
+    if (effects && item.effect && effects[item.slot] == item.effect) {
+      const float* viewPosition = game::Field<float>(item.effect, 0x68);
+      if (std::isfinite(viewPosition[0]) && std::isfinite(viewPosition[2])) {
+        const double x = viewPosition[0];
+        const double z = viewPosition[2];
+        item.distance = std::sqrt(x * x + z * z);
+        item.hasDistance = true;
+      }
+    }
+    if (!item.hasDistance) continue;
     // Keep the prompt on the close side of the former threshold: the live
     // item remains registered until it is actually taken, so this covers the
     // final approach shown by the HUD without showing it across the room.
-    if (distance < 520.0) {
+    if (item.distance < 520.0) {
       g_itemApproachPrompt = true;
-      return;
+      break;
     }
   }
 }
@@ -928,7 +968,6 @@ void __fastcall PhysicsDetour(void* c, void* edx) {
   g_physics(c, edx);
   zombie::WorldPhysicsEnd(c);
   if (!t) {
-    g_itemApproachPrompt = false;
     return;
   }
   if (g_moveStep > 0.0f) ClampMoveStep(t, before);
@@ -1082,9 +1121,13 @@ bool InstallPlayer() {
   if (g_config.itemApproachPrompt) {
     const game::ByteSignature itemAdd = {game::kItemEffectAdd, game::kItemEffectAddBytes,
                                          sizeof(game::kItemEffectAddBytes)};
-    if (!game::CheckBytes(itemAdd) ||
+    const game::ByteSignature itemCommit = {game::kItemCommit, game::kItemCommitBytes,
+                                            sizeof(game::kItemCommitBytes)};
+    if (!game::CheckBytes(itemAdd) || !game::CheckBytes(itemCommit) ||
         !Hook("ItemEffectAdd", game::kItemEffectAdd, reinterpret_cast<void*>(&ItemEffectAddDetour),
-              reinterpret_cast<void**>(&g_itemEffectAdd))) {
+              reinterpret_cast<void**>(&g_itemEffectAdd)) ||
+        !Hook("ItemCommit", game::kItemCommit, reinterpret_cast<void*>(&ItemCommitDetour),
+              reinterpret_cast<void**>(&g_itemCommit))) {
       Log("ItemApproachPrompt: live item hook unavailable; feature off");
       g_config.itemApproachPrompt = false;
     }

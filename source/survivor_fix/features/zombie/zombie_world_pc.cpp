@@ -4,6 +4,8 @@
 #include "zombie_shared.h"
 
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -37,6 +39,8 @@ std::vector<NativeSaved> nativeSaved;
 void* physicsCollection = nullptr;
 ps1::WorldVector playerBefore;
 bool havePlayerBefore = false;
+std::array<QuickState, 30> pendingQuickStates = {};
+size_t pendingQuickStateCount = 0;
 
 bool ValidModel(const uint8_t* o, int type) {
   auto* m = game::Read<uint8_t*>(o, game::O::kModel);
@@ -199,6 +203,53 @@ void NativeZombieLife(void* s) {
   if (life.slot < 0 || life.slot >= 30) return;
   life.order = ++nextOrder;
   lives.emplace(s, life);
+
+  for (size_t i = 0; i < pendingQuickStateCount; ++i) {
+    const auto& saved = pendingQuickStates[i];
+    if (saved.slot != life.slot || saved.type != game::Read<int>(s, game::S::kType)) continue;
+    std::memcpy(game::Field<float>(o, game::O::kPos), saved.position, sizeof saved.position);
+    std::memcpy(game::Field<float>(o, game::O::kMatrix), saved.matrix, sizeof saved.matrix);
+    *game::Field<float>(o, 0x11C) = saved.health;
+    *game::Field<uint8_t>(s, game::kEnemyActive) = saved.active;
+    SyncObjectPose(o);
+    pendingQuickStates[i].slot = -1;
+    break;
+  }
+}
+
+size_t CaptureQuickStates(QuickState* states, size_t capacity) {
+  if (!states || capacity == 0) return 0;
+  std::vector<const ActorLife*> sorted;
+  for (const auto& entry : lives)
+    if (StillBound(entry.second, entry.second.c)) sorted.push_back(&entry.second);
+  std::sort(sorted.begin(), sorted.end(), [](const ActorLife* a, const ActorLife* b) {
+    return a->slot < b->slot;
+  });
+  size_t count = 0;
+  for (const auto* life : sorted) {
+    if (count >= capacity) break;
+    QuickState state;
+    state.slot = life->slot;
+    state.type = game::Read<int>(life->s, game::S::kType);
+    state.health = game::Read<float>(life->o, 0x11C);
+    state.active = game::Read<uint8_t>(life->s, game::kEnemyActive);
+    const float* position = game::Field<float>(life->o, game::O::kPos);
+    const float* matrix = game::Field<float>(life->o, game::O::kMatrix);
+    bool finite = std::isfinite(state.health);
+    for (int i = 0; i < 3; ++i) finite = finite && std::isfinite(position[i]);
+    for (int i = 0; i < 16; ++i) finite = finite && std::isfinite(matrix[i]);
+    if (!finite) continue;
+    std::memcpy(state.position, position, sizeof state.position);
+    std::memcpy(state.matrix, matrix, sizeof state.matrix);
+    states[count++] = state;
+  }
+  return count;
+}
+
+void QueueQuickStateRestore(const QuickState* states, size_t count) {
+  pendingQuickStateCount = (std::min)(count, pendingQuickStates.size());
+  for (auto& state : pendingQuickStates) state = {};
+  for (size_t i = 0; i < pendingQuickStateCount; ++i) pendingQuickStates[i] = states[i];
 }
 
 void ResetZombieRoom() {

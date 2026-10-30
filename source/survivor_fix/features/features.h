@@ -14,10 +14,21 @@ namespace sf::features {
 
 // Lifecycle notifications used by the verified RequestAnim initializer call.
 namespace zombie {
+struct QuickState {
+  int32_t slot = -1;
+  int32_t type = -1;
+  float health = 0.0f;
+  uint8_t active = 0;
+  uint8_t reserved[3] = {};
+  float position[3] = {};
+  float matrix[16] = {};
+};
 void BeginWalkSpeedLife(void* s);
 void NativeZombieLife(void* s);
 void ObserveZombieVoiceLife(void* s);
 void ResetZombieRoom();
+size_t CaptureQuickStates(QuickState* states, size_t capacity);
+void QueueQuickStateRestore(const QuickState* states, size_t count);
 void WorldPhysicsBegin(void* c);
 void WorldPhysicsEnd(void* c);
 void WorldBeforeQuery(void* c, int index);

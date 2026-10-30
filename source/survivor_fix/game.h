@@ -260,6 +260,10 @@ inline constexpr uint8_t kRoomTickBytes[] = {0xA1, 0x60, 0xE0, 0x5B, 0x00, 0x83,
 constexpr uintptr_t kItemEffectManager = 0x005F2C44;
 constexpr uintptr_t kItemEffectAdd = 0x0045D4C0;
 inline constexpr uint8_t kItemEffectAddBytes[] = {0x53, 0x56, 0x8B, 0xF1, 0x57, 0x33, 0xDB};
+// 0045CC80 is called only after the player accepts the pickup. It commits the
+// inventory/item flag for the effect whose slot is at +4 and id is at +1C.
+constexpr uintptr_t kItemCommit = 0x0045CC80;
+inline constexpr uint8_t kItemCommitBytes[] = {0xA1, 0xDC, 0xD0, 0x5F, 0x00, 0x56, 0x8B, 0xF1};
 constexpr size_t kGameStatsHp = 0x08;  // int in [5FD0DC]
 // Gameplay room dispatcher. It invokes one room function and returns after that
 // room has performed its native cleanup, making its next entry a safe reload boundary.
@@ -267,9 +271,10 @@ constexpr uintptr_t kRoomDispatcher = 0x0046AFE0;
 inline constexpr uint8_t kRoomDispatcherBytes[] = {0x53, 0x56, 0x8B, 0xF1, 0x33, 0xDB};
 constexpr size_t kLiveSaveRecord = 0x3C;
 constexpr size_t kLiveSaveRecordSize = 0x4D;
-// Allocation and constructor verified: [005FD0DC] is a 0x3D0-byte POD-like
-// gameplay/statistics object.  The regular disk record above is only its small
-// portable subset; quick state must retain the complete live object.
+// Allocation and constructor verified: [005FD0DC] is a 0x3D0-byte gameplay
+// object. Most of it is transient bookkeeping and must not be copied as a save
+// record (doing so can populate nonexistent key items). The native 0x4D-byte
+// record above is the portable inventory/progression portion.
 constexpr size_t kGameStatsSize = 0x3D0;
 // [005FD0CC] is a 0x35F4-byte main game object.  The preceding 0x2C98..0x2D2F
 // region is a table of live object pointers.  0x2D30..0x34FF is the pointer-free
