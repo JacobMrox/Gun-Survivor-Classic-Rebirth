@@ -60,10 +60,17 @@ bool QuickSaveReloadFadeStarted();
 void QuickSaveStartReloadFade();
 bool QuickSaveApplyPendingReload(void* gameObject, int* scene);
 bool QuickSaveConsumeRoomEntry();
+// Completes a native Load Game selection with the matching extended slot state.
+void QuickSaveOnNativeLoad(int slot, bool succeeded);
 bool InstallTitleFade();
 bool InstallMouseInput();
 bool InstallPs1Cadence();
 bool ApplyItemGlitterCadence();
+void RegisterItemGlitterEffect(void* effect);
+bool ItemGlitterShouldDraw(void* effect);
+bool IsItemGlitterEffect(void* effect);
+void ForgetItemGlitterEffect(void* effect);
+void ResetItemGlitterEffects();
 // One stamp per native gameplay loop; not a render frame or per-actor update.
 bool Ps1LogicFrame(uint32_t* tick);
 bool InstallPs1ZombieShadowSize();

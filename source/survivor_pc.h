@@ -25,6 +25,9 @@ unsigned long SurvivorPc_MouseBufferSize();
 // Movement events seen by the existing DirectInput bridge in one native device read.
 void SurvivorPc_ResetMouseRead();
 unsigned SurvivorPc_MouseMotionEvents();
+// Consume a buffered left-button press.  Unlike GetAsyncKeyState, this remains
+// pending until a low-frame-rate native menu has observed it.
+bool SurvivorPc_ConsumeMouseLeftPress();
 
 // From EndScene, before the overlay crosshair is clamped and drawn. MenuWindowsCursor: in menus the crosshair
 // position (and so the game's aim) comes from the Windows pointer, in back buffer space. Returns false when the

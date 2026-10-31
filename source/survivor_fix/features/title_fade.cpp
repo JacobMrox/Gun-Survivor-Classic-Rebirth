@@ -12,7 +12,7 @@ namespace sf::features {
 namespace {
 bool ready=false;
 void* loadMenuWait=nullptr;void* normalWait=nullptr;void* easyWait=nullptr;
-using LoadSaveFn=void(__fastcall*)(void*,void*,int);
+using LoadSaveFn=bool(__fastcall*)(void*,void*,int);
 LoadSaveFn loadSave=nullptr;
 void* normalDone=reinterpret_cast<void*>(0x00585553);
 void* easyDone=reinterpret_cast<void*>(0x005855BC);
@@ -62,13 +62,15 @@ bool __cdecl RunTitleFade(){
       static_cast<unsigned>((now.QuadPart-start.QuadPart)*1000/frequency.QuadPart));
   return ok;
 }
-void __fastcall LoadSaveDetour(void* saves,void* edx,int slot){
+bool __fastcall LoadSaveDetour(void* saves,void* edx,int slot){
   // Only the confirmed slot path at 005858C7 should receive the title-style transition.
   if(reinterpret_cast<uintptr_t>(_ReturnAddress())==0x005858CC && g_config.ps1TitleFade){
     Log("TitleFade: confirmed Load Game slot; flash/fade before native save loader");
     RunTitleFade();
   }
-  loadSave(saves,edx,slot);
+  const bool loaded=loadSave(saves,edx,slot);
+  QuickSaveOnNativeLoad(slot,loaded);
+  return loaded;
 }
 __declspec(naked) void NormalWait(){
  __asm {

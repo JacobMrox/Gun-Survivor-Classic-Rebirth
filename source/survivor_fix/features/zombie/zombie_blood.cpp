@@ -70,7 +70,15 @@ int __fastcall CreateEffectDetour(void* m, void* edx, const char* name, float st
                                   float sideB, float shrink, const char* bmp, int cellW, int cellH, int zero,
                                   float x, float y, float z, int blend, int once) {
   uint8_t *o, *t;
-  if (!g_config.ps1ZombieBlood || reinterpret_cast<uintptr_t>(_ReturnAddress()) != game::kBloodCallReturn ||
+  const uintptr_t returnAddress = reinterpret_cast<uintptr_t>(_ReturnAddress());
+  if (returnAddress == 0x0045BB2A) {
+    const int index = g_createEffect(m, edx, name, step, stepB, sideA, sideB, shrink, bmp, cellW,
+                                     cellH, zero, x, y, z, blend, once);
+    auto** effects = game::Read<void**>(m, game::kEffectList);
+    if (index >= 0 && effects) RegisterItemGlitterEffect(effects[index]);
+    return index;
+  }
+  if (!g_config.ps1ZombieBlood || returnAddress != game::kBloodCallReturn ||
       !g_subject || !GetObjects(g_subject, o, t)) {
     return g_createEffect(m, edx, name, step, stepB, sideA, sideB, shrink, bmp, cellW, cellH, zero, x, y, z, blend,
                           once);
@@ -98,6 +106,12 @@ int __fastcall CreateEffectDetour(void* m, void* edx, const char* name, float st
 }
 
 int __fastcall DrawEffectDetour(void* e, void* edx, const float* axisA, const float* axisB) {
+  if (IsItemGlitterEffect(e)) {
+    if (!ItemGlitterShouldDraw(e)) return 1;
+    const int result = g_drawEffect(e, edx, axisA, axisB);
+    if (!result) ForgetItemGlitterEffect(e);
+    return result;
+  }
   auto it = g_blood.find(e);
   if (it == g_blood.end()) return g_drawEffect(e, edx, axisA, axisB);
   Blood& b = it->second;
@@ -126,6 +140,7 @@ void ResetBloodRoom() {
   // may survive the transition.
   g_subject = nullptr;
   g_blood.clear();
+  ResetItemGlitterEffects();
 }
 
 void SpawnHeadBlood(void* s, const uint8_t* o) {
@@ -178,18 +193,22 @@ void SpawnHeadBurst(void* s, const uint8_t* o) {
 }
 
 bool InstallZombieBlood() {
-  if (!g_config.ps1ZombieBlood) return false;
-  const game::ByteSignature checks[] = {
+  const game::ByteSignature effectChecks[] = {
       {game::kEffectCreate, game::kEffectCreateBytes, sizeof(game::kEffectCreateBytes)},
       {game::kEffectDraw, game::kEffectDrawBytes, sizeof(game::kEffectDrawBytes)},
-      {game::kBloodCall, game::kBloodCallBytes, sizeof(game::kBloodCallBytes)},
   };
-  for (const auto& check : checks) {
+  for (const auto& check : effectChecks) {
     if (!game::CheckBytes(check)) {
-      Log("Ps1ZombieBlood: unexpected bytes at %08X, PC blood unchanged", static_cast<unsigned>(check.address));
+      Log("EffectSprites: unexpected bytes at %08X; blood and item glitter cadence unchanged",
+          static_cast<unsigned>(check.address));
       g_config.ps1ZombieBlood = false;
       return false;
     }
+  }
+  if (g_config.ps1ZombieBlood &&
+      !game::CheckBytes({game::kBloodCall, game::kBloodCallBytes, sizeof(game::kBloodCallBytes)})) {
+    Log("Ps1ZombieBlood: blood call not recognised; PC blood unchanged");
+    g_config.ps1ZombieBlood = false;
   }
   return Hook("CreateEffect", game::kEffectCreate, reinterpret_cast<void*>(&CreateEffectDetour),
               reinterpret_cast<void**>(&g_createEffect)) &&

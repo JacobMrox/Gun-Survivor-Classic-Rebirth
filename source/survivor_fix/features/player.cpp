@@ -50,9 +50,9 @@ struct LiveItem {
   int slot = -1;
   int id = -1;
   bool taken = false;
+  bool hasPosition = false;
+  float position[3] = {};
   void* effect = nullptr;
-  bool hasDistance = false;
-  double distance = 0.0;
 };
 
 // The manager owns at most 0x14 simultaneous effects. Index by manager slot,
@@ -71,12 +71,8 @@ int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
                                    const float* transform, const float* appearance, int owner) {
   const int slot = g_itemEffectAdd(manager, edx, itemId, transform, appearance, owner);
   void* liveManager = *reinterpret_cast<void**>(game::kItemEffectManager);
-  // The second argument is the item's 4x4 world transform, not a float3. Its
-  // translation is the final row written by 00595848 at offsets 30h..38h.
-  const float* position = transform ? transform + 12 : nullptr;
-  if (manager != liveManager || itemId < 0 || !position || slot < 0 ||
-      slot >= static_cast<int>(g_liveItems.size()) || !std::isfinite(position[0]) ||
-      !std::isfinite(position[2])) {
+  if (manager != liveManager || itemId < 0 || slot < 0 ||
+      slot >= static_cast<int>(g_liveItems.size())) {
     return slot;
   }
   if (g_itemManager != manager) ClearLiveItems(manager);
@@ -85,10 +81,17 @@ int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
   item.slot = slot;
   item.id = itemId;
   item.taken = false;
-  void** effects = game::Read<void**>(manager, 0x1C);
+  auto** effects = game::Read<void**>(manager, 0x1C);
   item.effect = effects ? effects[slot] : nullptr;
-  item.hasDistance = false;
-  item.distance = 0.0;
+  // The native add call receives the item's world matrix. Its final row is
+  // the translation used by the pickup effect and remains stable even when
+  // the glitter sprite is temporarily hidden by its cadence.
+  if (transform && std::isfinite(transform[12]) && std::isfinite(transform[14])) {
+    item.position[0] = transform[12];
+    item.position[1] = transform[13];
+    item.position[2] = transform[14];
+    item.hasPosition = true;
+  }
   return slot;
 }
 
@@ -119,33 +122,19 @@ void UpdateItemApproachPrompt(const uint8_t* player) {
     ClearLiveItems(manager);
     return;
   }
-  const float* position = game::Field<float>(const_cast<uint8_t*>(player), game::O::kPos);
-  if (!std::isfinite(position[0]) || !std::isfinite(position[2])) return;
   const int scene = *reinterpret_cast<int*>(game::kSceneId);
-  void** effects = game::Read<void**>(manager, 0x1C);
-  for (auto& item : g_liveItems) {
-    // Both the glitter object and its native availability bit disappear when
-    // the interaction begins, before collection. Keep the registered position
-    // until 0045CC80 performs the actual inventory/item-flag commit.
-    if (item.scene != scene || item.slot < 0 || item.taken) continue;
-    // 0045BC70 builds the effect's final model-view matrix at +38h. Its
-    // translation (+68h..+70h) is already camera-relative, so its horizontal
-    // length is the item-to-player distance. Keep the last good value when the
-    // native glitter object is temporarily removed at interaction range.
-    if (effects && item.effect && effects[item.slot] == item.effect) {
-      const float* viewPosition = game::Field<float>(item.effect, 0x68);
-      if (std::isfinite(viewPosition[0]) && std::isfinite(viewPosition[2])) {
-        const double x = viewPosition[0];
-        const double z = viewPosition[2];
-        item.distance = std::sqrt(x * x + z * z);
-        item.hasDistance = true;
-      }
-    }
-    if (!item.hasDistance) continue;
-    // Keep the prompt on the close side of the former threshold: the live
-    // item remains registered until it is actually taken, so this covers the
-    // final approach shown by the HUD without showing it across the room.
-    if (item.distance < 520.0) {
+  // The item's live object contains the camera-space matrix used to draw it.
+  // This is a better source than the constructor transform, whose layout is
+  // room-dependent.  There is deliberately no inner exclusion: that was the
+  // inversion which hid the prompt precisely when the player approached.
+  constexpr float kApproachRadius = 1400.0f;
+  constexpr float kApproachRadiusSquared = kApproachRadius * kApproachRadius;
+  for (const auto& item : g_liveItems) {
+    if (item.scene != scene || item.slot < 0 || item.taken || !item.effect) continue;
+    const float* view = game::Field<float>(item.effect, 0x68);
+    if (!std::isfinite(view[0]) || !std::isfinite(view[2])) continue;
+    const float distanceSquared = view[0] * view[0] + view[2] * view[2];
+    if (distanceSquared <= kApproachRadiusSquared) {
       g_itemApproachPrompt = true;
       break;
     }
@@ -283,6 +272,8 @@ void ApplyTurn(void* c, int index) {
 
 using SetViewFn = int(__fastcall*)(void* cam, void* edx, const float* a, const float* b, const float* c);
 SetViewFn g_setView = nullptr;
+using RebuildPlayerViewFn = int(__thiscall*)(void* container, int index, int flags);
+const auto g_rebuildPlayerView = reinterpret_cast<RebuildPlayerViewFn>(0x00460450);
 
 ps1::HeadBob g_bob;
 int g_bobOffset = 0;
@@ -358,6 +349,33 @@ struct LastView {
 LastView g_lastView;
 bool g_viewThisFrame = false;
 bool g_joltShown = false;  // the last view set contained the jolt
+
+void ApplyPendingPlayerRestore(uint8_t* player, bool finish, void* container = nullptr, int index = -1) {
+  if (!player || !g_playerRestorePending) return;
+  std::memcpy(player + game::O::kPos, g_playerRestore.position, sizeof g_playerRestore.position);
+  std::memcpy(player + game::O::kMatrix, g_playerRestore.matrix, sizeof g_playerRestore.matrix);
+  float* matrix = game::Field<float>(player, game::O::kMatrix);
+  matrix[3 * game::O::kMatrixRowFloats + 0] = g_playerRestore.position[0];
+  matrix[3 * game::O::kMatrixRowFloats + 1] = g_playerRestore.position[1];
+  matrix[3 * game::O::kMatrixRowFloats + 2] = g_playerRestore.position[2];
+  std::memset(player + game::O::kVelocity, 0, sizeof(float) * 3);
+  std::memset(player + game::O::kAccum, 0, sizeof(float) * 3);
+  *game::Field<uint8_t>(player, game::O::kTurnActive) = 0;
+  *game::Field<float>(player, game::O::kTurnYaw) = 0.0f;
+  *game::Field<float>(player, game::O::kTurnPitch) = 0.0f;
+  g_moveStep = 0.0f;
+  if (!finish) return;
+  g_lastView.valid = false;
+  if (container && index >= 0) {
+    // The native camera is cached separately from the player transform and is
+    // normally rebuilt on movement.  Rebuild it now, before the restored room
+    // can present its first frame.
+    g_rebuildPlayerView(container, index, 0);
+  }
+  g_playerRestorePending = false;
+  Log("QuickSave: restored player and first-frame camera at %.1f, %.1f, %.1f",
+      g_playerRestore.position[0], g_playerRestore.position[1], g_playerRestore.position[2]);
+}
 
 int SetPlayerView(void* cam, void* edx, const float* a, const float* b, const float* c) {
   float at[3] = {a[0], a[1], a[2]};
@@ -961,6 +979,10 @@ void __fastcall PhysicsDetour(void* c, void* edx) {
     if (g_config.ps1HeadBob) g_bobOffset = ps1::StepHeadBob(g_bob, gait);
   }
   g_viewThisFrame = false;
+  // Seed the native physics/view pass with the saved transform. Applying only
+  // after g_physics left the camera at the entrance until the first movement
+  // forced the game to rebuild its view.
+  ApplyPendingPlayerRestore(t, false);
   float before[3] = {};
   if (t) std::memcpy(before, t + game::O::kPos, sizeof before);
   if (!t) g_moveStep = 0.0f;
@@ -974,24 +996,8 @@ void __fastcall PhysicsDetour(void* c, void* edx) {
   if (g_deathSlide != 0) DeathSlideAfterPhysics(t);
   if (g_config.ps1PlayerWalls) ApplyPs1Walls(t, before);
   if (g_playerRestorePending) {
-    // Apply last, after the entrance frame's native physics and wall correction,
-    // so neither can drag the snapshot back toward the room spawn.
-    std::memcpy(t + game::O::kPos, g_playerRestore.position, sizeof g_playerRestore.position);
-    std::memcpy(t + game::O::kMatrix, g_playerRestore.matrix, sizeof g_playerRestore.matrix);
-    float* matrix = game::Field<float>(t, game::O::kMatrix);
-    matrix[3 * game::O::kMatrixRowFloats + 0] = g_playerRestore.position[0];
-    matrix[3 * game::O::kMatrixRowFloats + 1] = g_playerRestore.position[1];
-    matrix[3 * game::O::kMatrixRowFloats + 2] = g_playerRestore.position[2];
-    std::memset(t + game::O::kVelocity, 0, sizeof(float) * 3);
-    std::memset(t + game::O::kAccum, 0, sizeof(float) * 3);
-    *game::Field<uint8_t>(t, game::O::kTurnActive) = 0;
-    *game::Field<float>(t, game::O::kTurnYaw) = 0.0f;
-    *game::Field<float>(t, game::O::kTurnPitch) = 0.0f;
-    g_moveStep = 0.0f;
-    g_lastView.valid = false;
-    g_playerRestorePending = false;
-    Log("QuickSave: restored player at %.1f, %.1f, %.1f after room construction",
-        g_playerRestore.position[0], g_playerRestore.position[1], g_playerRestore.position[2]);
+    // Reassert after native entrance physics/wall correction as well.
+    ApplyPendingPlayerRestore(t, true, c, index);
   }
   ++g_physicsFrames;
   if (g_wake.frame >= 0 && t == g_wake.o) ApplyWakeFrame();

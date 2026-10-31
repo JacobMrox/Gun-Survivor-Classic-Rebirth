@@ -11,6 +11,7 @@
 #include "../log.h"
 #include "features.h"
 #include "../../aim_shared.h"
+#include "../../survivor_pc.h"
 
 namespace sf { extern std::wstring g_dir; }
 extern int ForceWidth, ForceHeight;
@@ -45,18 +46,49 @@ RECT g_windowedRect = {};
 bool g_haveWindowedRect = false;
 std::array<char, 64> g_notice = {};
 DWORD g_noticeStarted = 0;
-enum class ReloadStage { None, Requested, Fading, CleanupInProgress, WaitingForRoom };
+enum class ReloadStage {
+  None,
+  Requested,
+  Fading,
+  CleanupInProgress,
+  NativeLoadQueued,
+  WaitingForRoom
+};
 ReloadStage g_reloadStage = ReloadStage::None;
 QuickState g_pendingReload = {};
+QuickState g_menuSaveState = {};
+bool g_menuSaveStateValid = false;
+bool g_openLoadMenu = false;
+bool g_skipSaveIntro = false;
+bool g_mouseConfirm = false;
+bool g_leftMouseDown = false;
+void* g_saveMenuObject = nullptr;
+void* g_loadMenuObject = nullptr;
+enum class PendingMenu { None, Save, Load };
+PendingMenu g_pendingMenu = PendingMenu::None;
 
 using RoomDispatcherFn = void(__fastcall*)(void* gameObject, void* edx);
 RoomDispatcherFn g_roomDispatcher = nullptr;
+using NativeSaveFn = bool(__fastcall*)(void* saves, void* edx, int slot);
+using MetadataLoadFn = bool(__fastcall*)(void* saves, void* edx);
+NativeSaveFn g_nativeSave = nullptr;
+MetadataLoadFn g_metadataLoad = nullptr;
+using MenuConstructorFn = void*(__fastcall*)(void* object, void* edx);
+using InputQueryFn = bool(__fastcall*)(void* input, void* edx, int button);
+MenuConstructorFn g_saveMenuConstructor = nullptr;
+MenuConstructorFn g_titleMenuConstructor = nullptr;
+InputQueryFn g_inputQuery = nullptr;
+using NativeMenuControllerFn = int(__thiscall*)(void* context, int initialState);
+const auto g_nativeMenuController = reinterpret_cast<NativeMenuControllerFn>(0x005896B0);
 
 constexpr uintptr_t kRoomArgument = 0x005F3DB0;
 
 constexpr DWORD kNoticeFadeInMs = 220;
 constexpr DWORD kNoticeHoldMs = 1500;
 constexpr DWORD kNoticeFadeOutMs = 420;
+
+void SaveNow();
+void LoadNow();
 
 void Notify(const char* text) {
   strncpy_s(g_notice.data(), g_notice.size(), text ? text : "", _TRUNCATE);
@@ -71,6 +103,12 @@ bool Foreground() {
 
 std::wstring StatePath() { return sf::g_dir + L"Save\\QUICK.SAV"; }
 
+std::wstring SlotStatePath(int slot) {
+  wchar_t name[40] = {};
+  _snwprintf_s(name, _TRUNCATE, L"Save\\GBIO_%02d.SAV", slot + 1);
+  return sf::g_dir + name;
+}
+
 uint32_t Checksum(const QuickState& state) {
   const auto* bytes = reinterpret_cast<const uint8_t*>(&state);
   uint32_t hash = 2166136261u;
@@ -81,9 +119,9 @@ uint32_t Checksum(const QuickState& state) {
   return hash;
 }
 
-bool WriteState(const QuickState& state) {
+bool WriteStateFile(const std::wstring& path, const QuickState& state) {
   CreateDirectoryW((sf::g_dir + L"Save").c_str(), nullptr);
-  HANDLE file = CreateFileW(StatePath().c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+  HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) return false;
   DWORD written = 0;
@@ -92,8 +130,8 @@ bool WriteState(const QuickState& state) {
   return ok && written == sizeof state;
 }
 
-bool ReadState(QuickState* state) {
-  HANDLE file = CreateFileW(StatePath().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+bool ReadStateFile(const std::wstring& path, QuickState* state) {
+  HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) return false;
   DWORD read = 0;
@@ -103,29 +141,225 @@ bool ReadState(QuickState* state) {
          state->checksum == Checksum(*state) && state->scene >= 0 && state->scene <= 0x79;
 }
 
-void SaveNow() {
+bool CaptureState(QuickState* state) {
+  if (!state) return false;
   void* stats = *reinterpret_cast<void**>(game::kGameStats);
   void* gameState = *reinterpret_cast<void**>(game::kGameState);
-  if (!stats || !gameState) {
+  if (!stats || !gameState) return false;
+  *state = {};
+  state->scene = *reinterpret_cast<int*>(game::kSceneId);
+  state->roomArgument = *reinterpret_cast<int*>(kRoomArgument);
+  state->difficulty = *game::Field<uint8_t>(gameState, 0x42);
+  state->playerValid = CapturePlayerQuickState(&state->player) ? 1 : 0;
+  state->playerHp = game::Read<int>(stats, game::kGameStatsHp);
+  std::memcpy(state->saveRecord.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+              state->saveRecord.size());
+  std::memcpy(state->roomState.data(),
+              game::Field<uint8_t>(gameState, game::kPersistentRoomState),
+              state->roomState.size());
+  state->zombieCount = static_cast<uint32_t>(
+      zombie::CaptureQuickStates(state->zombies.data(), state->zombies.size()));
+  state->checksum = Checksum(*state);
+  return true;
+}
+
+bool PatchByte(uintptr_t address, uint8_t expected, uint8_t replacement) {
+  auto* target = reinterpret_cast<uint8_t*>(address);
+  if (*target != expected) return false;
+  DWORD old = 0;
+  if (!VirtualProtect(target, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
+  *target = replacement;
+  FlushInstructionCache(GetCurrentProcess(), target, 1);
+  DWORD ignored = 0;
+  VirtualProtect(target, 1, old, &ignored);
+  return true;
+}
+
+bool PatchDword(uintptr_t address, uint32_t expected, uint32_t replacement) {
+  auto* target = reinterpret_cast<uint32_t*>(address);
+  if (*target != expected) return false;
+  DWORD old = 0;
+  if (!VirtualProtect(target, sizeof *target, PAGE_EXECUTE_READWRITE, &old)) return false;
+  *target = replacement;
+  FlushInstructionCache(GetCurrentProcess(), target, sizeof *target);
+  DWORD ignored = 0;
+  VirtualProtect(target, sizeof *target, old, &ignored);
+  return true;
+}
+
+bool __fastcall MetadataLoadDetour(void* saves, void* edx) {
+  const bool ok = g_metadataLoad(saves, edx);
+  if (!ok || !saves) return ok;
+  auto* records = game::Field<uint8_t>(saves, 0x90);
+  for (int slot = 10; slot < 15; ++slot) {
+    uint8_t* record = records + slot * 0x34;
+    bool allZero = true;
+    for (int i = 0; i < 0x34; ++i) allZero = allZero && record[i] == 0;
+    if (allZero) record[0] = 1;  // empty native slot
+  }
+  return ok;
+}
+
+bool __fastcall NativeSaveDetour(void* saves, void* edx, int slot) {
+  const bool ok = g_nativeSave(saves, edx, slot);
+  if (!ok || slot < 0 || slot >= 15) return ok;
+  QuickState state;
+  const bool captured = g_menuSaveStateValid ? (state = g_menuSaveState, true) : CaptureState(&state);
+  if (captured && WriteStateFile(SlotStatePath(slot), state)) {
+    char notice[48] = {};
+    _snprintf_s(notice, _TRUNCATE, "SLOT %d  SAVED", slot + 1);
+    Notify(notice);
+    Log("QuickSave: native slot %d saved with extended room/player state", slot + 1);
+  } else {
+    Notify("SAVE SLOT EXTENDED DATA FAILED");
+    Log("QuickSave: native slot %d saved, but extended state could not be written", slot + 1);
+  }
+  g_menuSaveStateValid = false;
+  return ok;
+}
+
+void* __fastcall SaveMenuConstructorDetour(void* object, void* edx) {
+  void* result = g_saveMenuConstructor(object, edx);
+  g_saveMenuObject = result;
+  g_leftMouseDown = false;
+  if (result && g_skipSaveIntro) {
+    // Native state 7 normally shows the end-of-game RESULT page first.  F5
+    // already comes from live gameplay, so enter the slot-list substate.
+    *game::Field<int>(result, 0x04) = 2;
+    g_skipSaveIntro = false;
+    Log("QuickSave: skipped RESULT intro and entered native Save Game slots");
+  }
+  return result;
+}
+
+void* __fastcall TitleMenuConstructorDetour(void* object, void* edx) {
+  void* result = g_titleMenuConstructor(object, edx);
+  g_loadMenuObject = result;
+  g_leftMouseDown = false;
+  if (result && g_openLoadMenu) {
+    // State 4 is the native Load Game slot list.  Its constructor already
+    // initialized the one-based selection and first visible slot.
+    *game::Field<int>(result, 0x00) = 4;
+    *game::Field<int>(result, 0x1C) = 1;
+    *game::Field<int>(result, 0x20) = 1;
+    g_openLoadMenu = false;
+    Log("QuickSave: title menu entered directly at native Load Game slots");
+  }
+  return result;
+}
+
+bool NativeSaveMenuActive() {
+  return *reinterpret_cast<int*>(0x005FCFE4) == 7 && g_saveMenuObject;
+}
+
+bool NativeLoadMenuActive() {
+  return *reinterpret_cast<int*>(0x005FCFE4) == 1 && g_loadMenuObject &&
+         game::Read<int>(g_loadMenuObject, 0x00) == 4;
+}
+
+bool SelectNativeMenuRowFromCursor() {
+  const bool save = NativeSaveMenuActive();
+  const bool load = NativeLoadMenuActive();
+  if (!save && !load) return false;
+
+  void* menu = save ? g_saveMenuObject : g_loadMenuObject;
+  const size_t selectionOffset = save ? 0x0C : 0x1C;
+  const size_t scrollOffset = save ? 0x08 : 0x20;
+  POINT cursor = {};
+  RECT client = {};
+  if (!g_hFocusWindow || !GetCursorPos(&cursor) ||
+      !ScreenToClient(g_hFocusWindow, &cursor) ||
+      !GetClientRect(g_hFocusWindow, &client)) {
+    return false;
+  }
+  const int height = (std::max)(1L, client.bottom - client.top);
+  const int nativeY = cursor.y * 240 / height;
+  // The native list displays five rows.  Preserve its current scroll window
+  // and translate the clicked row to the corresponding one-based slot.
+  const int row = std::clamp((nativeY - 24) / 42, 0, 4);
+  const int scroll = game::Read<int>(menu, scrollOffset);
+  const int selection = std::clamp(scroll + row, 1, 15);
+  *game::Field<int>(menu, selectionOffset) = selection;
+  Log("QuickSave: mouse selected native %s slot %d (cursor y=%d, native y=%d)",
+      save ? "save" : "load", selection, cursor.y, nativeY);
+  return true;
+}
+
+bool __fastcall InputQueryDetour(void* input, void* edx, int button) {
+  const bool menuActive = NativeSaveMenuActive() || NativeLoadMenuActive();
+  if (!menuActive) g_leftMouseDown = false;
+  if (menuActive) {
+    auto* mapping = *reinterpret_cast<uint8_t**>(0x005FD0D4);
+    if (mapping && button == mapping[0x0E]) {
+      if (g_mouseConfirm) {
+        g_mouseConfirm = false;
+        return true;
+      }
+      // Gun Survivor normally consumes the mouse through DirectInput, so some
+      // systems never deliver WM_LBUTTONDOWN to the wrapper window procedure.
+      // Poll only during the native confirm query to provide an edge-triggered
+      // fallback without producing repeated confirmations while held.
+      const SHORT leftState = GetAsyncKeyState(VK_LBUTTON);
+      const bool leftDown = (leftState & 0x8000) != 0;
+      // Bit 0 records a press since the previous query, which matters when the
+      // native Load Game screen is updating at 14-16 Hz and a short click is
+      // fully released between two confirm polls.
+      const bool pressed = (leftState & 1) != 0 || (leftDown && !g_leftMouseDown);
+      g_leftMouseDown = leftDown;
+      const bool directInputPress = SurvivorPc_ConsumeMouseLeftPress();
+      if ((pressed || directInputPress) && SelectNativeMenuRowFromCursor()) return true;
+    }
+  }
+  return g_inputQuery(input, edx, button);
+}
+
+bool OpenNativeMenu(bool save) {
+  void* gameObject = *reinterpret_cast<void**>(game::kGameState);
+  if (!gameObject || game::Read<uint8_t>(gameObject, game::kMainState) != 6) {
+    Notify(save ? "F5  SAVE MENU UNAVAILABLE" : "F6  LOAD MENU UNAVAILABLE");
+    return false;
+  }
+  if (save) {
+    SurvivorPc_ConsumeMouseLeftPress();  // discard clicks queued during gameplay
+    g_menuSaveStateValid = CaptureState(&g_menuSaveState);
+    if (!g_menuSaveStateValid) {
+      Notify("F5  SAVE MENU STATE UNAVAILABLE");
+      return false;
+    }
+    g_saveMenuObject = nullptr;
+    g_skipSaveIntro = true;
+    g_pendingMenu = PendingMenu::Save;
+    Notify("F5  SAVE MENU");
+    Log("QuickSave: F5 requested native Save Game menu with a pre-transition extended snapshot");
+  } else {
+    SurvivorPc_ConsumeMouseLeftPress();
+    g_loadMenuObject = nullptr;
+    g_openLoadMenu = true;
+    g_pendingMenu = PendingMenu::Load;
+    Notify("F6  LOAD MENU");
+    Log("QuickSave: F6 requested native Load Game menu");
+  }
+  return true;
+}
+
+void HandleSaveHotkey() {
+  if (GetAsyncKeyState(VK_SHIFT) & 0x8000) SaveNow();
+  else OpenNativeMenu(true);
+}
+
+void HandleLoadHotkey() {
+  if (GetAsyncKeyState(VK_SHIFT) & 0x8000) LoadNow();
+  else OpenNativeMenu(false);
+}
+
+void SaveNow() {
+  QuickState state;
+  if (!CaptureState(&state)) {
     Notify("F5  QUICK SAVE UNAVAILABLE");
     Log("QuickSave: F5 ignored because gameplay state is unavailable");
     return;
   }
-  QuickState state;
-  state.scene = *reinterpret_cast<int*>(game::kSceneId);
-  state.roomArgument = *reinterpret_cast<int*>(kRoomArgument);
-  state.difficulty = *game::Field<uint8_t>(gameState, 0x42);
-  state.playerValid = CapturePlayerQuickState(&state.player) ? 1 : 0;
-  state.playerHp = game::Read<int>(stats, game::kGameStatsHp);
-  std::memcpy(state.saveRecord.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord),
-              state.saveRecord.size());
-  std::memcpy(state.roomState.data(),
-              game::Field<uint8_t>(gameState, game::kPersistentRoomState),
-              state.roomState.size());
-  state.zombieCount = static_cast<uint32_t>(
-      zombie::CaptureQuickStates(state.zombies.data(), state.zombies.size()));
-  state.checksum = Checksum(state);
-  if (WriteState(state)) {
+  if (WriteStateFile(StatePath(), state)) {
     Notify("F5  QUICK SAVE SAVED");
     Log("QuickSave: saved scene %02X with %zu-byte native record, %zu bytes of room state, player %s, %u zombies",
         state.scene, state.saveRecord.size(), state.roomState.size(),
@@ -145,7 +379,7 @@ void LoadNow() {
     Log("QuickSave: F6 ignored because gameplay state is unavailable");
     return;
   }
-  if (!ReadState(&state)) {
+  if (!ReadStateFile(StatePath(), &state)) {
     Notify("F6  QUICK LOAD INVALID");
     Log("QuickSave: QUICK.SAV missing or invalid");
     return;
@@ -237,10 +471,27 @@ int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
   const bool active = Foreground();
   const bool f5 = active && (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
   const bool f6 = active && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
-  if (f5 && !g_f5Down) SaveNow();
-  if (f6 && !g_f6Down) LoadNow();
+  if (f5 && !g_f5Down) HandleSaveHotkey();
+  if (f6 && !g_f6Down) HandleLoadHotkey();
   g_f5Down = f5;
   g_f6Down = f6;
+  if (g_pendingMenu != PendingMenu::None && gameObject) {
+    const PendingMenu requested = g_pendingMenu;
+    g_pendingMenu = PendingMenu::None;
+    void* context = game::Read<void*>(gameObject, 0x35E0);
+    if (context) {
+      const int initialState = requested == PendingMenu::Save ? 7 : 1;
+      Log("QuickSave: entering native modal menu controller at state %d", initialState);
+      g_nativeMenuController(context, initialState);
+      Log("QuickSave: native modal menu controller returned to gameplay");
+    } else {
+      g_openLoadMenu = false;
+      g_skipSaveIntro = false;
+      g_menuSaveStateValid = false;
+      Notify("SAVE/LOAD MENU CONTEXT UNAVAILABLE");
+      Log("QuickSave: native modal menu context at game+35E0 was unavailable");
+    }
+  }
   return nativeResult;
 }
 
@@ -251,6 +502,27 @@ void QuickSavePollWindowToggle() {
 }
 
 bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t lparam) {
+  if (message == WM_LBUTTONUP) g_leftMouseDown = false;
+  if ((NativeSaveMenuActive() || NativeLoadMenuActive()) && message == WM_MOUSEWHEEL) {
+    void* menu = NativeSaveMenuActive() ? g_saveMenuObject : g_loadMenuObject;
+    const size_t selectionOffset = NativeSaveMenuActive() ? 0x0C : 0x1C;
+    const size_t scrollOffset = NativeSaveMenuActive() ? 0x08 : 0x20;
+    int selection = game::Read<int>(menu, selectionOffset);
+    const short wheel = static_cast<short>((wparam >> 16) & 0xFFFF);
+    selection = std::clamp(selection + (wheel < 0 ? 1 : -1), 1, 15);
+    int scroll = game::Read<int>(menu, scrollOffset);
+    if (selection < scroll) scroll = selection;
+    if (selection > scroll + 4) scroll = selection - 4;
+    *game::Field<int>(menu, selectionOffset) = selection;
+    *game::Field<int>(menu, scrollOffset) = std::clamp(scroll, 1, 11);
+    return true;
+  }
+  if ((NativeSaveMenuActive() || NativeLoadMenuActive()) && message == WM_LBUTTONDOWN) {
+    if (SelectNativeMenuRowFromCursor()) {
+      g_mouseConfirm = true;  // consumed by the native confirm-button query
+      return true;
+    }
+  }
   const bool isHotkey = wparam == VK_F1 || wparam == VK_F5 || wparam == VK_F6 ||
                         wparam == VK_F8 || wparam == VK_F9;
   if (!isHotkey) return false;
@@ -268,11 +540,11 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
       Notify("F1  OPTIONS");
       return false;  // Let the game keep its native Options handling.
     case VK_F5:
-      if (!g_f5Down) SaveNow();
+      if (!g_f5Down) HandleSaveHotkey();
       g_f5Down = true;
       return true;
     case VK_F6:
-      if (!g_f6Down) LoadNow();
+      if (!g_f6Down) HandleLoadHotkey();
       g_f6Down = true;
       return true;
     case VK_F8:
@@ -329,6 +601,28 @@ bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
 }
 
 void __fastcall RoomDispatcherDetour(void* gameObject, void* edx) {
+  if (g_reloadStage == ReloadStage::NativeLoadQueued && gameObject) {
+    void* stats = *reinterpret_cast<void**>(game::kGameStats);
+    if (stats) {
+      std::memcpy(game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+                  g_pendingReload.saveRecord.data(), g_pendingReload.saveRecord.size());
+      *game::Field<int>(stats, game::kGameStatsHp) = g_pendingReload.playerHp;
+      std::memcpy(game::Field<uint8_t>(gameObject, game::kPersistentRoomState),
+                  g_pendingReload.roomState.data(), g_pendingReload.roomState.size());
+      *game::Field<uint8_t>(gameObject, 0x42) = g_pendingReload.difficulty;
+      *reinterpret_cast<int*>(kRoomArgument) = g_pendingReload.roomArgument;
+      *reinterpret_cast<int*>(game::kSceneId) = g_pendingReload.scene;
+      zombie::QueueQuickStateRestore(g_pendingReload.zombies.data(),
+                                     (std::min<size_t>)(g_pendingReload.zombieCount,
+                                                        g_pendingReload.zombies.size()));
+      g_reloadStage = ReloadStage::WaitingForRoom;
+      Log("QuickSave: extended native slot state applied before scene %02X construction",
+          g_pendingReload.scene);
+    } else {
+      g_reloadStage = ReloadStage::None;
+      Log("QuickSave: extended native slot state unavailable at room construction");
+    }
+  }
   g_roomDispatcher(gameObject, edx);
   if (g_reloadStage != ReloadStage::CleanupInProgress || !gameObject) return;
   void* stats = *reinterpret_cast<void**>(game::kGameStats);
@@ -367,9 +661,54 @@ bool QuickSaveConsumeRoomEntry() {
   return true;
 }
 
+void QuickSaveOnNativeLoad(int slot, bool succeeded) {
+  if (!succeeded || slot < 0 || slot >= 15) return;
+  QuickState state;
+  if (!ReadStateFile(SlotStatePath(slot), &state)) {
+    Log("QuickSave: native slot %d has no valid extended sidecar; native state kept", slot + 1);
+    return;
+  }
+  g_pendingReload = state;
+  g_reloadStage = ReloadStage::NativeLoadQueued;
+  char notice[48] = {};
+  _snprintf_s(notice, _TRUNCATE, "SLOT %d  LOADING", slot + 1);
+  Notify(notice);
+  Log("QuickSave: native slot %d queued extended state for scene %02X", slot + 1, state.scene);
+}
+
 bool InstallQuickSave() {
   const game::ByteSignature dispatcher = {game::kRoomDispatcher, game::kRoomDispatcherBytes,
                                           sizeof(game::kRoomDispatcherBytes)};
+  const uint8_t metadataBytes[] = {0x53, 0x8B, 0xD9, 0x56, 0x57};
+  const uint8_t nativeSaveBytes[] = {0x53, 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x10};
+  const uint8_t saveMenuCtorBytes[] = {0x8B, 0xC1, 0xB9, 0x01, 0x00, 0x00, 0x00};
+  const uint8_t titleMenuCtorBytes[] = {0x8B, 0xC1, 0x33, 0xD2, 0xB9, 0x01, 0x00, 0x00, 0x00};
+  const uint8_t inputQueryBytes[] = {0x56, 0x57, 0x8B, 0x7C, 0x24, 0x0C, 0x8B, 0xF1};
+  const bool slotsPatched =
+      game::CheckBytes({0x004646C0, metadataBytes, sizeof metadataBytes}) &&
+      game::CheckBytes({0x004648B0, nativeSaveBytes, sizeof nativeSaveBytes}) &&
+      PatchDword(0x004646CC, 0x82, 0xC3) &&
+      PatchByte(0x004646D9, 0x0A, 0x0F) &&
+      PatchByte(0x00585837, 0x0A, 0x0F) &&
+      PatchByte(0x0058626E, 0x0A, 0x0F) &&
+      Hook("SaveMetadataLoad", 0x004646C0, reinterpret_cast<void*>(&MetadataLoadDetour),
+           reinterpret_cast<void**>(&g_metadataLoad)) &&
+      Hook("NativeSaveSlot", 0x004648B0, reinterpret_cast<void*>(&NativeSaveDetour),
+           reinterpret_cast<void**>(&g_nativeSave)) &&
+      game::CheckBytes({0x00585A60, saveMenuCtorBytes, sizeof saveMenuCtorBytes}) &&
+      game::CheckBytes({0x00584A40, titleMenuCtorBytes, sizeof titleMenuCtorBytes}) &&
+      game::CheckBytes({0x00583C00, inputQueryBytes, sizeof inputQueryBytes}) &&
+      Hook("SaveMenuConstructor", 0x00585A60, reinterpret_cast<void*>(&SaveMenuConstructorDetour),
+           reinterpret_cast<void**>(&g_saveMenuConstructor)) &&
+      Hook("TitleMenuConstructor", 0x00584A40, reinterpret_cast<void*>(&TitleMenuConstructorDetour),
+           reinterpret_cast<void**>(&g_titleMenuConstructor)) &&
+      Hook("MenuMouseConfirm", 0x00583C00, reinterpret_cast<void*>(&InputQueryDetour),
+           reinterpret_cast<void**>(&g_inputQuery));
+  if (!slotsPatched) {
+    Log("QuickSave: 15-slot native save integration unavailable; original menu retained");
+  } else {
+    Log("QuickSave: native Save/Load menus expanded to 15 slots with extended sidecars");
+  }
   if (!game::CheckBytes(dispatcher) ||
       !Hook("RoomDispatcher", game::kRoomDispatcher,
             reinterpret_cast<void*>(&RoomDispatcherDetour),
@@ -377,7 +716,7 @@ bool InstallQuickSave() {
     Log("QuickSave: room dispatcher hook unavailable; F5/F6 disabled");
     return false;
   }
-  Log("QuickSave: F1/F5/F6/F8/F9 notifications active; F5/F6/F8 handled by window and render paths");
+  Log("QuickSave: F5/F6 open native Save/Load menus; mouse wheel/click enabled; Shift+F5/F6 keep immediate quick actions");
   return true;
 }
 

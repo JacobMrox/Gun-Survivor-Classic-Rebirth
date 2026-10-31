@@ -1,4 +1,4 @@
-// dinputhook.cpp
+ï»¿// dinputhook.cpp
 #pragma comment(lib, "dxguid.lib")
 #include <windows.h>
 #include <dinput.h>
@@ -39,7 +39,7 @@ static constexpr int VTI_DI_CreateDevice = 3;
 
 // IDirectInputDeviceA methods start after IUnknown (0..2):
 // GetDeviceData is later; safest is to hook by grabbing the vtable pointer and scanning known slots is overkill.
-// We¡¦ll use the standard DI7 layout index for GetDeviceData (works in most builds).
+// Weâ€™ll use the standard DI7 layout index for GetDeviceData (works in most builds).
 static constexpr int VTI_DID_GetDeviceData = 10; // Common DI7A layout (Acquire=7, Unacquire=8, GetDeviceState=9, GetDeviceData=10)
 
 // -------------------- CreateDevice detour --------------------
@@ -59,8 +59,12 @@ using DID_SetProperty_t = HRESULT(STDMETHODCALLTYPE*)(LPDIRECTINPUTDEVICEA, REFG
 static DID_SetProperty_t Real_SetProperty = nullptr;
 static LPDIRECTINPUTDEVICEA gMouseDevice = nullptr;
 static thread_local unsigned gMouseMotionEvents = 0;
+static volatile LONG gMouseLeftPressed = 0;
 void SurvivorPc_ResetMouseRead() { gMouseMotionEvents = 0; }
 unsigned SurvivorPc_MouseMotionEvents() { return gMouseMotionEvents; }
+bool SurvivorPc_ConsumeMouseLeftPress() {
+    return InterlockedExchange(&gMouseLeftPressed, 0) != 0;
+}
 
 
 static HRESULT STDMETHODCALLTYPE Hook_SetProperty(LPDIRECTINPUTDEVICEA This, REFGUID rguidProp, LPCDIPROPHEADER pdiph)
@@ -119,8 +123,12 @@ static HRESULT STDMETHODCALLTYPE Hook_GetDeviceData(
         const auto* data = reinterpret_cast<const unsigned char*>(rgdod);
         for (DWORD i = 0; i < *pdwInOut; ++i) {
             DWORD offset = 0;
+            DWORD value = 0;
             std::memcpy(&offset, data + i * cbObjectData, sizeof(offset));
+            std::memcpy(&value, data + i * cbObjectData + sizeof(DWORD), sizeof(value));
             if (offset == DIMOFS_X || offset == DIMOFS_Y) ++gMouseMotionEvents;
+            if (offset == DIMOFS_BUTTON0 && (value & 0x80))
+                InterlockedExchange(&gMouseLeftPressed, 1);
         }
     }
 
