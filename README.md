@@ -234,8 +234,10 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 * Add laser dot + trailer - Done (Jacob)
 * Add item pickup prompt option - Done (Jacob)
 * Blood Color option - Done (Jacob)
-* Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Fix enemy behaviour and animations - partially done (Trigger)
+* Fix Item shine/glitter effect interval - Done (Jacob)
+* Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
+* Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
 * Mod Support - Not yet
