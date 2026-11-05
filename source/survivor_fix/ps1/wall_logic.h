@@ -61,6 +61,24 @@ std::vector<DoorEvent> ParseDoorEvents(const uint8_t* data, size_t size);
 // (opposite to the PS1 one).
 bool InDoorEvent(const std::vector<DoorEvent>& doors, float x, float pcZ);
 
+// PS1 enemy placements from the room event file (enemy_spawn.c: 0x18-byte
+// entries, -1 ends: s16 type with bit 0x4000 = placed asleep, s16 killed-flag,
+// pos x/y/z, rot x/y/z u16). In ROOMENV.DAT they live in the encounters section
+// ([header[2], header[3])) right after the voice profiles that share the same
+// 24-byte layout. The PC game ignores this file; its own room data (the
+// translated build's) is used instead. Parses placement runs terminated by an
+// explicit -1, so voice records are never mistaken for placements.
+// Coordinates are PS1 space (x same as PC, z opposite).
+struct Placement {
+  int16_t type = 0;    // raw kind; bit 0x4000 = placed asleep
+  int16_t killedFlag = 0;
+  int32_t x = 0, y = 0, z = 0;
+  uint16_t rotX = 0, rotY = 0, rotZ = 0;
+};
+constexpr size_t kPlacementRecordSize = 0x18;
+constexpr uint16_t kPlacedAsleep = 0x4000;
+std::vector<Placement> ParsePlacements(const uint8_t* data, size_t size);
+
 // PC adaptation, not a PS1 behaviour: distance of the point (x, PC z) from the nearest PS1 wall. The player's
 // step against a mesh wall stays with the PS1 walls only where one is near: elsewhere (the side of the 08/02
 // ramp, no segment in ROOMENV) the mesh stays solid.

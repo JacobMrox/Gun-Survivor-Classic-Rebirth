@@ -11,6 +11,17 @@ int main() {
   CHECK(DeathSelector(10, 15, 15, 4, true) == 4);
   CHECK(DeathSelector(11, 2, 15, 4, true) == 4);
   CHECK(DeathSelector(11, 15, 1, 15, true) == 15);
+  // Sleep/alert gating (RoamStep: alert on gunfire or dist < 6001; the
+  // wrapper wakes on damage or proximity).
+  CHECK(ShouldWake(5999.0f, false));
+  CHECK(!ShouldWake(6000.0f, false));
+  CHECK(ShouldWake(9000.0f, true));
+  // Chase speed follows facing alignment (no sliding while turning).
+  CHECK(ChaseSpeedFactor(1.0f) == 1.0f);
+  CHECK(ChaseSpeedFactor(0.0f) == 0.0f);
+  CHECK(ChaseSpeedFactor(-0.5f) == 0.0f);
+  CHECK(ChaseSpeedFactor(2.0f) == 1.0f);
+  CHECK(ChaseSpeedFactor(0.5f) == 0.5f);
   CHECK(RoamAlert(1, 6000, false) == RoamTransition::Chase);
   CHECK(RoamAlert(1, 6001, false) == RoamTransition::None);
   CHECK(RoamAlert(1, 9000, true) == RoamTransition::Chase);

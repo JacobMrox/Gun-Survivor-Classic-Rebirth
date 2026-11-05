@@ -30,6 +30,7 @@ std::vector<ps1::Wall> g_enemyWalls;
 bool g_geometryReady = false;
 std::vector<ps1::Wall> g_walls;       // movement walls of the current room
 std::vector<ps1::VoiceProfile> g_voiceProfiles;
+std::vector<ps1::Placement> g_placements;  // PS1-original spawns (ROOMENV.DAT)
 std::vector<ps1::DoorEvent> g_doors;  // direct and optional scripted approach ranges (section 4)
 
 // Movement walls (800B60CC on the PS1) from the room's record in the PC ROOMENV.DAT:
@@ -39,6 +40,7 @@ void LoadWalls(int stage, int room) {
   g_enemyWalls.clear();
   g_doors.clear();
   g_voiceProfiles.clear();
+  g_placements.clear();
   g_geometryReady = false;
   uint32_t offset = 0;
   bool found = false;
@@ -70,11 +72,14 @@ void LoadWalls(int stage, int room) {
     ok = g_walls.empty() ||
          std::fread(g_walls.data(), sizeof(ps1::Wall), g_walls.size(), f) == g_walls.size();
   }
-  if (ok && g_config.ps1ZombieVoiceBanks && header[3]>header[2] && header[3]-header[2]<=65536) {
+  if (ok && header[3]>header[2] && header[3]-header[2]<=65536) {
     std::vector<uint8_t> encounters(header[3]-header[2]);
     if (std::fseek(f,static_cast<long>(offset+header[2]),SEEK_SET)==0 &&
-        std::fread(encounters.data(),1,encounters.size(),f)==encounters.size())
-      g_voiceProfiles=ps1::ParseVoiceProfiles(encounters.data(),encounters.size());
+        std::fread(encounters.data(),1,encounters.size(),f)==encounters.size()) {
+      g_placements = ps1::ParsePlacements(encounters.data(), encounters.size());
+      if (g_config.ps1ZombieVoiceBanks)
+        g_voiceProfiles = ps1::ParseVoiceProfiles(encounters.data(),encounters.size());
+    }
   }
   if (ok && header[5] > header[4] && header[5] - header[4] <= 0x1000) {
     // Section 4: original ranges of 80079A28; direct type 4 and scripted type 3.
@@ -109,9 +114,11 @@ void LoadWalls(int stage, int room) {
   g_geometryReady = true;
   const auto scripted = std::count_if(g_doors.begin(), g_doors.end(),
                                      [](const ps1::DoorEvent& event) { return event.scripted; });
-  Log("walls: room %02X/%02X, %u walls, %u enemy-only walls, %u doors", stage, room,
+  Log("walls: room %02X/%02X, %u walls, %u enemy-only walls, %u doors, %u placements",
+      stage, room,
       static_cast<unsigned>(g_walls.size()), static_cast<unsigned>(g_enemyWalls.size()),
-      static_cast<unsigned>(g_doors.size() - scripted));
+      static_cast<unsigned>(g_doors.size() - scripted),
+      static_cast<unsigned>(g_placements.size()));
   if (g_config.ps1ScriptedAccess)
     Log("access: room %02X/%02X, %u scripted approach ranges; native interaction checks retained",
         stage, room, static_cast<unsigned>(scripted));
@@ -135,6 +142,7 @@ const std::vector<ps1::DoorEvent>& CurrentRoomDoors() { return g_doors; }
 const std::vector<ps1::Wall>& CurrentEnemyOnlyWalls() { return g_enemyWalls; }
 bool CurrentRoomGeometryReady() { return g_geometryReady; }
 const std::vector<ps1::VoiceProfile>& CurrentRoomVoiceProfiles() { return g_voiceProfiles; }
+const std::vector<ps1::Placement>& CurrentRoomPlacements() { return g_placements; }
 bool IsCurrentRoom(int stage, int room) { return g_stage == stage && g_room == room; }
 
 bool InstallRoomWalls() {

@@ -315,6 +315,118 @@ int CerberusDeathMap(void* s, int request, int native) {
 
 void CerberusDeathDrawReady(bool ready) { g_cerberusDrawReady = ready; }
 
+// ---------------------------------------------------------------------------
+// Cerberus sleep/alert (PS1 RoamStep, 8010176C).
+// On the PC the dogs always run: the shared enemy update immediately issues
+// run requests (5/6). On the PS1 the dogs start placed/sleeping and only
+// switch to chase when the player fires with the sight on screen or comes
+// within 6000 (RoamStep). ROOMENV.DAT (the PS1-original data the PC game does
+// not read) carries no 0x4000 asleep flag for any Cerberus placement, so the
+// sleep is applied behaviourally: every PC type-11 dog starts asleep (lying
+// pose, selector 4 — the same lying clip dead dogs end in) and wakes on
+// damage (global howl alert, all dogs) or the player coming within 6000.
+// While asleep the native update still runs (hit/death processing, blood), but
+// its movement is cancelled: the heading is restored and the walk accumulation
+// (O+D4) is zeroed, so the dog stays where it spawned.
+namespace {
+
+struct Dog {
+  bool awake = false;
+  bool seen = false;
+  float lastHealth = 0.0f;
+};
+
+std::unordered_map<void*, Dog> g_cerberus;
+bool g_cerberusAlert = false;  // global howl alert (PS1 g_cerberusAlert)
+
+bool DogWakeAll(void* s) {
+  (void)s;
+  g_cerberusAlert = true;
+  for (auto& entry : g_cerberus) entry.second.awake = true;
+  Log("Ps1Cerberus: damage taken, global alert (howl); all dogs wake");
+  return false;
+}
+
+}  // namespace
+
+bool CerberusAwake(void* s) {
+  if (g_cerberusAlert) return true;
+  auto it = g_cerberus.find(s);
+  return it != g_cerberus.end() && it->second.awake;
+}
+
+int CerberusSleepMap(void* s, int request, int native) {
+  (void)request;
+  if (game::Read<int>(s, game::S::kType) != 11 || CerberusAwake(s)) return native;
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t) || game::Read<float>(o, game::O::kHealth) <= 0.0f) return native;
+  return 4;  // lying/sleep pose (the post-fall clip, death map still wins via health)
+}
+
+// Per-update gate (called before the native update for type 11). Returns true
+// while the dog should stay asleep; saves its heading for restoration. Wakes
+// the dog on damage (wakes all, like the PS1 global alert after gunfire) or
+// the player coming within 6000 (PS1 RoamStep). Gunfire-with-sight cannot be
+// observed from the wrapper, so damage is the proxy: the shot that matters is
+// the one that lands.
+bool CerberusHoldSleep(void* s, float& fx, float& fz) {
+  if (game::Read<int>(s, game::S::kType) != 11 || g_cerberusAlert) return false;
+  auto it = g_cerberus.find(s);
+  if (it != g_cerberus.end() && it->second.awake) return false;
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return false;  // cannot see it: keep native behavior
+  Dog& d = g_cerberus[s];
+  const float hp = game::Read<float>(o, game::O::kHealth);
+  if (!d.seen) {
+    d.seen = true;
+    d.lastHealth = hp;
+    const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
+    fx = fw[0];
+    fz = fw[2];
+    return true;
+  }
+  if (hp < d.lastHealth) {  // took a hit: global howl alert
+    d.lastHealth = hp;
+    return DogWakeAll(s);
+  }
+  d.lastHealth = hp;
+  if (ps1::cerberus::ShouldWake(Measure(o, t).distance, false)) {
+    d.awake = true;
+    Log("Ps1Cerberus: S=%p alerted by proximity (%.0f)", s, Measure(o, t).distance);
+    return false;
+  }
+  const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
+  fx = fw[0];
+  fz = fw[2];
+  return true;
+}
+
+// Post-update for type 11. Asleep: restore the saved heading and zero the walk
+// accumulation so the native movement does not creep. Awake: scale the walk
+// accumulation by the facing/player cosine, so the dog slows while it must
+// turn (no sliding during the approach, PS1-style steering).
+void CerberusFinishUpdate(void* s, bool wasAsleep, float fx, float fz) {
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return;
+  float* accum = game::Field<float>(o, game::O::kAccum);
+  if (wasAsleep) {
+    SetHeading(o, fx, fz);
+    accum[0] = accum[1] = accum[2] = 0.0f;
+    return;
+  }
+  const Geometry g = Measure(o, t);
+  if (g.distance <= 0.0f) return;
+  const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
+  const float factor = ps1::cerberus::ChaseSpeedFactor((fw[0] * g.toX + fw[2] * g.toZ) / g.distance);
+  accum[0] *= factor;
+  accum[2] *= factor;
+}
+
+void ResetCerberus() {
+  g_cerberus.clear();
+  g_cerberusAlert = false;
+}
+
 void UpdateCerberusDeath(void* s) {
   if (!g_cerberusDrawReady || game::Read<int>(s, game::S::kType) != 11) return;
   uint8_t *o, *t;
@@ -352,8 +464,8 @@ bool DeathLying(void* s) {
   return it != g_deaths.end() && !it->second.native && (it->second.rolled || it->second.frozen);
 }
 
-void ResetDeathActor(void* s) { g_deaths.erase(s); g_cerberusDeaths.erase(s); }
-void ResetDeaths() { g_deaths.clear(); g_cerberusDeaths.clear(); }
+void ResetDeathActor(void* s) { g_deaths.erase(s); g_cerberusDeaths.erase(s); g_cerberus.erase(s); }
+void ResetDeaths() { g_deaths.clear(); g_cerberusDeaths.clear(); ResetCerberus(); }
 
 bool InstallZombieDeath() {
   g_deathSound = nullptr;

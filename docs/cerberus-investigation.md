@@ -83,7 +83,31 @@ per-track completion/hold mechanism, and restores finished tracks after draw.
 The feature requires the byte-verified existing DrawModel hook; otherwise it
 falls back to the native mapper. It resets with native actor/room lifetime.
 
-The native Win32 build and isolated selector-gate tests pass. This is an
-experimental targeted correction, not a Cerberus AI replacement. It still
-requires tests for fall pose, kill counting, blood pool, off-screen corpses,
-multiple dogs, pause, scene changes and save/reload before acceptance.
+## Sleep/alert and approach (implemented candidate)
+
+ROOMENV.DAT placements were parsed and verified against the live game:
+room 03/09 has exactly the 4 Cerberus (type 11) placements the snapshot found,
+and no Cerberus placement in any of the 102 rooms carries the 0x4000 asleep
+bit. So the PS1 sleep is behavioural, not a spawn flag: dogs stay asleep (the
+same lying clip the dead dogs end in, selector 4) and only switch to chase on
+the PS1 RoamStep alert — the player fires with the sight on screen or comes
+within 6000. Gunfire cannot be observed from the wrapper, so damage is the
+proxy (a landed shot wakes all dogs, like the PS1 global alert); proximity is
+checked per dog against the 6000 threshold (PC units are the PS1 units: the
+voice/placement match is x identity, z negated).
+
+While asleep, the native update still runs (so hits, blood and death process
+natively), but the heading is restored and the walk accumulation (O+D4) is
+zeroed after each update, so the dog never creeps. Woken dogs chase natively
+again, plus two approach corrections: (1) the walk accumulation is scaled by
+the facing/player cosine, so the dog slows while it must turn and runs only
+when aimed (the PC's run-speed-while-turning produced the sliding); (2) the
+confirmed death-pose hold is unchanged.
+
+Still not implemented: the PS1 circling/wandering/leaping chase (ChaseStep),
+the howl animation on wake, and gunfire-with-sight waking dogs without a hit.
+The full PS1 Cerberus AI replacement remains outstanding.
+
+The native Win32 build and the isolated decision tests pass. This needs
+in-game validation: sleeping dogs stay put, wake on a shot or within 6000,
+chase without skating, and the death hold still works.

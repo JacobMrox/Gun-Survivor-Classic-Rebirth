@@ -164,6 +164,52 @@ std::vector<DoorEvent> ParseDoorEvents(const uint8_t* data, size_t size) {
   return doors;
 }
 
+std::vector<Placement> ParsePlacements(const uint8_t* data, size_t size) {
+  std::vector<Placement> out;
+  if (!data) return out;
+  auto reads = [data, size](size_t p) -> bool {
+    if (p + kPlacementRecordSize > size) return false;
+    uint16_t kind;
+    int32_t x, y, z;
+    std::memcpy(&kind, data + p, sizeof kind);
+    std::memcpy(&x, data + p + 4, sizeof x);
+    std::memcpy(&y, data + p + 8, sizeof y);
+    std::memcpy(&z, data + p + 12, sizeof z);
+    // Same sanity window as the standalone placement scan: kind below the flag
+    // region, room-sized coordinates. Voice records share the layout, but a
+    // voice record is never followed by the 0xFFFFFFFF terminator check below.
+    if ((kind & 0x8000) || (kind & 0x3FFF) >= 0x60) return false;
+    return x >= -30000 && x <= 30000 && z >= -30000 && z <= 30000 && y >= -5000 && y <= 5000;
+  };
+  size_t p = 0;
+  while (p + kPlacementRecordSize <= size) {
+    if (!reads(p)) {
+      p += 4;
+      continue;
+    }
+    size_t q = p;
+    while (reads(q)) q += kPlacementRecordSize;
+    uint32_t terminator = 0;
+    if (q + sizeof terminator <= size) std::memcpy(&terminator, data + q, sizeof terminator);
+    if (terminator == 0xFFFFFFFFu) {
+      for (size_t r = p; r < q; r += kPlacementRecordSize) {
+        Placement place;
+        std::memcpy(&place.type, data + r, sizeof place.type);
+        std::memcpy(&place.killedFlag, data + r + 2, sizeof place.killedFlag);
+        std::memcpy(&place.x, data + r + 4, sizeof place.x);
+        std::memcpy(&place.y, data + r + 8, sizeof place.y);
+        std::memcpy(&place.z, data + r + 12, sizeof place.z);
+        std::memcpy(&place.rotX, data + r + 16, sizeof place.rotX);
+        std::memcpy(&place.rotY, data + r + 18, sizeof place.rotY);
+        std::memcpy(&place.rotZ, data + r + 20, sizeof place.rotZ);
+        out.push_back(place);
+      }
+    }
+    p = q;
+  }
+  return out;
+}
+
 float DistanceToNearestWall(const std::vector<Wall>& walls, float x, float pcZ) {
   const double px = x, pz = -pcZ;
   double best = 1e30;

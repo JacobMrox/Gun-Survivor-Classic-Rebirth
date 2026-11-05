@@ -88,6 +88,7 @@ const std::vector<ps1::Wall>& CurrentEnemyOnlyWalls();
 bool IsCurrentRoom(int stage, int room);
 bool CurrentRoomGeometryReady();
 const std::vector<ps1::VoiceProfile>& CurrentRoomVoiceProfiles();
+const std::vector<ps1::Placement>& CurrentRoomPlacements();
 
 // Player (player.cpp): hooks 004609D0 (physics) and 004603F0 (rotation) for the PS1 movement, walls and view.
 bool InstallPlayer();

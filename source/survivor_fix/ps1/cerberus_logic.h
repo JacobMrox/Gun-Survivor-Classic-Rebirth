@@ -6,6 +6,22 @@
 
 namespace ps1::cerberus {
 
+// PS1 RoamStep (8010176C): roaming dogs switch to chase when the player fires
+// with the sight on screen, or when the player is closer than 6001. PC units
+// are the PS1 units (x identity, z negated only, per the voice/placement match).
+constexpr float kWakeDistance = 6000.0f;
+constexpr bool ShouldWake(float distance, bool damaged) {
+  return damaged || distance < kWakeDistance;
+}
+
+// PS1 chase never slides: while the dog must turn, its ground speed drops with
+// the facing/player misalignment (F_ROT_STEP along the heading, no lateral
+// drift). Scale the PC walk accumulation by the facing cosine instead; the dog
+// turns in place (no slide) when badly misaligned and runs when aimed.
+constexpr float ChaseSpeedFactor(float cosAngle) {
+  return cosAngle >= 1.0f ? 1.0f : (cosAngle <= 0.0f ? 0.0f : cosAngle);
+}
+
 enum class RoamTransition { None, Chase, ClosePlayer };
 
 // PC type 11 selects 15 for the fall, then selects 4 after the completion
