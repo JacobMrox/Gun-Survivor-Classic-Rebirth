@@ -66,6 +66,13 @@ void* g_saveMenuObject = nullptr;
 void* g_loadMenuObject = nullptr;
 enum class PendingMenu { None, Save, Load };
 PendingMenu g_pendingMenu = PendingMenu::None;
+// In-game F6 bookkeeping. g_inGameLoadMenu is set from the moment gameplay
+// requests the native Load menu until its modal controller returns, and
+// g_loadMenuSawSlots once the slot list (state 4) has actually been shown.
+// Together they let the tick detour release the controller on back-out
+// instead of parking on the title root over live gameplay.
+bool g_inGameLoadMenu = false;
+bool g_loadMenuSawSlots = false;
 
 using RoomDispatcherFn = void(__fastcall*)(void* gameObject, void* edx);
 RoomDispatcherFn g_roomDispatcher = nullptr;
@@ -243,9 +250,30 @@ void* __fastcall TitleMenuConstructorDetour(void* object, void* edx) {
     *game::Field<int>(result, 0x1C) = 1;
     *game::Field<int>(result, 0x20) = 1;
     g_openLoadMenu = false;
+    g_loadMenuSawSlots = true;
     Log("QuickSave: title menu entered directly at native Load Game slots");
   }
   return result;
+}
+
+using TitleMenuTickFn = void(__thiscall*)(void* menu);
+TitleMenuTickFn g_titleMenuTick = nullptr;
+
+void __fastcall TitleMenuTickDetour(void* menu, void*) {
+  g_titleMenuTick(menu);  // draw first (still the state the tick began in), then input
+  if (!g_inGameLoadMenu || !g_loadMenuSawSlots || !menu) return;
+  if (game::Read<int>(menu, 0x00) == 4) return;  // still on the slot list
+  auto* runFlag = reinterpret_cast<uint8_t*>(game::kMenuRunFlag);
+  if (*runFlag == 0) return;  // confirm or F9 is already leaving the controller
+  // Back-out from the in-game Load menu: the native controller would keep
+  // looping on the title root (states 1/2) over live gameplay and its BGM.
+  // The draw of this tick already ran for the slot list, so clearing the run
+  // flag returns to the room with no title frame in between.
+  *runFlag = 0;
+  g_inGameLoadMenu = false;
+  g_loadMenuSawSlots = false;
+  Log("QuickSave: in-game Load menu backed out at state %d; controller released to gameplay",
+      game::Read<int>(menu, 0x00));
 }
 
 bool NativeSaveMenuActive() {
@@ -332,9 +360,16 @@ bool OpenNativeMenu(bool save) {
     Notify("F5  SAVE MENU");
     Log("QuickSave: F5 requested native Save Game menu with a pre-transition extended snapshot");
   } else {
+    if (g_inGameLoadMenu) {
+      // The modal Load menu is already open; a second F6 must not queue
+      // another menu session behind the current one.
+      Log("QuickSave: F6 ignored because the in-game Load menu is already open");
+      return false;
+    }
     SurvivorPc_ConsumeMouseLeftPress();
     g_loadMenuObject = nullptr;
     g_openLoadMenu = true;
+    g_inGameLoadMenu = true;
     g_pendingMenu = PendingMenu::Load;
     Notify("F6  LOAD MENU");
     Log("QuickSave: F6 requested native Load Game menu");
@@ -484,10 +519,19 @@ int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
       Log("QuickSave: entering native modal menu controller at state %d", initialState);
       g_nativeMenuController(context, initialState);
       Log("QuickSave: native modal menu controller returned to gameplay");
+      // The controller frees its menu objects on exit; the mouse helpers must
+      // not keep the dangling pointers, and every modal session ends with the
+      // in-game Load bookkeeping cleared regardless of how it was left.
+      g_loadMenuObject = nullptr;
+      g_saveMenuObject = nullptr;
+      g_inGameLoadMenu = false;
+      g_loadMenuSawSlots = false;
     } else {
       g_openLoadMenu = false;
       g_skipSaveIntro = false;
       g_menuSaveStateValid = false;
+      g_inGameLoadMenu = false;
+      g_loadMenuSawSlots = false;
       Notify("SAVE/LOAD MENU CONTEXT UNAVAILABLE");
       Log("QuickSave: native modal menu context at game+35E0 was unavailable");
     }
@@ -593,10 +637,17 @@ bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
   // serialize and destroy the current room after RoomTick returns. Restoring
   // gameplay state before that cleanup lets the cleanup overwrite the save.
   *reinterpret_cast<int*>(kRoomArgument) = g_pendingReload.roomArgument;
-  *scene = g_pendingReload.scene;
+  // Scene 0 through 0x46C110 is the return-to-title sentinel, never a legal
+  // transition target. A zero scene (native-only slot, or a sidecar captured
+  // during the bootstrap) exits to the current room instead; the post-cleanup
+  // then parks kSceneId at 0 so the next dispatch runs the scene-0 bootstrap,
+  // which routes to the scene the restored native record itself names.
+  const int target =
+      g_pendingReload.scene != 0 ? g_pendingReload.scene : *reinterpret_cast<int*>(game::kSceneId);
+  *scene = target;
   g_reloadStage = ReloadStage::CleanupInProgress;
   Log("QuickSave: native room exit requested for scene %02X argument %d; restore deferred until cleanup",
-      g_pendingReload.scene, g_pendingReload.roomArgument);
+      target, g_pendingReload.roomArgument);
   return true;
 }
 
@@ -663,17 +714,53 @@ bool QuickSaveConsumeRoomEntry() {
 
 void QuickSaveOnNativeLoad(int slot, bool succeeded) {
   if (!succeeded || slot < 0 || slot >= 15) return;
-  QuickState state;
-  if (!ReadStateFile(SlotStatePath(slot), &state)) {
-    Log("QuickSave: native slot %d has no valid extended sidecar; native state kept", slot + 1);
-    return;
-  }
-  g_pendingReload = state;
-  g_reloadStage = ReloadStage::NativeLoadQueued;
+  void* gameObject = *reinterpret_cast<void**>(game::kGameState);
+  void* stats = *reinterpret_cast<void**>(game::kGameStats);
+  // Computed before the menu flags are cleared: the in-game F6 confirm runs
+  // with kMainState 6, the title confirm with kMainState 3.
+  const bool inGame =
+      g_inGameLoadMenu || (gameObject && game::Read<uint8_t>(gameObject, game::kMainState) == 6);
+  g_inGameLoadMenu = false;
+  g_loadMenuSawSlots = false;
   char notice[48] = {};
   _snprintf_s(notice, _TRUNCATE, "SLOT %d  LOADING", slot + 1);
   Notify(notice);
-  Log("QuickSave: native slot %d queued extended state for scene %02X", slot + 1, state.scene);
+  QuickState state;
+  if (ReadStateFile(SlotStatePath(slot), &state)) {
+    g_pendingReload = state;
+    // In-game loads ride the Shift+F6 reload machinery (fade, room exit,
+    // post-cleanup restore); the title confirm keeps the pre-construction
+    // queue that the scene-0 bootstrap consumes.
+    g_reloadStage = inGame ? ReloadStage::Requested : ReloadStage::NativeLoadQueued;
+    Log("QuickSave: native slot %d queued extended state for scene %02X (%s)", slot + 1,
+        state.scene, inGame ? "in-game reload" : "title bootstrap");
+    return;
+  }
+  // Native-only slot: no valid QSV1 sidecar. No save format stores the scene,
+  // so an in-game load cannot name a room directly; it captures the record the
+  // native loader just read and drops through the vanilla scene-0 bootstrap,
+  // which routes to the scene that record names, exactly like a title load.
+  if (!inGame || !stats || !gameObject) {
+    Log("QuickSave: native slot %d has no valid extended sidecar; native state kept", slot + 1);
+    return;
+  }
+  g_pendingReload = QuickState{};
+  std::memcpy(g_pendingReload.saveRecord.data(), game::Field<uint8_t>(stats, game::kLiveSaveRecord),
+              g_pendingReload.saveRecord.size());
+  g_pendingReload.playerHp = game::Read<int>(stats, game::kGameStatsHp);
+  g_pendingReload.difficulty = *game::Field<uint8_t>(
+      stats, game::kSlotRecords + slot * game::kSlotRecordSize + game::kSlotRecordDifficulty);
+  // roomState, player and zombies stay zero: a native-only slot carries no
+  // room, player or enemy state, so the room restarts as a fresh title load.
+  g_pendingReload.scene = 0;
+  g_pendingReload.roomArgument = 0;
+  g_pendingReload.playerValid = 0;
+  g_pendingReload.zombieCount = 0;
+  g_pendingReload.checksum = Checksum(g_pendingReload);
+  g_reloadStage = ReloadStage::Requested;
+  Log("QuickSave: native slot %d has no sidecar; in-game reload captured the native record "
+      "(difficulty %u) and falls back to the scene-0 bootstrap",
+      slot + 1, g_pendingReload.difficulty);
 }
 
 bool InstallQuickSave() {
@@ -715,6 +802,14 @@ bool InstallQuickSave() {
             reinterpret_cast<void**>(&g_roomDispatcher))) {
     Log("QuickSave: room dispatcher hook unavailable; F5/F6 disabled");
     return false;
+  }
+  // Bug 1 fix: release the modal controller when the in-game Load menu is
+  // backed out of, so it cannot park on the title root over live gameplay.
+  if (!game::CheckBytes({game::kTitleMenuTick, game::kTitleMenuTickBytes,
+                         sizeof(game::kTitleMenuTickBytes)}) ||
+      !Hook("TitleMenuTick", game::kTitleMenuTick, reinterpret_cast<void*>(&TitleMenuTickDetour),
+            reinterpret_cast<void**>(&g_titleMenuTick))) {
+    Log("QuickSave: title menu tick hook unavailable; in-game Load menu back-out keeps native behaviour");
   }
   Log("QuickSave: F5/F6 open native Save/Load menus; mouse wheel/click enabled; Shift+F5/F6 keep immediate quick actions");
   return true;

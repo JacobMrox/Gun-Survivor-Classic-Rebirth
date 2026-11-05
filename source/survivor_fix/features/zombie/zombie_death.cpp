@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "../../ps1/death_logic.h"
+#include "../../ps1/cerberus_logic.h"
 
 namespace sf::features::zombie {
 
@@ -56,6 +57,8 @@ struct Death {
   std::vector<bool> moved, done;
 };
 std::unordered_map<void*, Death> g_deaths;
+std::unordered_map<void*, Death> g_cerberusDeaths;
+bool g_cerberusDrawReady = false;
 bool g_deathReady = false;  // bytes of 00464FA0 and of its call verified
 using DeathSoundFn = unsigned(__fastcall*)(void* manager, void* edx, int family, int cue);
 DeathSoundFn g_deathSound = nullptr;
@@ -287,6 +290,12 @@ void UpdateDeath(void* s, Entry& e) {
 // After every draw of the model (DrawModelDetour): the finished tracks do not advance. Only for the zombies
 // updated recently (the entries of a room left behind point to freed memory).
 void DeathAfterDraw(void* s) {
+  auto dog = g_cerberusDeaths.find(s);
+  uint8_t *dogObject, *dogTarget;
+  if (dog != g_cerberusDeaths.end() && GetTickCount() - dog->second.seen <= kAliveMs &&
+      GetObjects(s, dogObject, dogTarget)) {
+    HoldDone(dogObject, dog->second);
+  }
   auto it = g_deaths.find(s);
   uint8_t *o, *t;
   if (it == g_deaths.end() || it->second.native || GetTickCount() - it->second.seen > kAliveMs ||
@@ -296,6 +305,46 @@ void DeathAfterDraw(void* s) {
   HoldDone(o, it->second);
 }
 
+int CerberusDeathMap(void* s, int request, int native) {
+  auto it = g_cerberusDeaths.find(s);
+  const bool ownsTracks = it != g_cerberusDeaths.end() && it->second.tracks > 0 &&
+                          GetTickCount() - it->second.seen <= kAliveMs;
+  return ps1::cerberus::DeathSelector(game::Read<int>(s, game::S::kType), request,
+      game::Read<int>(s, game::S::kSelector), native, ownsTracks);
+}
+
+void CerberusDeathDrawReady(bool ready) { g_cerberusDrawReady = ready; }
+
+void UpdateCerberusDeath(void* s) {
+  if (!g_cerberusDrawReady || game::Read<int>(s, game::S::kType) != 11) return;
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) { g_cerberusDeaths.erase(s); return; }
+  const int request = game::Read<int>(s, game::S::kRequest);
+  if (game::Read<float>(o, game::O::kHealth) > 0.0f || !IsDeath(request)) {
+    g_cerberusDeaths.erase(s);
+    return;
+  }
+  if (game::Read<int>(s, game::S::kSelector) != 15) return;
+  auto [it, inserted] = g_cerberusDeaths.try_emplace(s);
+  Death& d = it->second;
+  d.seen = GetTickCount();
+  if (inserted) {
+    StartClipTracks(o, d);
+    if (!d.tracks) { g_cerberusDeaths.erase(it); return; }
+    RegisterCerberusDeathDraw(s);
+    Log("Ps1CerberusDeath: S=%p holding fall selector 0F", s);
+    return;
+  }
+  if (d.frozen) { HoldDone(o, d); return; }
+  if (!TracksFinished(o, d, ++d.step > kStaticUpdates * 2)) return;
+  d.frozen = true;
+  for (int k = 0; k < d.tracks; ++k)
+    if (!d.done[k])
+      std::memcpy(d.held.data() + k * game::M::kTrackSize, d.prev.data() + k * game::M::kTrackSize, game::M::kTrackSize);
+  std::fill(d.done.begin(), d.done.end(), true);
+  HoldDone(o, d);
+}
+
 // 801032CC substate 3: E+320 |= 1 when entering the pose on the ground (after the roll of 0x12/0x13), and
 // 80081C80 / 80081618 no longer touch the body.
 bool DeathLying(void* s) {
@@ -303,8 +352,8 @@ bool DeathLying(void* s) {
   return it != g_deaths.end() && !it->second.native && (it->second.rolled || it->second.frozen);
 }
 
-void ResetDeathActor(void* s) { g_deaths.erase(s); }
-void ResetDeaths() { g_deaths.clear(); }
+void ResetDeathActor(void* s) { g_deaths.erase(s); g_cerberusDeaths.erase(s); }
+void ResetDeaths() { g_deaths.clear(); g_cerberusDeaths.clear(); }
 
 bool InstallZombieDeath() {
   g_deathSound = nullptr;

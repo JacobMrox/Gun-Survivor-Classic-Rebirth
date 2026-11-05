@@ -283,11 +283,12 @@ int __fastcall MapAnimDetour(void* s, void* edx, int request) {
     if (g_config.ps1ZombieDeath && held != g_entries.end() && held->second.phase == Phase::Death) {
       return SelectorOf(held->second);
     }
-    return native;
+    return CerberusDeathMap(s, request, native);
   }
   request = HitMapRequest(s, request);  // hit without PC reaction: the request from before
   g_blendModel = nullptr;  // the PS1 blend applies only to the application of this request
-  return ApplyPendingBlend(s, ApplyBiteClip(s, request, ApplyWalkHold(s, request, MapAnimInner(s, edx, request))));
+  const int native = ApplyPendingBlend(s, ApplyBiteClip(s, request, ApplyWalkHold(s, request, MapAnimInner(s, edx, request))));
+  return CerberusDeathMap(s, request, native);
 }
 
 // The same entry check as 0043A8A0 (game.h, kUpdateGateCall): outside gameplay (cut-scenes, menus) or
@@ -390,6 +391,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   const HitGate hit = HitBefore(s);
   WalkAudioBefore(s);
   const int result = UpdateWithNavigation(s, edx);
+  UpdateCerberusDeath(s);
   HitAfter(s, hit);
   if (partner) *partner = savedPartner;
   BiteAfter(s, bite);

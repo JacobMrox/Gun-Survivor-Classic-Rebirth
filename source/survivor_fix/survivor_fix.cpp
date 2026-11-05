@@ -87,10 +87,8 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
   ApplyItemGlitterCadence();
   if (c.ps1ZombieShadowSize) InstallPs1ZombieShadowSize();
   if (c.exitCrashFix) InstallExitCrashFix();
-  if (c.ps1ZombieWorld || c.ps1ZombieStumble || c.ps1ZombieBackFall || c.ps1ZombieNavigation || c.ps1ZombieWalk ||
-      c.ps1ZombieSpeed || c.ps1ZombieBite || c.ps1ZombiePush || c.ps1ZombieHit || c.ps1ZombieDeath ||
-      c.ps1ZombiePose || c.ps1ZombieBlood || c.ps1ZombieBlend) {
-    InstallZombies();
-  }
+  // The Cerberus death-pose correction is mandatory; its checked hooks also
+  // provide the existing optional zombie features.
+  InstallZombies();
   Log("Survivor Fix: ready");
 }

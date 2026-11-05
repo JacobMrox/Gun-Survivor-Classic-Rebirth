@@ -81,7 +81,7 @@ bool StillOwns(void* s, const void* m) {
   unsigned n = 0;
   if (!read(model + game::M::kTracks, &tracks, sizeof tracks) || !read(model + game::M::kTrackCount, &n, sizeof n))
     return false;
-  for (unsigned k = 0; tracks && k < n && k < 8; ++k)
+  for (unsigned k = 0; tracks && k < n && k < 64; ++k)
     if (tracks + k * game::M::kTrackSize == m) return true;
   return false;
 }
@@ -183,6 +183,18 @@ void ResetPoseRoom() {
   g_subjectByDrawn.clear();
 }
 
+void RegisterCerberusDeathDraw(void* s) {
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return;
+  auto* m = game::Read<uint8_t*>(o, game::O::kModel);
+  if (!m) return;
+  auto* tracks = game::Read<uint8_t*>(m, game::M::kTracks);
+  unsigned count = game::Read<unsigned>(m, game::M::kTrackCount);
+  if (!tracks || count == 0 || count > 64) return;
+  g_subjectByDrawn[m] = s;
+  for (unsigned i = 0; i < count; ++i) g_subjectByDrawn[tracks + i * game::M::kTrackSize] = s;
+}
+
 void UpdatePose(void* s, const Entry& e) {
   if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return;
   uint8_t *o, *t;
@@ -215,14 +227,15 @@ void UpdatePose(void* s, const Entry& e) {
 }
 
 bool InstallZombiePose() {
-  if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return false;
   if (!game::CheckBytes({game::kDrawModel, game::kDrawModelBytes, sizeof(game::kDrawModelBytes)})) {
     Log("Ps1ZombiePose: unexpected bytes at %08X, PS1 pose off", static_cast<unsigned>(game::kDrawModel));
     g_config.ps1ZombiePose = false;
     return false;
   }
-  return Hook("DrawModel", game::kDrawModel, reinterpret_cast<void*>(&DrawModelDetour),
-              reinterpret_cast<void**>(&g_drawModel));
+  const bool ready = Hook("DrawModel", game::kDrawModel, reinterpret_cast<void*>(&DrawModelDetour),
+                          reinterpret_cast<void**>(&g_drawModel));
+  CerberusDeathDrawReady(ready);
+  return ready;
 }
 
 }  // namespace sf::features::zombie

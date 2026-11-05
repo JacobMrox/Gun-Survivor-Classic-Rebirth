@@ -281,6 +281,20 @@ constexpr size_t kGameStatsSize = 0x3D0;
 // room/event persistence block, before the state machine at 0x351C.
 constexpr size_t kPersistentRoomState = 0x2D30;
 constexpr size_t kPersistentRoomStateSize = 0x3500 - kPersistentRoomState;
+// 00584A70: __thiscall(menu), the modal menu controller tick (only caller
+// 00589851): draw via 00584C90 first, then input via 00585150, so the frame
+// presented after a tick always shows the state the tick began in.
+constexpr uintptr_t kTitleMenuTick = 0x00584A70;
+inline constexpr uint8_t kTitleMenuTickBytes[] = {0x56, 0x8B, 0xF1, 0xE8, 0x18, 0x02, 0x00, 0x00};
+// Modal menu controller run flag: 1 keeps 005896B0 looping, 0 makes it return
+// to its caller. The confirm and F9 paths clear it; the back-out paths do not.
+constexpr uintptr_t kMenuRunFlag = 0x005E0D08;
+// 15 x 0x34-byte slot metadata records inside [kGameStats] (005FD0DC), starting
+// at +0x90: +0x00 empty flag, +0x2C checksum, +0x30 difficulty. The menu confirm
+// reads the difficulty of the one-based selection at +0x8C + sel*0x34.
+constexpr size_t kSlotRecords = 0x90;
+constexpr size_t kSlotRecordSize = 0x34;
+constexpr size_t kSlotRecordDifficulty = 0x30;
 // 0042C3D0: __thiscall(hud), RET: draws the room HUD (crosshair, CONDITION 0042C160, weapons).
 constexpr uintptr_t kDrawHud = 0x0042C3D0;
 inline constexpr uint8_t kDrawHudBytes[] = {0x56, 0x57, 0x8B, 0xF9, 0x8A, 0x47, 0x28, 0x84};
