@@ -26,11 +26,359 @@
 #include "d3dx8tex.h"
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <vector>
 
 extern HMODULE g_hWrapperModule;
 
 namespace {
 IDirect3DTexture8* gEnemySurfaceTextures[3] = {};
+LONG gShadowTraceCount = 0;
+bool gShadowStencilStarted = false;
+bool gShadowStencilPending = false;
+
+struct ShadowVertex { float x, y, z; };
+std::vector<ShadowVertex> gShadowCasterTriangles;
+
+ShadowVertex TransformPoint(const ShadowVertex& p, const D3DMATRIX& m)
+{
+	const float* a = reinterpret_cast<const float*>(&m);
+	return {
+		p.x * a[0] + p.y * a[4] + p.z * a[8]  + a[12],
+		p.x * a[1] + p.y * a[5] + p.z * a[9]  + a[13],
+		p.x * a[2] + p.y * a[6] + p.z * a[10] + a[14]
+	};
+}
+
+void AppendShadowPrism(std::vector<ShadowVertex>& out, ShadowVertex a, ShadowVertex b, ShadowVertex c)
+{
+	// Survivor's animated model coordinates become more negative above the
+	// floor. Extend toward +Y through the stage; the depth/stencil test clips
+	// the volume to whatever 3D stage surface actually receives it.
+	ShadowVertex ae = a, be = b, ce = c;
+	ae.y += 100000.0f; be.y += 100000.0f; ce.y += 100000.0f;
+	const ShadowVertex v[] = {
+		a,b,c, ce,be,ae,
+		a,b,be, a,be,ae,
+		b,c,ce, b,ce,be,
+		c,a,ae, c,ae,ce
+	};
+	out.insert(out.end(), std::begin(v), std::end(v));
+}
+
+bool AddDynamicShadowVolume(IDirect3DDevice8* device, UINT startVertex, UINT primitiveCount)
+{
+	static LONG diagnostic = 0;
+	const bool log = InterlockedIncrement(&diagnostic) <= 4;
+	IDirect3DVertexBuffer8* vb = nullptr;
+	UINT stride = 0;
+	const HRESULT streamHr = device->GetStreamSource(0, &vb, &stride);
+	if (FAILED(streamHr) || !vb || stride < 12) {
+		if (log) sf::Log("DynamicShadow volume rejected: stream hr=%08lX vb=%p stride=%u", streamHr, vb, stride);
+		if (vb) vb->Release();
+		return false;
+	}
+	BYTE* data = nullptr;
+	const HRESULT lockHr = vb->Lock(0, 0, &data, D3DLOCK_READONLY);
+	if (FAILED(lockHr) || !data) {
+		if (log) sf::Log("DynamicShadow volume rejected: VB lock hr=%08lX", lockHr);
+		vb->Release(); return false;
+	}
+	D3DMATRIX world{};
+	device->GetTransform(D3DTS_WORLD, &world);
+	std::vector<ShadowVertex> volume;
+	volume.reserve(static_cast<size_t>(primitiveCount) * 3);
+	for (UINT i = 0; i < primitiveCount; ++i) {
+		const BYTE* tri = data + static_cast<size_t>(startVertex + i * 3) * stride;
+		ShadowVertex a{}, b{}, c{};
+		std::memcpy(&a, tri, 12); std::memcpy(&b, tri + stride, 12); std::memcpy(&c, tri + stride * 2, 12);
+		volume.push_back(TransformPoint(a, world));
+		volume.push_back(TransformPoint(b, world));
+		volume.push_back(TransformPoint(c, world));
+	}
+	if (log && !volume.empty()) {
+		float minX=volume[0].x,minY=volume[0].y,minZ=volume[0].z,maxX=minX,maxY=minY,maxZ=minZ;
+		// Only the first six vertices are the original/extruded first triangle;
+		// report them explicitly to identify axis direction and double transforms.
+		for (size_t i=0; i<volume.size(); ++i) {
+			minX=(std::min)(minX,volume[i].x); minY=(std::min)(minY,volume[i].y); minZ=(std::min)(minZ,volume[i].z);
+			maxX=(std::max)(maxX,volume[i].x); maxY=(std::max)(maxY,volume[i].y); maxZ=(std::max)(maxZ,volume[i].z);
+		}
+		sf::Log("DynamicShadow bounds: worldT=%.1f,%.1f,%.1f bounds=%.1f..%.1f %.1f..%.1f %.1f..%.1f first=%.1f,%.1f,%.1f",
+			reinterpret_cast<const float*>(&world)[12], reinterpret_cast<const float*>(&world)[13], reinterpret_cast<const float*>(&world)[14],
+			minX,maxX,minY,maxY,minZ,maxZ,volume[0].x,volume[0].y,volume[0].z);
+	}
+	vb->Unlock(); vb->Release();
+	if (volume.empty()) return false;
+	gShadowCasterTriangles.insert(gShadowCasterTriangles.end(), volume.begin(), volume.end());
+	gShadowStencilPending = true;
+	return true;
+
+	// Legacy per-triangle prism renderer retained below temporarily for source
+	// comparison; coherent silhouette submission now occurs at flush time.
+	DWORD state = 0;
+	const HRESULT stateHr = device->CreateStateBlock(D3DSBT_ALL, &state);
+	if (FAILED(stateHr)) { if (log) sf::Log("DynamicShadow volume rejected: state block hr=%08lX", stateHr); return false; }
+	if (!gShadowStencilStarted) {
+		IDirect3DSurface8* depth = nullptr;
+		D3DSURFACE_DESC8 desc{};
+		if (SUCCEEDED(device->GetDepthStencilSurface(&depth)) && depth) { depth->GetDesc(&desc); depth->Release(); }
+		const HRESULT clearHr = device->Clear(0, nullptr, D3DCLEAR_STENCIL, 0, 1.0f, 0);
+		if (log) sf::Log("DynamicShadow stencil: format=%u clear=%08lX triangles=%u volumeVertices=%u",
+			static_cast<unsigned>(desc.Format), clearHr, primitiveCount, static_cast<unsigned>(volume.size()));
+		if (FAILED(clearHr)) {
+			device->DeleteStateBlock(state);
+			return false;
+		}
+		gShadowStencilStarted = true;
+	}
+	D3DMATRIX identity = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	device->SetTransform(D3DTS_WORLD, &identity);
+	device->SetVertexShader(D3DFVF_XYZ);
+	device->SetPixelShader(0);
+	device->SetTexture(0, nullptr);
+	device->SetRenderState(D3DRS_LIGHTING, FALSE);
+	device->SetRenderState(D3DRS_ZENABLE, TRUE);
+	device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+	device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+	device->SetRenderState(D3DRS_COLORWRITEENABLE, 0);
+	device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+	device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+	device->SetRenderState(D3DRS_STENCILREF, 0);
+	device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
+	device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
+	device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+	device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+	device->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
+	device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_INCRSAT);
+	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, static_cast<UINT>(volume.size() / 3), volume.data(), sizeof(ShadowVertex));
+	device->SetRenderState(D3DRS_CULLMODE, D3DCULL_CW);
+	device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_DECRSAT);
+	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, static_cast<UINT>(volume.size() / 3), volume.data(), sizeof(ShadowVertex));
+	device->ApplyStateBlock(state);
+	device->DeleteStateBlock(state);
+	gShadowStencilPending = true;
+	if (log) sf::Log("DynamicShadow volume submitted; overlay pending");
+	return true;
+}
+
+struct ShadowPointKey {
+	int x, y, z;
+	bool operator<(const ShadowPointKey& r) const {
+		if (x != r.x) return x < r.x; if (y != r.y) return y < r.y; return z < r.z;
+	}
+};
+ShadowPointKey PointKey(const ShadowVertex& v) {
+	// Animated seams can differ by a tiny fraction after bone transforms.
+	return {static_cast<int>(std::lround(v.x * 0.25f)), static_cast<int>(std::lround(v.y * 0.25f)),
+	        static_cast<int>(std::lround(v.z * 0.25f))};
+}
+struct ShadowEdgeKey {
+	ShadowPointKey a, b;
+	bool operator<(const ShadowEdgeKey& r) const { return a < r.a || (!(r.a < a) && b < r.b); }
+};
+struct ShadowEdgeInfo { int front = 0, back = 0; ShadowVertex a{}, b{}; };
+
+bool SubmitCoherentShadowVolume(IDirect3DDevice8* device)
+{
+	if (gShadowCasterTriangles.empty()) return false;
+	std::map<ShadowEdgeKey, ShadowEdgeInfo> edges;
+	std::vector<ShadowVertex> volume;
+	volume.reserve(gShadowCasterTriangles.size() * 4);
+	auto extrude = [](ShadowVertex v) { v.y += 100000.0f; return v; };
+	auto edge = [&](ShadowVertex a, ShadowVertex b, bool front) {
+		ShadowPointKey ka = PointKey(a), kb = PointKey(b);
+		bool reverse = kb < ka;
+		ShadowEdgeKey key{reverse ? kb : ka, reverse ? ka : kb};
+		auto& e = edges[key];
+		if (front) { ++e.front; e.a = a; e.b = b; } else ++e.back;
+	};
+	unsigned frontFaces = 0;
+	for (size_t i = 0; i + 2 < gShadowCasterTriangles.size(); i += 3) {
+		const ShadowVertex a=gShadowCasterTriangles[i], b=gShadowCasterTriangles[i+1], c=gShadowCasterTriangles[i+2];
+		const float abx=b.x-a.x, abz=b.z-a.z, acx=c.x-a.x, acz=c.z-a.z;
+		const float normalY = abz*acx - abx*acz;
+		const bool front = normalY < 0.0f;
+		edge(a,b,front); edge(b,c,front); edge(c,a,front);
+		if (front) {
+			++frontFaces;
+			const ShadowVertex ae=extrude(a), be=extrude(b), ce=extrude(c);
+			const ShadowVertex caps[] = {a,b,c, ce,be,ae};
+			volume.insert(volume.end(), std::begin(caps), std::end(caps));
+		}
+	}
+	unsigned silhouetteEdges = 0;
+	for (const auto& item : edges) {
+		const auto& e = item.second;
+		if (!e.front || (!e.back && e.front > 1)) continue;
+		++silhouetteEdges;
+		const ShadowVertex ae=extrude(e.a), be=extrude(e.b);
+		const ShadowVertex side[] = {e.a,e.b,be, e.a,be,ae};
+		volume.insert(volume.end(), std::begin(side), std::end(side));
+	}
+	gShadowCasterTriangles.clear();
+	if (volume.empty()) return false;
+	DWORD state=0; if (FAILED(device->CreateStateBlock(D3DSBT_ALL,&state))) return false;
+	const HRESULT clearHr=device->Clear(0,nullptr,D3DCLEAR_STENCIL,0,1.0f,0);
+	if (FAILED(clearHr)) { device->DeleteStateBlock(state); return false; }
+	D3DMATRIX identity={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+	device->SetTransform(D3DTS_WORLD,&identity); device->SetVertexShader(D3DFVF_XYZ); device->SetPixelShader(0);
+	device->SetTexture(0,nullptr); device->SetRenderState(D3DRS_LIGHTING,FALSE);
+	device->SetRenderState(D3DRS_ZENABLE,TRUE); device->SetRenderState(D3DRS_ZWRITEENABLE,FALSE);
+	device->SetRenderState(D3DRS_ALPHABLENDENABLE,FALSE); device->SetRenderState(D3DRS_COLORWRITEENABLE,0);
+	device->SetRenderState(D3DRS_STENCILENABLE,TRUE); device->SetRenderState(D3DRS_STENCILFUNC,D3DCMP_ALWAYS);
+	device->SetRenderState(D3DRS_STENCILMASK,0xFFFFFFFF); device->SetRenderState(D3DRS_STENCILWRITEMASK,0xFFFFFFFF);
+	device->SetRenderState(D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP); device->SetRenderState(D3DRS_STENCILPASS,D3DSTENCILOP_KEEP);
+	// Capped z-fail is stable even when the camera/near plane intersects a long
+	// enemy shadow volume; z-pass cancelled in those common first-person views.
+	device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CCW); device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_INCRSAT);
+	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,static_cast<UINT>(volume.size()/3),volume.data(),sizeof(ShadowVertex));
+	device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CW); device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_DECRSAT);
+	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,static_cast<UINT>(volume.size()/3),volume.data(),sizeof(ShadowVertex));
+	device->ApplyStateBlock(state); device->DeleteStateBlock(state);
+	static LONG logged=0; if (InterlockedIncrement(&logged)<=4)
+		sf::Log("DynamicShadow coherent volume: frontFaces=%u silhouetteEdges=%u vertices=%u",frontFaces,silhouetteEdges,static_cast<unsigned>(volume.size()));
+	return true;
+}
+
+void FlushDynamicShadowStencil(IDirect3DDevice8* device)
+{
+	static LONG flushDiagnostic = 0;
+	if (!gShadowStencilPending || SurvivorPc_IsDynamicShadow()) return;
+	gShadowStencilPending = false;
+	gShadowStencilStarted = false;
+	if (!SubmitCoherentShadowVolume(device)) return;
+	DWORD state = 0;
+	if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &state))) return;
+	D3DVIEWPORT8 vp{}; device->GetViewport(&vp);
+	struct V { float x,y,z,rhw; DWORD color; };
+	const float l = static_cast<float>(vp.X), t = static_cast<float>(vp.Y);
+	const float r = l + vp.Width, b = t + vp.Height;
+	const V q[] = {{l,t,0,1,0x58000000},{r,t,0,1,0x58000000},{l,b,0,1,0x58000000},
+	               {l,b,0,1,0x58000000},{r,t,0,1,0x58000000},{r,b,0,1,0x58000000}};
+	device->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+	device->SetPixelShader(0); device->SetTexture(0, nullptr);
+	device->SetRenderState(D3DRS_ZENABLE, FALSE);
+	device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+	device->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
+	device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+	device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+	device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_NOTEQUAL);
+	device->SetRenderState(D3DRS_STENCILREF, 0);
+	device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+	device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+	device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+	device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+	device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, q, sizeof(V));
+	if (InterlockedIncrement(&flushDiagnostic) <= 4) sf::Log("DynamicShadow stencil overlay submitted");
+	device->Clear(0, nullptr, D3DCLEAR_STENCIL, 0, 1.0f, 0);
+	device->ApplyStateBlock(state); device->DeleteStateBlock(state);
+}
+
+void TraceDynamicShadowDraw(IDirect3DDevice8* device, const char* kind, UINT vertices, UINT primitives)
+{
+	if (!device || InterlockedIncrement(&gShadowTraceCount) > 24) return;
+	DWORD shader = 0;
+	UINT stride = 0, base = 0;
+	IDirect3DVertexBuffer8* vb = nullptr;
+	IDirect3DIndexBuffer8* ib = nullptr;
+	device->GetVertexShader(&shader);
+	device->GetStreamSource(0, &vb, &stride);
+	device->GetIndices(&ib, &base);
+	sf::Log("DynamicShadow trace: %s vertices=%u primitives=%u FVF/shader=%08lX stride=%u VB=%p IB=%p base=%u",
+		kind, vertices, primitives, shader, stride, vb, ib, base);
+	if (vb) vb->Release();
+	if (ib) ib->Release();
+}
+
+void ApplySmoothModelLighting(IDirect3DDevice8* device)
+{
+	if (!device || !SurvivorPc_SmoothModelLighting() || !SurvivorPc_IsModelDraw())
+		return;
+	// Apply at the animated draw, rather than only when the engine initially
+	// enables lighting. Bone transforms can contain scale, so normalization is
+	// required after each world transform; Gouraud interpolation preserves the
+	// model's vertex normals instead of presenting a flat face colour.
+	device->SetRenderState(D3DRS_NORMALIZENORMALS, TRUE);
+	device->SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
+}
+
+struct DynamicShadowState {
+	DWORD lighting, alphaBlend, alphaTest, srcBlend, dstBlend, zWrite, zBias, cull, factor;
+	DWORD colorOp, colorArg1, alphaOp, alphaArg1;
+	IDirect3DBaseTexture8* texture;
+	D3DMATRIX world;
+};
+
+bool BeginDynamicShadowDraw(IDirect3DDevice8* device, DynamicShadowState& s)
+{
+	if (!device || !SurvivorPc_IsDynamicShadow()) return false;
+	device->GetRenderState(D3DRS_LIGHTING, &s.lighting);
+	device->GetRenderState(D3DRS_ALPHABLENDENABLE, &s.alphaBlend);
+	device->GetRenderState(D3DRS_ALPHATESTENABLE, &s.alphaTest);
+	device->GetRenderState(D3DRS_SRCBLEND, &s.srcBlend);
+	device->GetRenderState(D3DRS_DESTBLEND, &s.dstBlend);
+	device->GetRenderState(D3DRS_ZWRITEENABLE, &s.zWrite);
+	device->GetRenderState(static_cast<D3DRENDERSTATETYPE>(D3DRS_ZBIAS), &s.zBias);
+	device->GetRenderState(D3DRS_CULLMODE, &s.cull);
+	device->GetRenderState(D3DRS_TEXTUREFACTOR, &s.factor);
+	device->GetTextureStageState(0, D3DTSS_COLOROP, &s.colorOp);
+	device->GetTextureStageState(0, D3DTSS_COLORARG1, &s.colorArg1);
+	device->GetTextureStageState(0, D3DTSS_ALPHAOP, &s.alphaOp);
+	device->GetTextureStageState(0, D3DTSS_ALPHAARG1, &s.alphaArg1);
+	s.texture = nullptr;
+	device->GetTexture(0, &s.texture);
+	device->GetTransform(D3DTS_WORLD, &s.world);
+	D3DMATRIX projected = {};
+	const float* a = reinterpret_cast<const float*>(&s.world);
+	float* o = reinterpret_cast<float*>(&projected);
+	const float floorY = SurvivorPc_DynamicShadowFloorY();
+	for (int row = 0; row < 4; ++row) {
+		o[row * 4 + 0] = a[row * 4 + 0];
+		o[row * 4 + 1] = a[row * 4 + 3] * floorY;
+		o[row * 4 + 2] = a[row * 4 + 2];
+		o[row * 4 + 3] = a[row * 4 + 3];
+	}
+	device->SetTransform(D3DTS_WORLD, &projected);
+	device->SetRenderState(D3DRS_LIGHTING, FALSE);
+	device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+	device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+	device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+	device->SetRenderState(static_cast<D3DRENDERSTATETYPE>(D3DRS_ZBIAS), 1);
+	device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+	device->SetRenderState(D3DRS_TEXTUREFACTOR, 0x58000000);
+	device->SetTexture(0, nullptr);
+	device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+	device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
+	device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+	device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TFACTOR);
+	return true;
+}
+
+void EndDynamicShadowDraw(IDirect3DDevice8* device, DynamicShadowState& s)
+{
+	device->SetTransform(D3DTS_WORLD, &s.world);
+	device->SetTexture(0, s.texture);
+	if (s.texture) s.texture->Release();
+	device->SetRenderState(D3DRS_LIGHTING, s.lighting);
+	device->SetRenderState(D3DRS_ALPHABLENDENABLE, s.alphaBlend);
+	device->SetRenderState(D3DRS_ALPHATESTENABLE, s.alphaTest);
+	device->SetRenderState(D3DRS_SRCBLEND, s.srcBlend);
+	device->SetRenderState(D3DRS_DESTBLEND, s.dstBlend);
+	device->SetRenderState(D3DRS_ZWRITEENABLE, s.zWrite);
+	device->SetRenderState(static_cast<D3DRENDERSTATETYPE>(D3DRS_ZBIAS), s.zBias);
+	device->SetRenderState(D3DRS_CULLMODE, s.cull);
+	device->SetRenderState(D3DRS_TEXTUREFACTOR, s.factor);
+	device->SetTextureStageState(0, D3DTSS_COLOROP, s.colorOp);
+	device->SetTextureStageState(0, D3DTSS_COLORARG1, s.colorArg1);
+	device->SetTextureStageState(0, D3DTSS_ALPHAOP, s.alphaOp);
+	device->SetTextureStageState(0, D3DTSS_ALPHAARG1, s.alphaArg1);
+}
 
 struct HsvColour { float h, s, v; };
 
@@ -663,7 +1011,19 @@ HRESULT m_IDirect3DDevice8::LightEnable(DWORD LightIndex, BOOL bEnable)
 
 HRESULT m_IDirect3DDevice8::SetLight(DWORD Index, CONST D3DLIGHT8 *pLight)
 {
-
+	if (pLight && SurvivorPc_SmoothModelLighting() && pLight->Type == D3DLIGHT_SPOT &&
+		pLight->Theta <= 0.0001f && pLight->Phi <= 0.0001f)
+	{
+		// gun_bio.exe 00467230 creates its sole scene light as an overhead spot
+		// (0,90000,0), direction (0,-1,0), but leaves both cone angles zero.
+		// Such a cone has no useful coverage, so the constant 0x646464 ambient
+		// term dominates and models appear flat. The stage HMD/ROOMENV data does
+		// not supply a replacement light. Preserve the authored colour/direction
+		// as a directional light so every room has a valid diffuse contribution.
+		D3DLIGHT8 fixed = *pLight;
+		fixed.Type = D3DLIGHT_DIRECTIONAL;
+		return ProxyInterface->SetLight(Index, &fixed);
+	}
 	return ProxyInterface->SetLight(Index, pLight);
 }
 
@@ -744,17 +1104,48 @@ HRESULT m_IDirect3DDevice8::GetPixelShaderFunction(THIS_ DWORD Handle, void* pDa
 
 HRESULT m_IDirect3DDevice8::DrawIndexedPrimitive(THIS_ D3DPRIMITIVETYPE Type, UINT MinVertexIndex, UINT NumVertices, UINT startIndex, UINT primCount)
 {
-	return ProxyInterface->DrawIndexedPrimitive(Type, MinVertexIndex, NumVertices, startIndex, primCount);
+	ApplySmoothModelLighting(ProxyInterface);
+	if (SurvivorPc_IsDynamicShadow()) {
+		TraceDynamicShadowDraw(ProxyInterface, "indexed", NumVertices, primCount);
+		return D3D_OK;
+	}
+	DynamicShadowState s = {}; const bool shadow = BeginDynamicShadowDraw(ProxyInterface, s);
+	const HRESULT hr = ProxyInterface->DrawIndexedPrimitive(Type, MinVertexIndex, NumVertices, startIndex, primCount);
+	if (shadow) EndDynamicShadowDraw(ProxyInterface, s);
+	return hr;
 }
 
 HRESULT m_IDirect3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT MinIndex, UINT NumVertices, UINT PrimitiveCount, CONST void *pIndexData, D3DFORMAT IndexDataFormat, CONST void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
-	return ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
+	ApplySmoothModelLighting(ProxyInterface);
+	if (SurvivorPc_IsDynamicShadow()) {
+		TraceDynamicShadowDraw(ProxyInterface, "indexed-UP", NumVertices, PrimitiveCount);
+		return D3D_OK;
+	}
+	DynamicShadowState s = {}; const bool shadow = BeginDynamicShadowDraw(ProxyInterface, s);
+	const HRESULT hr = ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
+	if (shadow) EndDynamicShadowDraw(ProxyInterface, s);
+	return hr;
 }
 
 HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
 {
+	ApplySmoothModelLighting(ProxyInterface);
+	if (SurvivorPc_IsDynamicShadow()) {
+		if (PrimitiveType == D3DPT_TRIANGLELIST)
+			AddDynamicShadowVolume(ProxyInterface, StartVertex, PrimitiveCount);
+		return D3D_OK;
+	}
+	FlushDynamicShadowStencil(ProxyInterface);
+	DynamicShadowState shadowState = {}; const bool dynamicShadow = BeginDynamicShadowDraw(ProxyInterface, shadowState);
+	if (dynamicShadow) {
+		const HRESULT hr = ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
+		EndDynamicShadowDraw(ProxyInterface, shadowState);
+		return hr;
+	}
 	const int enemySurface = SurvivorPc_TakeEnemySurfaceDraw();
+	if (enemySurface == 1 && SurvivorPc_Hide2DShadows())
+		return D3D_OK;
 	if (enemySurface)
 	{
 		// Bind the exact repaired shadow/pool PNG only for this verified native
@@ -826,7 +1217,15 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 
 HRESULT m_IDirect3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, CONST void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
-	return ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
+	ApplySmoothModelLighting(ProxyInterface);
+	if (SurvivorPc_IsDynamicShadow()) {
+		TraceDynamicShadowDraw(ProxyInterface, "primitive-UP", 0, PrimitiveCount);
+		return D3D_OK;
+	}
+	DynamicShadowState s = {}; const bool shadow = BeginDynamicShadowDraw(ProxyInterface, s);
+	const HRESULT hr = ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
+	if (shadow) EndDynamicShadowDraw(ProxyInterface, s);
+	return hr;
 }
 
 HRESULT m_IDirect3DDevice8::BeginScene()

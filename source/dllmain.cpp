@@ -713,7 +713,7 @@ static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS8* p)
 
     char b[512];
     wsprintfA(b,
-        "[RES] %s: BB=%lux%lu  Win=%d  Swap=%lu  MS=%lu  Interval=%lu  hWnd=%p",
+        "[RES] %s: BB=%lux%lu Win=%d Swap=%lu MS=%lu Interval=%lu Depth=%d/%lu hWnd=%p",
         tag,
         (unsigned long)p->BackBufferWidth,
         (unsigned long)p->BackBufferHeight,
@@ -721,6 +721,8 @@ static void LogPP(const char* tag, const D3DPRESENT_PARAMETERS8* p)
         (unsigned long)p->SwapEffect,
         (unsigned long)p->MultiSampleType,
         (unsigned long)p->FullScreen_PresentationInterval,
+        (int)p->EnableAutoDepthStencil,
+        (unsigned long)p->AutoDepthStencilFormat,
         p->hDeviceWindow
     );
     LogLine(b);
@@ -1186,6 +1188,10 @@ HRESULT m_IDirect3D8::CreateDevice(
         p->SwapEffect = D3DSWAPEFFECT_DISCARD;
         p->BackBufferFormat = D3DFMT_X8R8G8B8; // Match the Format 22 from your log
         p->Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+        // Mandatory precision fix: the original D16 surface causes visible
+        // depth quantisation and cannot support stage-received stencil effects.
+        p->EnableAutoDepthStencil = TRUE;
+        p->AutoDepthStencilFormat = D3DFMT_D24S8;
     }
 
     // --- 3. Create the Device ---
@@ -1241,6 +1247,8 @@ HRESULT m_IDirect3DDevice8::Reset(D3DPRESENT_PARAMETERS8* p)
         p->SwapEffect = D3DSWAPEFFECT_DISCARD;
         p->BackBufferFormat = D3DFMT_X8R8G8B8;
         p->Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+        p->EnableAutoDepthStencil = TRUE;
+        p->AutoDepthStencilFormat = D3DFMT_D24S8;
     }
 
     // FPS resources MUST be released before Reset

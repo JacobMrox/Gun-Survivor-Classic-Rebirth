@@ -55,9 +55,26 @@ int SurvivorPc_TakeEnemySurfaceDraw();
 
 // True when the running executable is the PC port of Resident Evil Survivor (gun_bio.exe, checked by bytes).
 bool SurvivorPc_IsSurvivorExe();
-// Experimental fixed-function lighting correction. Survivor's model normals
-// are fixed-point scaled; D3D must normalize them before diffuse lighting.
+// Fixed-function lighting correction. Survivor's model normals are scaled and
+// its sole overhead spotlight has a zero-width cone; normalize the animated
+// draws and turn that degenerate spot into a usable directional light.
 bool SurvivorPc_SmoothModelLighting();
+// The checked native DrawModel hook brackets every animated model and track
+// draw so the D3D wrapper can apply the normal fix at the draw itself.
+void SurvivorPc_BeginModelDraw();
+void SurvivorPc_EndModelDraw();
+bool SurvivorPc_IsModelDraw();
+// Hides only the verified native enemy shadow quad. Blood pools and other
+// translucent effects use the same renderer but remain untouched.
+bool SurvivorPc_Hide2DShadows();
+// Experimental planar shadow made from the animated enemy mesh. This is a
+// genuine model silhouette, but projects onto the object's horizontal floor
+// plane rather than onto arbitrary stage geometry.
+bool SurvivorPc_DynamicModelShadows();
+void SurvivorPc_BeginDynamicShadow(float floorY);
+void SurvivorPc_EndDynamicShadow();
+bool SurvivorPc_IsDynamicShadow();
+float SurvivorPc_DynamicShadowFloorY();
 
 // ---- PS1 screen effects ----------------------------------------------------------------------------------
 // Screen effects of the PS1 version of Resident Evil Survivor (fades, the blurred view, the death zoom, the red

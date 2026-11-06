@@ -10,6 +10,7 @@
 #include "zombie_shared.h"
 
 #include "../../ps1/pose_logic.h"
+#include "../../../survivor_pc.h"
 
 namespace sf::features::zombie {
 
@@ -87,8 +88,26 @@ bool StillOwns(void* s, const void* m) {
 }
 
 int __fastcall DrawModelDetour(void* m, void* edx, int a, int b) {
+  struct ModelDrawScope {
+    ModelDrawScope() { SurvivorPc_BeginModelDraw(); }
+    ~ModelDrawScope() { SurvivorPc_EndModelDraw(); }
+  } drawScope;
   auto posed = g_subjectByModel.find(m);
   if (posed != g_subjectByModel.end() && !StillOwns(posed->second, m)) g_subjectByModel.erase(posed);
+  posed = g_subjectByModel.find(m);
+  if (SurvivorPc_DynamicModelShadows() && posed != g_subjectByModel.end()) {
+    uint8_t *o = nullptr, *t = nullptr;
+    if (GetObjects(posed->second, o, t) && o) {
+      // DrawModel advances M+44. Restore it after the extra silhouette pass so
+      // enabling shadows cannot double the animation speed.
+      const unsigned cursor = game::Read<unsigned>(m, 0x44);
+      const float floorY = game::Read<float>(o, game::O::kPos + sizeof(float));
+      SurvivorPc_BeginDynamicShadow(floorY - 2.0f);
+      DrawPosed(m, edx, a, b);
+      SurvivorPc_EndDynamicShadow();
+      *game::Field<unsigned>(m, 0x44) = cursor;
+    }
+  }
   const int result = DrawPosed(m, edx, a, b);
   auto owner = g_subjectByDrawn.find(m);
   if (owner != g_subjectByDrawn.end()) {

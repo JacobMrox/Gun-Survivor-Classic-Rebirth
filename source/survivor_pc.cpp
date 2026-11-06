@@ -58,6 +58,11 @@ bool gHideCrosshairInMenus = false;
 bool gHudAspect = false;
 bool gPs1ShadowBlend = false;
 bool gSmoothModelLighting = true;
+bool gHide2DShadows = false;
+bool gDynamicModelShadows = false;
+LONG gModelDrawDepth = 0;
+LONG gDynamicShadowDepth = 0;
+float gDynamicShadowFloorY = 0.0f;
 int gOutW = 0, gOutH = 0;  // window client size (ForceWidth x ForceHeight)
 float gAxisScaleY = 1.0f;  // EqualMouseAxes, set in SurvivorPc_OnDevice
 
@@ -218,6 +223,8 @@ void SurvivorPc_LoadConfig(const char* ini) {
   gPs1ShadowBlend = GetPrivateProfileIntA("SurvivorFix", "Ps1ShadowBlend", 1, ini) != 0;
   gSmoothModelLighting = GetPrivateProfileIntA(has("Fixes", "SmoothModelLighting") ? "Fixes" : "SurvivorFix",
                                                "SmoothModelLighting", 1, ini) != 0;
+  gHide2DShadows = GetPrivateProfileIntA("Fixes", "Hide2DShadows", 0, ini) != 0;
+  gDynamicModelShadows = GetPrivateProfileIntA("Fixes", "DynamicModelShadows", 0, ini) != 0;
   const UINT buffer = GetPrivateProfileIntA("SurvivorFix", "MouseBufferSize", 1024, ini);
   gMouseBufferSize = buffer > 65536 ? 65536 : buffer;
 }
@@ -375,6 +382,21 @@ void SurvivorPc_OnSetRenderState(void* returnAddress, unsigned long state, unsig
 bool SurvivorPc_IsSurvivorExe() { return IsSurvivorExe(); }
 
 bool SurvivorPc_SmoothModelLighting() { return gSmoothModelLighting && IsSurvivorExe(); }
+
+void SurvivorPc_BeginModelDraw() { InterlockedIncrement(&gModelDrawDepth); }
+void SurvivorPc_EndModelDraw() { InterlockedDecrement(&gModelDrawDepth); }
+bool SurvivorPc_IsModelDraw() { return gModelDrawDepth > 0 && IsSurvivorExe(); }
+
+bool SurvivorPc_Hide2DShadows() { return (gHide2DShadows || gDynamicModelShadows) && IsSurvivorExe(); }
+
+bool SurvivorPc_DynamicModelShadows() { return gDynamicModelShadows && IsSurvivorExe(); }
+void SurvivorPc_BeginDynamicShadow(float floorY) {
+  gDynamicShadowFloorY = floorY;
+  InterlockedIncrement(&gDynamicShadowDepth);
+}
+void SurvivorPc_EndDynamicShadow() { InterlockedDecrement(&gDynamicShadowDepth); }
+bool SurvivorPc_IsDynamicShadow() { return gDynamicShadowDepth > 0 && IsSurvivorExe(); }
+float SurvivorPc_DynamicShadowFloorY() { return gDynamicShadowFloorY; }
 
 int SurvivorPc_TakeEnemySurfaceDraw() {
   const int pending = gEnemySurfacePending;
