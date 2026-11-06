@@ -88,6 +88,17 @@ bool StillOwns(void* s, const void* m) {
 }
 
 int __fastcall DrawModelDetour(void* m, void* edx, int a, int b) {
+  // 00412030 is the common skinned-model renderer, used by every enemy and by
+  // scene/NPC HMD actors.  Only the outer call represents a complete model;
+  // nested calls draw its tracks.  Replaying that outer call captures the full
+  // animated silhouette without limiting shadows to actors managed by the
+  // zombie compatibility layer.
+  static thread_local unsigned drawDepth = 0;
+  struct DrawDepthScope {
+    unsigned& depth;
+    explicit DrawDepthScope(unsigned& value) : depth(value) { ++depth; }
+    ~DrawDepthScope() { --depth; }
+  } depthScope(drawDepth);
   struct ModelDrawScope {
     ModelDrawScope() { SurvivorPc_BeginModelDraw(); }
     ~ModelDrawScope() { SurvivorPc_EndModelDraw(); }
@@ -95,18 +106,15 @@ int __fastcall DrawModelDetour(void* m, void* edx, int a, int b) {
   auto posed = g_subjectByModel.find(m);
   if (posed != g_subjectByModel.end() && !StillOwns(posed->second, m)) g_subjectByModel.erase(posed);
   posed = g_subjectByModel.find(m);
-  if (SurvivorPc_DynamicModelShadows() && posed != g_subjectByModel.end()) {
-    uint8_t *o = nullptr, *t = nullptr;
-    if (GetObjects(posed->second, o, t) && o) {
-      // DrawModel advances M+44. Restore it after the extra silhouette pass so
-      // enabling shadows cannot double the animation speed.
-      const unsigned cursor = game::Read<unsigned>(m, 0x44);
-      const float floorY = game::Read<float>(o, game::O::kPos + sizeof(float));
-      SurvivorPc_BeginDynamicShadow(floorY - 2.0f);
-      DrawPosed(m, edx, a, b);
-      SurvivorPc_EndDynamicShadow();
-      *game::Field<unsigned>(m, 0x44) = cursor;
-    }
+  if (SurvivorPc_DynamicModelShadows() && drawDepth == 1) {
+    // DrawModel advances M+44. Restore it after the extra silhouette pass so
+    // enabling shadows cannot double the animation speed.  The stencil volume
+    // is built in world space, so it does not require a zombie floor record.
+    const unsigned cursor = game::Read<unsigned>(m, 0x44);
+    SurvivorPc_BeginDynamicShadow(0.0f);
+    DrawPosed(m, edx, a, b);
+    SurvivorPc_EndDynamicShadow();
+    *game::Field<unsigned>(m, 0x44) = cursor;
   }
   const int result = DrawPosed(m, edx, a, b);
   auto owner = g_subjectByDrawn.find(m);

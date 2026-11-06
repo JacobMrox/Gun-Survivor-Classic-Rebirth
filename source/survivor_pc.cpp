@@ -58,7 +58,6 @@ bool gHideCrosshairInMenus = false;
 bool gHudAspect = false;
 bool gPs1ShadowBlend = false;
 bool gSmoothModelLighting = true;
-bool gHide2DShadows = false;
 bool gDynamicModelShadows = false;
 LONG gModelDrawDepth = 0;
 LONG gDynamicShadowDepth = 0;
@@ -223,7 +222,6 @@ void SurvivorPc_LoadConfig(const char* ini) {
   gPs1ShadowBlend = GetPrivateProfileIntA("SurvivorFix", "Ps1ShadowBlend", 1, ini) != 0;
   gSmoothModelLighting = GetPrivateProfileIntA(has("Fixes", "SmoothModelLighting") ? "Fixes" : "SurvivorFix",
                                                "SmoothModelLighting", 1, ini) != 0;
-  gHide2DShadows = GetPrivateProfileIntA("Fixes", "Hide2DShadows", 0, ini) != 0;
   gDynamicModelShadows = GetPrivateProfileIntA("Fixes", "DynamicModelShadows", 0, ini) != 0;
   const UINT buffer = GetPrivateProfileIntA("SurvivorFix", "MouseBufferSize", 1024, ini);
   gMouseBufferSize = buffer > 65536 ? 65536 : buffer;
@@ -387,7 +385,7 @@ void SurvivorPc_BeginModelDraw() { InterlockedIncrement(&gModelDrawDepth); }
 void SurvivorPc_EndModelDraw() { InterlockedDecrement(&gModelDrawDepth); }
 bool SurvivorPc_IsModelDraw() { return gModelDrawDepth > 0 && IsSurvivorExe(); }
 
-bool SurvivorPc_Hide2DShadows() { return (gHide2DShadows || gDynamicModelShadows) && IsSurvivorExe(); }
+bool SurvivorPc_Hide2DShadows() { return gDynamicModelShadows && IsSurvivorExe(); }
 
 bool SurvivorPc_DynamicModelShadows() { return gDynamicModelShadows && IsSurvivorExe(); }
 void SurvivorPc_BeginDynamicShadow(float floorY) {
