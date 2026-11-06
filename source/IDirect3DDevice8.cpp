@@ -70,6 +70,16 @@ bool AddDynamicShadowVolume(IDirect3DDevice8* device, UINT startVertex, UINT pri
 {
 	static LONG diagnostic = 0;
 	const bool log = InterlockedIncrement(&diagnostic) <= 4;
+	// Alpha-blended cards (glass shards, smoke, flames, foliage, etc.) do not
+	// describe their visible shape in geometry. Treating their rectangular quad
+	// as an opaque caster produces a square shadow, so leave those draws out of
+	// the volume. Opaque and alpha-tested character materials remain eligible.
+	DWORD alphaBlend = FALSE;
+	device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
+	if (alphaBlend) {
+		if (log) sf::Log("DynamicShadow volume rejected: alpha-blended caster");
+		return false;
+	}
 	IDirect3DVertexBuffer8* vb = nullptr;
 	UINT stride = 0;
 	const HRESULT streamHr = device->GetStreamSource(0, &vb, &stride);
@@ -231,9 +241,9 @@ bool SubmitCoherentShadowVolume(IDirect3DDevice8* device)
 	device->SetRenderState(D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP); device->SetRenderState(D3DRS_STENCILPASS,D3DSTENCILOP_KEEP);
 	// Capped z-fail is stable even when the camera/near plane intersects a long
 	// enemy shadow volume; z-pass cancelled in those common first-person views.
-	device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CCW); device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_INCRSAT);
+	device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CCW); device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_INCR);
 	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,static_cast<UINT>(volume.size()/3),volume.data(),sizeof(ShadowVertex));
-	device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CW); device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_DECRSAT);
+	device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CW); device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_DECR);
 	device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,static_cast<UINT>(volume.size()/3),volume.data(),sizeof(ShadowVertex));
 	device->ApplyStateBlock(state); device->DeleteStateBlock(state);
 	static LONG logged=0; if (InterlockedIncrement(&logged)<=4)
