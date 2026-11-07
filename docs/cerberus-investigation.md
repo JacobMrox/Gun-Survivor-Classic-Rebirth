@@ -75,7 +75,7 @@ It must not be described as a complete port or a gameplay fix.
 
 ## Candidate death-pose adapter
 
-`Ps1CerberusDeath` defaults on and can be disabled through `[SurvivorFix]`.
+The Cerberus death correction is mandatory when its checked hooks install.
 For PC type 11, the mapper is still called so its native side effects occur;
 when its death-fall selector 15 would change to selector 4, the adapter keeps
 15 only if it has valid tracked animation state. It uses the existing
@@ -85,10 +85,12 @@ falls back to the native mapper. It resets with native actor/room lifetime.
 
 ## Sleep/alert and approach (implemented candidate)
 
-ROOMENV.DAT placements were parsed and verified against the live game:
-room 03/09 has exactly the 4 Cerberus (type 11) placements the snapshot found,
-and no Cerberus placement in any of the 102 rooms carries the 0x4000 asleep
-bit. So the PS1 sleep is behavioural, not a spawn flag: dogs stay asleep (the
+ROOMENV.DAT contains four type-11 records in room 03/09, matching the observed
+number of dogs. The exploratory scan of other rooms used placement heuristics;
+it does not establish that all encounter variants or asleep flags were found.
+In particular, the PS1 roam handler itself moves the dog; it does not establish
+that all dogs start asleep. The current PC sleep adapter is an approximation:
+dogs stay asleep (the
 same lying clip the dead dogs end in, selector 4) and only switch to chase on
 the PS1 RoamStep alert — the player fires with the sight on screen or comes
 within 6000. Gunfire cannot be observed from the wrapper, so damage is the
@@ -108,6 +110,7 @@ Still not implemented: the PS1 circling/wandering/leaping chase (ChaseStep),
 the howl animation on wake, and gunfire-with-sight waking dogs without a hit.
 The full PS1 Cerberus AI replacement remains outstanding.
 
-The native Win32 build and the isolated decision tests pass. This needs
-in-game validation: sleeping dogs stay put, wake on a shot or within 6000,
-chase without skating, and the death hold still works.
+The user confirmed the sleeping and death poses work, but reports that the
+run still slides and footstep sounds play during sleep. The cosine adjustment
+does not reproduce PS1 steering or fix the observed run animation. Neither
+the complete PS1 AI nor room-wide spawn replacement has been implemented.

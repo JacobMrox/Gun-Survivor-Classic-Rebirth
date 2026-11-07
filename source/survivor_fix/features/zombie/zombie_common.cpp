@@ -267,6 +267,22 @@ namespace {
 
 bool nativeOnlyUpdate = false;
 
+// 0043D630 is the type-11 sound handler (__thiscall, two arguments, RET 8).
+// Its periodic footsteps at 43D6B5-43D745 depend on the native movement
+// request rather than the displayed animation. Preserve its other cues.
+using DogSoundFn = void(__fastcall*)(void*, void*, int, int);
+DogSoundFn g_dogSound = nullptr;
+void __fastcall DogSoundDetour(void* s, void* edx, int a, int b) {
+  uint8_t *o, *t;
+  const int request = game::Read<int>(s, game::S::kRequest);
+  const bool quiet = game::Read<int>(s, game::S::kType) == 11 &&
+      !CerberusAwake(s) && request >= 2 && request <= 7 &&
+      GetObjects(s, o, t) && game::Read<float>(o, game::O::kHealth) > 0.0f;
+  if (quiet) *game::Field<int>(s, game::S::kRequest) = 0;
+  g_dogSound(s, edx, a, b);
+  if (quiet) *game::Field<int>(s, game::S::kRequest) = request;
+}
+
 struct NativeOnly {
   bool previous = nativeOnlyUpdate;
   NativeOnly() { nativeOnlyUpdate = true; }
@@ -496,6 +512,13 @@ bool InstallZombies() {
   if (ready) InstallZombieBlood();
   if (ready) InstallZombieDeath();
   if (ready) InstallZombieAudio();
+  if (ready) {
+    static constexpr uint8_t dogSoundBytes[] = {0x8B, 0x44, 0x24, 0x08, 0x56, 0x85, 0xC0, 0x8B, 0xF1};
+    if (game::CheckBytes({0x0043D630, dogSoundBytes, sizeof(dogSoundBytes)}))
+      Hook("CerberusSound", 0x0043D630, reinterpret_cast<void*>(&DogSoundDetour),
+           reinterpret_cast<void**>(&g_dogSound));
+    else Log("CerberusSound: unexpected bytes; native audio retained");
+  }
   if (ready && g_config.ps1ZombieBlend) {
     if (!game::CheckBytes({game::kApplySequence, game::kApplySequencePrologue,
                            sizeof(game::kApplySequencePrologue)}) ||
