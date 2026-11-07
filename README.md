@@ -221,21 +221,23 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/c996912e-d21a-44c6-bed0-29a7f9ef2bf6" />
 
 # Project Status & To-do
-<img width="442" height="467" alt="image" src="https://github.com/user-attachments/assets/356e2032-1aa2-4945-a103-5f311813bba7" />
-<img width="402" height="338" alt="image" src="https://github.com/user-attachments/assets/515c39a4-5db3-4750-a3f8-8b678d8fce6a" />
 
+Current devlopment version: 1.2
 
-* Fix movie player by replacing DirectShow with ffmpeg (In progress...)- Done; only few movies not working (Jacob)
+* Fix movie player by replacing DirectShow with ffmpeg - Done; only few movies not working; investigate (Jacob)
+* Skip FMV/Video movies by pressing enter - Done (Jacob)
 * Remove old log printing shipped with the original game (debug.txt) - working on it.
 * Remove the need for the game to have GBIO.CFG in the directory to launch - working on it.
 * Fix Zombie footstep sound - Done (Trigger)
 * Fix NPC/enemy lighting/shader - Done (Jacob)
-* Restore missing screen flash/fade effects for title and menus - Fixed (Trigger)
+* Restore missing screen flash/fade effects for title and menus - Done/Fixed (Trigger)
 * Add laser dot + trailer - Done (Jacob)
-* Add item pickup prompt option - Done (Jacob)
+* Add item pickup prompt option - Halfway there/partially done (Jacob)
 * Blood Color option - Done (Jacob)
 * Fix Item shine/glitter effect interval - Done (Jacob)
 * Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
+* Realtime stencil shadows replacing the PS1 shadow fix [optional] - Done (Jacob)
+* Zombie Dog AI / Cerberus fix - partially done (Jacob)
 * Fix enemy behaviour and animations - partially done
 * Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
