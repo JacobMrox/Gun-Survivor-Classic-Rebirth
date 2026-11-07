@@ -240,10 +240,22 @@ Current devlopment version: 1.2
 * Zombie Dog AI / Cerberus fix - partially done (Jacob)
 * Fix enemy behaviour and animations - partially done
 * Fix non playing in-game enemy ambush scenes (crows busting through windows, dogs, and Mr. X busting through wall, etc..) - Not yet
+* Some items cannot be taken (like the crowbar in one of the rooms) - Not yet
+* Crows do not play proper animations when flying etc... - Not yet
+* Mr. X doesn't behave properly nor his event based ambushes play - Not yet
+* Hunters cannot jump over obstacles - Not yet
+* The Cleaners/Hank unit cannot climb down - Not yet
 * Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
 * Mod Support - Not yet
+
+# Future
+* New In-game Config Menu based on PS1 code
+* Ragdolls
+* Third person mode (using RE2 source code/decomp to port it over)
+* Nemesis Mode (new difficulty where Nemesis roams the map and stalks the player after taking the first item until the last stage
+* Multiplayer
 
 # Progress Videos
 
