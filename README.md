@@ -238,10 +238,10 @@ Current devlopment version: 1.2
 * Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
 * Realtime stencil shadows replacing the PS1 shadow fix [optional] - Done (Jacob)
 * Zombie Dog AI / Cerberus fix - partially done (Jacob)
+* Crows do not play proper animations when flying etc... - Fixed
 * Fix enemy behaviour and animations - partially done
 * Fix non playing in-game enemy ambush scenes (crows busting through windows, dogs, and Mr. X busting through wall, etc..) - Not yet
 * Some items cannot be taken (like the crowbar in one of the rooms) - Not yet
-* Crows do not play proper animations when flying etc... - Not yet
 * Mr. X doesn't behave properly nor his event based ambushes play - Not yet
 * Hunters cannot jump over obstacles - Not yet
 * The Cleaners/Hank unit cannot climb down - Not yet
