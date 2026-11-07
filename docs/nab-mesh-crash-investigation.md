@@ -56,3 +56,6 @@ Validate a fix with the original model, the duplicated mesh, ported meshes,
 several other enemy types, reloads, and multiple simultaneous actors. A guard
 that merely skips an invalid pointer would hide the symptom and is not a mesh
 limit fix.
+
+## Resolution
+Was a packer error in Tool Hazard, tool now supports replacing 3d models and textures, tested up to 512x512 textures, no known limits yet.
