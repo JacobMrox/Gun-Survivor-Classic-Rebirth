@@ -3,6 +3,7 @@
 #include <intrin.h>
 
 #include "zombie_shared.h"
+#include "../../../survivor_pc.h"
 
 namespace sf::features::zombie {
 
@@ -299,7 +300,7 @@ int __fastcall MapAnimDetour(void* s, void* edx, int request) {
     if (g_config.ps1ZombieDeath && held != g_entries.end() && held->second.phase == Phase::Death) {
       return SelectorOf(held->second);
     }
-    return CerberusDeathMap(s, request, CerberusSleepMap(s, request, native));
+    return CerberusDeathMap(s, request, CerberusSleepMap(s, request, native, false));
   }
   request = HitMapRequest(s, request);  // hit without PC reaction: the request from before
   g_blendModel = nullptr;  // the PS1 blend applies only to the application of this request
@@ -411,7 +412,21 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   const bool dog = game::Read<int>(s, game::S::kType) == 11;
   float holdFx = 0.0f, holdFz = 0.0f;
   const bool dogAsleep = dog && CerberusHoldSleep(s, holdFx, holdFz);
+  int dogRequest = -1;
+  float dogFx = 0.0f, dogFz = 0.0f;
+  float dogX = 0.0f, dogZ = 0.0f;
+  if (dog && !dogAsleep) {
+    uint8_t *o, *t;
+    if (GetObjects(s, o, t)) {
+      const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
+      const float* pos = reinterpret_cast<const float*>(o + game::O::kPos);
+      dogFx = fw[0]; dogFz = fw[2];
+      dogX = pos[0]; dogZ = pos[2];
+      dogRequest = game::Read<int>(s, game::S::kRequest);
+    }
+  }
   const int result = UpdateWithNavigation(s, edx);
+  if (dogRequest >= 0) CerberusClearApproach(s, dogRequest, dogFx, dogFz, dogX, dogZ);
   if (dog) CerberusFinishUpdate(s, dogAsleep, holdFx, holdFz);
   UpdateCerberusDeath(s);
   HitAfter(s, hit);
@@ -420,7 +435,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   UpdateBiteSequence(s);
   SeparateZombie(s);
   ScaleWalk(s);
-  if (ps1::IsPcZombie(game::Read<int>(s, game::S::kType)) ||
+  if (SurvivorPc_DynamicModelShadows() || ps1::IsPcZombie(game::Read<int>(s, game::S::kType)) ||
       (g_config.lethalZombieHeadshots && IsHeadshotZombie(game::Read<int>(s, game::S::kType)))) {
     static const Entry kNoEntry;
     auto pose = g_entries.find(s);

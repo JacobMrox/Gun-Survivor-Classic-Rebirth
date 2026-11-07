@@ -1116,8 +1116,11 @@ HRESULT m_IDirect3DDevice8::DrawIndexedPrimitive(THIS_ D3DPRIMITIVETYPE Type, UI
 {
 	ApplySmoothModelLighting(ProxyInterface);
 	if (SurvivorPc_IsDynamicShadow()) {
-		TraceDynamicShadowDraw(ProxyInterface, "indexed", NumVertices, primCount);
-		return D3D_OK;
+		DynamicShadowState shadowState = {};
+		if (!BeginDynamicShadowDraw(ProxyInterface, shadowState)) return D3D_OK;
+		const HRESULT hr = ProxyInterface->DrawIndexedPrimitive(Type, MinVertexIndex, NumVertices, startIndex, primCount);
+		EndDynamicShadowDraw(ProxyInterface, shadowState);
+		return hr;
 	}
 	DynamicShadowState s = {}; const bool shadow = BeginDynamicShadowDraw(ProxyInterface, s);
 	const HRESULT hr = ProxyInterface->DrawIndexedPrimitive(Type, MinVertexIndex, NumVertices, startIndex, primCount);
@@ -1129,8 +1132,11 @@ HRESULT m_IDirect3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveTyp
 {
 	ApplySmoothModelLighting(ProxyInterface);
 	if (SurvivorPc_IsDynamicShadow()) {
-		TraceDynamicShadowDraw(ProxyInterface, "indexed-UP", NumVertices, PrimitiveCount);
-		return D3D_OK;
+		DynamicShadowState shadowState = {};
+		if (!BeginDynamicShadowDraw(ProxyInterface, shadowState)) return D3D_OK;
+		const HRESULT hr = ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
+		EndDynamicShadowDraw(ProxyInterface, shadowState);
+		return hr;
 	}
 	DynamicShadowState s = {}; const bool shadow = BeginDynamicShadowDraw(ProxyInterface, s);
 	const HRESULT hr = ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
@@ -1142,9 +1148,11 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 {
 	ApplySmoothModelLighting(ProxyInterface);
 	if (SurvivorPc_IsDynamicShadow()) {
-		if (PrimitiveType == D3DPT_TRIANGLELIST)
-			AddDynamicShadowVolume(ProxyInterface, StartVertex, PrimitiveCount);
-		return D3D_OK;
+		DynamicShadowState shadowState = {};
+		if (!BeginDynamicShadowDraw(ProxyInterface, shadowState)) return D3D_OK;
+		const HRESULT hr = ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
+		EndDynamicShadowDraw(ProxyInterface, shadowState);
+		return hr;
 	}
 	FlushDynamicShadowStencil(ProxyInterface);
 	DynamicShadowState shadowState = {}; const bool dynamicShadow = BeginDynamicShadowDraw(ProxyInterface, shadowState);
@@ -1229,8 +1237,11 @@ HRESULT m_IDirect3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT
 {
 	ApplySmoothModelLighting(ProxyInterface);
 	if (SurvivorPc_IsDynamicShadow()) {
-		TraceDynamicShadowDraw(ProxyInterface, "primitive-UP", 0, PrimitiveCount);
-		return D3D_OK;
+		DynamicShadowState shadowState = {};
+		if (!BeginDynamicShadowDraw(ProxyInterface, shadowState)) return D3D_OK;
+		const HRESULT hr = ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
+		EndDynamicShadowDraw(ProxyInterface, shadowState);
+		return hr;
 	}
 	DynamicShadowState s = {}; const bool shadow = BeginDynamicShadowDraw(ProxyInterface, s);
 	const HRESULT hr = ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);

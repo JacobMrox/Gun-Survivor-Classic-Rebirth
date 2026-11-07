@@ -11,6 +11,36 @@ int main() {
   CHECK(DeathSelector(10, 15, 15, 4, true) == 4);
   CHECK(DeathSelector(11, 2, 15, 4, true) == 4);
   CHECK(DeathSelector(11, 15, 1, 15, true) == 15);
+  CHECK(ApproachSelector(11, 5, 11, true, true) == 2);
+  CHECK(ApproachSelector(11, 6, 10, true, true) == 2);
+  CHECK(ApproachSelector(11, 9, 17, true, true) == 17);
+  CHECK(ApproachSelector(11, 5, 11, false, true) == 11);
+  CHECK(ApproachSelector(11, 6, 10, true, false) == 10);
+  CHECK(ApproachSelector(10, 5, 11, true, true) == 11);
+  CHECK(SignedYawDelta(4090, 10) == 16);
+  CHECK(SignedYawDelta(10, 4090) == -16);
+  CHECK(SteerYaw(100, 144, 64, true) == 100);
+  CHECK(SteerYaw(100, 145, 64, true) == 164);
+  CHECK(SteerYaw(100, 55, 64, true) == 36);
+  CHECK(SteerYaw(4090, 100, 64, false) == 15);
+  CHECK(ClearApproachEligible(11, true, true, true, false, 4001, 5, 6));
+  CHECK(!ClearApproachEligible(11, true, true, true, false, 4000, 5, 6));
+  CHECK(!ClearApproachEligible(11, true, true, true, false, 6000, 5, 6));
+  CHECK(!ClearApproachEligible(11, true, true, true, true, 5000, 5, 6));
+  CHECK(!ClearApproachEligible(11, true, true, false, false, 5000, 5, 6));
+  CHECK(!ClearApproachEligible(11, true, true, true, false, 5000, 5, 9));
+  CHECK(!ClearApproachEligible(10, true, true, true, false, 5000, 5, 6));
+  CHECK(AvoidWallSide(1, -1, -1, -1, 0, 0) == 0);
+  CHECK(AvoidWallSide(2, 4, 4, -1, 0, 0) == 2);
+  CHECK(AvoidWallSide(0, 4, 4, -1, 0, 0) == 1);
+  CHECK(AvoidWallSide(0, 4, -1, 4, 0, 0) == 2);
+  CHECK(AvoidWallSide(0, 4, -1, -1, 0, 1) == 2);
+  CHECK(AvoidWallSide(0, 4, 5, 6, 999, 0) == 1);
+  CHECK(AvoidWallSide(0, 4, 5, 6, 1000, 1) == 0);
+  CHECK(!PcWallStuck(false, 0.0f));
+  CHECK(PcWallStuck(true, 1.0f));
+  CHECK(!PcWallStuck(true, 2.0f));
+  CHECK(!PcWallStuck(true, 50.0f));
   // Sleep/alert gating (RoamStep: alert on gunfire or dist < 6001; the
   // wrapper wakes on damage or proximity).
   CHECK(ShouldWake(5999.0f, false));

@@ -9,6 +9,8 @@
 // ASSUMPTION: the local axes of the PC bones are those of the PS1 nodes (same sequences).
 #include "zombie_shared.h"
 
+#include <intrin.h>
+
 #include "../../ps1/pose_logic.h"
 #include "../../../survivor_pc.h"
 
@@ -31,6 +33,23 @@ constexpr unsigned kPelvisBone = 6;  // PS1 node 5
 
 using DrawModelFn = int(__fastcall*)(void* m, void* edx, int a, int b);
 DrawModelFn g_drawModel = nullptr;
+
+// Native xrefs to the common skinned-model renderer split into three useful
+// groups: enemy-manager calls at 0043CF05/0043D109, scripted in-game scene
+// actors throughout 00444773..004587D9, and floating pickup models at
+// 0045BE02..0045C1C7. Static room geometry does not use either latter range.
+// Keeping this caller classification lets those animated models cast the new
+// depth-tested planar shadow without replaying room/menu geometry.
+constexpr bool IsSceneOrPickupShadowCaller(uintptr_t caller) {
+  const bool sceneActor = caller >= 0x00444778 && caller <= 0x004587DE;
+  const bool pickup = caller == 0x0045BE07 || caller == 0x0045BE1D || caller == 0x0045C02F ||
+                      caller == 0x0045C1CC;
+  return sceneActor || pickup;
+}
+
+static_assert(IsSceneOrPickupShadowCaller(0x00444778));
+static_assert(IsSceneOrPickupShadowCaller(0x0045BE07));
+static_assert(!IsSceneOrPickupShadowCaller(0x0058DDAC));
 
 void PreRotate(float* anim, char axis, float radians) {
   const float c = std::cos(radians), s = std::sin(radians);
@@ -103,12 +122,17 @@ int __fastcall DrawModelDetour(void* m, void* edx, int a, int b) {
     ModelDrawScope() { SurvivorPc_BeginModelDraw(); }
     ~ModelDrawScope() { SurvivorPc_EndModelDraw(); }
   } drawScope;
+  const uintptr_t caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
   auto posed = g_subjectByModel.find(m);
   if (posed != g_subjectByModel.end() && !StillOwns(posed->second, m)) g_subjectByModel.erase(posed);
   posed = g_subjectByModel.find(m);
-  if (SurvivorPc_DynamicModelShadows() && drawDepth == 1) {
+  // Enemy models, scripted scene actors and live pickup models are casters.
+  // Room/menu geometry remains excluded, and the planar pass is depth-tested,
+  // so the fixed silhouettes cannot reappear through foreground geometry.
+  const bool shadowCaster = posed != g_subjectByModel.end() || IsSceneOrPickupShadowCaller(caller);
+  if (SurvivorPc_DynamicModelShadows() && drawDepth == 1 && shadowCaster) {
     // DrawModel advances M+44. Restore it after the extra silhouette pass so
-    // enabling shadows cannot double the animation speed.  The stencil volume
+    // enabling shadows cannot double the animation speed. The planar replay
     // is built in world space, so it does not require a zombie floor record.
     const unsigned cursor = game::Read<unsigned>(m, 0x44);
     SurvivorPc_BeginDynamicShadow(0.0f);
@@ -223,7 +247,8 @@ void RegisterCerberusDeathDraw(void* s) {
 }
 
 void UpdatePose(void* s, const Entry& e) {
-  if (!g_config.ps1ZombiePose && !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return;
+  if (!SurvivorPc_DynamicModelShadows() && !g_config.ps1ZombiePose &&
+      !g_config.ps1ZombieDeath && !g_config.lethalZombieHeadshots) return;
   uint8_t *o, *t;
   if (!GetObjects(s, o, t)) return;
   if (auto* m = game::Read<uint8_t*>(o, game::O::kModel)) {

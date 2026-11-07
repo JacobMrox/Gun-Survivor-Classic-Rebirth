@@ -46,7 +46,6 @@ bool g_playerRestorePending = false;
 PlayerQuickState g_playerRestore = {};
 
 struct LiveItem {
-  int scene = -1;
   int slot = -1;
   int id = -1;
   bool taken = false;
@@ -68,8 +67,8 @@ void ClearLiveItems(void* manager) {
 }
 
 int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
-                                   const float* transform, const float* appearance, int owner) {
-  const int slot = g_itemEffectAdd(manager, edx, itemId, transform, appearance, owner);
+                                   const float* position, const float* orientation, int owner) {
+  const int slot = g_itemEffectAdd(manager, edx, itemId, position, orientation, owner);
   void* liveManager = *reinterpret_cast<void**>(game::kItemEffectManager);
   if (manager != liveManager || itemId < 0 || slot < 0 ||
       slot >= static_cast<int>(g_liveItems.size())) {
@@ -77,19 +76,17 @@ int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
   }
   if (g_itemManager != manager) ClearLiveItems(manager);
   LiveItem& item = g_liveItems[slot];
-  item.scene = *reinterpret_cast<int*>(game::kSceneId);
   item.slot = slot;
   item.id = itemId;
   item.taken = false;
   auto** effects = game::Read<void**>(manager, 0x1C);
   item.effect = effects ? effects[slot] : nullptr;
-  // The native add call receives the item's world matrix. Its final row is
-  // the translation used by the pickup effect and remains stable even when
-  // the glitter sprite is temporarily hidden by its cadence.
-  if (transform && std::isfinite(transform[12]) && std::isfinite(transform[14])) {
-    item.position[0] = transform[12];
-    item.position[1] = transform[13];
-    item.position[2] = transform[14];
+  // 0045D4C0 receives a world position followed by an orientation pointer,
+  // not a 4x4 transform. Reading position[12..14] made the trigger depend on
+  // unrelated memory and is why the approach prompt normally never appeared.
+  if (position && std::isfinite(position[0]) && std::isfinite(position[1]) &&
+      std::isfinite(position[2])) {
+    std::memcpy(item.position, position, sizeof item.position);
     item.hasPosition = true;
   }
   return slot;
@@ -101,8 +98,12 @@ void __fastcall ItemCommitDetour(void* effect, void* edx) {
   g_itemCommit(effect, edx);
   if (slot < 0 || slot >= static_cast<int>(g_liveItems.size())) return;
   LiveItem& item = g_liveItems[slot];
-  if (item.scene == *reinterpret_cast<int*>(game::kSceneId) && item.id == itemId) {
+  if (item.effect == effect && item.id == itemId) {
     item.taken = true;
+    // The commit starts the native ITEX/model presentation. Hide the approach
+    // prompt in that same call rather than leaving it over the taken message
+    // until the next player-physics tick.
+    g_itemApproachPrompt = false;
   }
 }
 
@@ -115,6 +116,7 @@ uint8_t* Player(void* c, int* index) {
 }
 
 void UpdateItemApproachPrompt(const uint8_t* player) {
+  const bool wasVisible = g_itemApproachPrompt;
   g_itemApproachPrompt = false;
   if (!g_config.itemApproachPrompt || !player) return;
   void* manager = *reinterpret_cast<void**>(game::kItemEffectManager);
@@ -122,22 +124,37 @@ void UpdateItemApproachPrompt(const uint8_t* player) {
     ClearLiveItems(manager);
     return;
   }
-  const int scene = *reinterpret_cast<int*>(game::kSceneId);
-  // The item's live object contains the camera-space matrix used to draw it.
-  // This is a better source than the constructor transform, whose layout is
-  // room-dependent.  There is deliberately no inner exclusion: that was the
-  // inversion which hid the prompt precisely when the player approached.
+  auto** effects = game::Read<void**>(manager, 0x1C);
+  const int effectCount = game::Read<int>(manager, 0x20);
+  if (!effects || effectCount < 0 || effectCount > static_cast<int>(g_liveItems.size())) return;
+  // Pickup interaction is horizontal. Items are deliberately floated above
+  // their placement point, and rooms can put the model at a different height
+  // from the player's origin. Y must therefore never suppress this prompt.
+  // There is no inner exclusion: reaching the item keeps the prompt up until
+  // ItemCommitDetour starts the native ITEX/taken presentation.
   constexpr float kApproachRadius = 1400.0f;
   constexpr float kApproachRadiusSquared = kApproachRadius * kApproachRadius;
-  for (const auto& item : g_liveItems) {
-    if (item.scene != scene || item.slot < 0 || item.taken || !item.effect) continue;
-    const float* view = game::Field<float>(item.effect, 0x68);
-    if (!std::isfinite(view[0]) || !std::isfinite(view[2])) continue;
-    const float distanceSquared = view[0] * view[0] + view[2] * view[2];
+  const float* playerPosition = reinterpret_cast<const float*>(player + game::O::kPos);
+  for (auto& item : g_liveItems) {
+    if (item.slot < 0 || item.slot >= effectCount) continue;
+    // The manager is a singleton across rooms. Validate the current slot
+    // instead of comparing the scene captured while the room was still being
+    // constructed; that old comparison discarded real pickups in gameplay.
+    if (!effects[item.slot] || effects[item.slot] != item.effect) {
+      item = {};
+      continue;
+    }
+    if (item.taken || !item.hasPosition) continue;
+    const float dx = item.position[0] - playerPosition[0];
+    const float dz = item.position[2] - playerPosition[2];
+    const float distanceSquared = dx * dx + dz * dz;
     if (distanceSquared <= kApproachRadiusSquared) {
       g_itemApproachPrompt = true;
       break;
     }
+  }
+  if (g_itemApproachPrompt != wasVisible) {
+    Log("ItemApproachPrompt: %s", g_itemApproachPrompt ? "shown" : "hidden");
   }
 }
 

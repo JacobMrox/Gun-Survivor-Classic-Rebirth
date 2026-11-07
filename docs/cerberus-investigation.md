@@ -111,6 +111,14 @@ the howl animation on wake, and gunfire-with-sight waking dogs without a hit.
 The full PS1 Cerberus AI replacement remains outstanding.
 
 The user confirmed the sleeping and death poses work, but reports that the
-run still slides and footstep sounds play during sleep. The cosine adjustment
+run still slides. A type-11 native sound-handler adapter suppresses periodic
+footsteps during sleep; the user confirmed this works. The cosine adjustment
 does not reproduce PS1 steering or fix the observed run animation. Neither
 the complete PS1 AI nor room-wide spawn replacement has been implemented.
+
+The user confirmed that substituting PC selector 2 for moving requests 5/6
+plays the appropriate run animation, but the direction still snaps left and
+right. A platform-neutral model of the PS1 80100870 bounded yaw step now has
+wraparound and cone-boundary tests. It is not connected to game actors: the
+PC-to-PS1 yaw convention, wall avoidance and update/physics ordering must be
+verified before it can replace native steering safely.

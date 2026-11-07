@@ -246,9 +246,11 @@ void UpdateCerberusDeath(void* s);
 void RegisterCerberusDeathDraw(void* s);
 void CerberusDeathDrawReady(bool ready);
 bool CerberusAwake(void* s);
-int CerberusSleepMap(void* s, int request, int native);
+int CerberusSleepMap(void* s, int request, int native, bool approach = true);
 bool CerberusHoldSleep(void* s, float& fx, float& fz);
 void CerberusFinishUpdate(void* s, bool wasAsleep, float fx, float fz);
+void CerberusClearApproach(void* s, int previousRequest, float fx, float fz,
+                           float previousX, float previousZ);
 void ResetCerberus();void ResetDeathActor(void* s);
 void ResetDeaths();
 bool InstallZombieDeath();

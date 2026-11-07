@@ -321,10 +321,10 @@ void CerberusDeathDrawReady(bool ready) { g_cerberusDrawReady = ready; }
 // run requests (5/6). On the PS1 the dogs start placed/sleeping and only
 // switch to chase when the player fires with the sight on screen or comes
 // within 6000 (RoamStep). ROOMENV.DAT (the PS1-original data the PC game does
-// not read) carries no 0x4000 asleep flag for any Cerberus placement, so the
-// sleep is applied behaviourally: every PC type-11 dog starts asleep (lying
+// not read) has not been exhaustively mapped. As an approximation every PC
+// type-11 dog starts asleep (lying
 // pose, selector 4 — the same lying clip dead dogs end in) and wakes on
-// damage (global howl alert, all dogs) or the player coming within 6000.
+// damage (adapter-wide alert, all dogs) or the player coming within 6000.
 // While asleep the native update still runs (hit/death processing, blood), but
 // its movement is cancelled: the heading is restored and the walk accumulation
 // (O+D4) is zeroed, so the dog stays where it spawned.
@@ -334,6 +334,9 @@ struct Dog {
   bool awake = false;
   bool seen = false;
   float lastHealth = 0.0f;
+  int wallTurn = 0;
+  bool lastPositionValid = false;
+  float lastX = 0.0f, lastZ = 0.0f;
 };
 
 std::unordered_map<void*, Dog> g_cerberus;
@@ -343,7 +346,7 @@ bool DogWakeAll(void* s) {
   (void)s;
   g_cerberusAlert = true;
   for (auto& entry : g_cerberus) entry.second.awake = true;
-  Log("Ps1Cerberus: damage taken, global alert (howl); all dogs wake");
+  Log("Ps1Cerberus: damage taken; adapter alerts all dogs");
   return false;
 }
 
@@ -355,11 +358,15 @@ bool CerberusAwake(void* s) {
   return it != g_cerberus.end() && it->second.awake;
 }
 
-int CerberusSleepMap(void* s, int request, int native) {
-  (void)request;
-  if (game::Read<int>(s, game::S::kType) != 11 || CerberusAwake(s)) return native;
+int CerberusSleepMap(void* s, int request, int native, bool approach) {
+  if (game::Read<int>(s, game::S::kType) != 11) return native;
   uint8_t *o, *t;
-  if (!GetObjects(s, o, t) || game::Read<float>(o, game::O::kHealth) <= 0.0f) return native;
+  if (!GetObjects(s, o, t)) return native;
+  const bool alive = game::Read<float>(o, game::O::kHealth) > 0.0f;
+  if (!alive) return native;
+  if (CerberusAwake(s) && approach)
+    return ps1::cerberus::ApproachSelector(11, request, native, true, alive);
+  if (CerberusAwake(s)) return native;
   return 4;  // lying/sleep pose (the post-fall clip, death map still wins via health)
 }
 
@@ -401,25 +408,108 @@ bool CerberusHoldSleep(void* s, float& fx, float& fz) {
   return true;
 }
 
+// First PC bridge for the clear-path part of PS1 80100870 / 80101ABC.
+// Keep the native update for collision, damage and attack selection, but
+// replace its resulting heading in the narrowly gated locomotion case.
+// Visibility and the full circling/wander/leap state are not mapped yet.
+void CerberusClearApproach(void* s, int previousRequest, float fx, float fz,
+                           float previousX, float previousZ) {
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return;
+  float* p = game::Field<float>(o, game::O::kPos);
+  const float* target = reinterpret_cast<const float*>(t + game::O::kPos);
+  // Native type-11 movement is retained for animation, attack selection and
+  // vertical support, but its completed XZ step must obey the same ROOMENV
+  // wall response as the PS1 dog. Steering without committing this response
+  // let the PC step cross or continually penetrate the wall first.
+  if (CurrentRoomGeometryReady() && std::isfinite(previousX) && std::isfinite(previousZ) &&
+      std::isfinite(p[0]) && std::isfinite(p[2])) {
+    ps1::WallPoint to{static_cast<int32_t>(std::lround(p[0])),
+                      static_cast<int32_t>(std::lround(-p[2]))};
+    ps1::StepAgainstEnemyWalls(CurrentRoomWalls(), CurrentEnemyOnlyWalls(),
+                               {static_cast<int32_t>(std::lround(previousX)),
+                                static_cast<int32_t>(std::lround(-previousZ))}, to);
+    if (p[0] != static_cast<float>(to.x) || p[2] != static_cast<float>(-to.z)) {
+      p[0] = static_cast<float>(to.x);
+      p[2] = static_cast<float>(-to.z);
+      SyncObjectPose(o);
+    }
+  }
+  const Geometry g = Measure(o, t);
+  if (!std::isfinite(fx) || !std::isfinite(fz) || !std::isfinite(g.distance) ||
+      fx * fx + fz * fz < 0.25f) return;
+  const bool geometryReady = CurrentRoomGeometryReady();
+  Dog& dog = g_cerberus[s];
+  const bool hadPosition = dog.lastPositionValid;
+  const float moved = hadPosition ? std::hypot(p[0] - dog.lastX, p[2] - dog.lastZ) : 0.0f;
+  dog.lastX = p[0]; dog.lastZ = p[2]; dog.lastPositionValid = true;
+  const int request = game::Read<int>(s, game::S::kRequest);
+  const bool locomotion = previousRequest >= 2 && previousRequest <= 6 && request >= 2 && request <= 6;
+  bool blocked = true;
+  int wall = -1;
+  const ps1::Vec2 from{p[0], -p[2]}, to{target[0], -target[2]};
+  if (geometryReady) {
+    wall = ps1::FirstBlockingWall(CurrentRoomWalls(), from, to);
+    blocked = wall >= 0 ||
+              ps1::FirstBlockingWall(CurrentEnemyOnlyWalls(), from, to) >= 0;
+  }
+  // 80101ABC: when a room wall blocks the player, move round a wall ahead;
+  // when barely moving, turn by 0x80 instead. Keep the PC's damage, attack,
+  // collision and actual movement. Enemy-only walls remain native fallback:
+  // their room-specific PS1 edge rules are not yet mapped for this bridge.
+  if (geometryReady && wall >= 0 && locomotion && CerberusAwake(s) &&
+      game::Read<float>(o, game::O::kHealth) > 0.0f &&
+      ps1::FirstBlockingWall(CurrentEnemyOnlyWalls(), from, to) < 0) {
+    int yaw = AngleUnits(std::atan2(fx, -fz));
+    // The original uses <81 PS1 units; native PC dog displacement has not
+    // been calibrated to PS1 speed and can be smaller while still moving.
+    if (ps1::cerberus::PcWallStuck(hadPosition, moved)) {
+      yaw = (yaw + 0x80) & 4095;
+    } else {
+      const auto& walls = CurrentRoomWalls();
+      auto probe = [&](int angle) {
+        const float a = angle * ps1::kAngleUnit;
+        return ps1::FirstBlockingWall(walls, from,
+            {from.x + std::sin(a) * 1000.0f, from.z + std::cos(a) * 1000.0f});
+      };
+      const int ahead = probe(yaw);
+      const int left = probe(yaw + 0x400);
+      const int right = probe(yaw - 0x400);
+      const float dist = ahead >= 0 ? ps1::DistanceToWall(from, walls[ahead]) : 0.0f;
+      const bool randomSide = ahead >= 0 && dog.wallTurn == 0 && ahead != left && ahead != right &&
+          ((left == -1 && right == -1) || (left != -1 && right != -1 && dist < 1000.0f));
+      dog.wallTurn = ps1::cerberus::AvoidWallSide(dog.wallTurn, ahead, left, right,
+          static_cast<int>(dist), randomSide ? NextRngByte() : 0);
+      yaw = (yaw + (dog.wallTurn == 1 ? -0x120 : dog.wallTurn == 2 ? 0x120 : 0)) & 4095;
+    }
+    const float a = yaw * ps1::kAngleUnit;
+    SetHeading(o, std::sin(a), -std::cos(a));
+    return;
+  }
+  if (!blocked) dog.wallTurn = 0;
+  if (!ps1::cerberus::ClearApproachEligible(game::Read<int>(s, game::S::kType), CerberusAwake(s),
+        game::Read<float>(o, game::O::kHealth) > 0.0f, geometryReady, blocked, g.distance,
+        previousRequest, request)) return;
+  const int yaw = AngleUnits(std::atan2(fx, fz));
+  const int targetYaw = AngleUnits(std::atan2(g.toX, g.toZ));
+  // The PC visibility flag is not yet mapped; this experiment uses the
+  // visible-player 0x40 step, not a claim to port the whole chase branch.
+  const int next = ps1::cerberus::SteerYaw(yaw, targetYaw, 0x40, true);
+  const float angle = next * ps1::kAngleUnit;
+  SetHeading(o, std::sin(angle), std::cos(angle));
+}
+
 // Post-update for type 11. Asleep: restore the saved heading and zero the walk
-// accumulation so the native movement does not creep. Awake: scale the walk
-// accumulation by the facing/player cosine, so the dog slows while it must
-// turn (no sliding during the approach, PS1-style steering).
+// accumulation so the native movement does not creep. Awake: leave native
+// movement alone. Scaling it by alignment to the player prevented moving away
+// from the player while navigating around a wall.
 void CerberusFinishUpdate(void* s, bool wasAsleep, float fx, float fz) {
+  if (!wasAsleep) return;
   uint8_t *o, *t;
   if (!GetObjects(s, o, t)) return;
   float* accum = game::Field<float>(o, game::O::kAccum);
-  if (wasAsleep) {
-    SetHeading(o, fx, fz);
-    accum[0] = accum[1] = accum[2] = 0.0f;
-    return;
-  }
-  const Geometry g = Measure(o, t);
-  if (g.distance <= 0.0f) return;
-  const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
-  const float factor = ps1::cerberus::ChaseSpeedFactor((fw[0] * g.toX + fw[2] * g.toZ) / g.distance);
-  accum[0] *= factor;
-  accum[2] *= factor;
+  SetHeading(o, fx, fz);
+  accum[0] = accum[1] = accum[2] = 0.0f;
 }
 
 void ResetCerberus() {
