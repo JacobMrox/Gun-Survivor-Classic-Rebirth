@@ -239,6 +239,7 @@ Current devlopment version: 1.2
 * Realtime stencil shadows replacing the PS1 shadow fix [optional] - Done (Jacob)
 * Zombie Dog AI / Cerberus fix - partially done (Jacob)
 * Fix enemy behaviour and animations - partially done
+* Fix non playing in-game enemy ambush scenes (crows busting through windows, dogs, and Mr. X busting through wall, etc..) - Not yet
 * Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
