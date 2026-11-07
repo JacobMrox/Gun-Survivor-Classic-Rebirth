@@ -66,7 +66,7 @@ constexpr int AvoidWallSide(int current, int ahead, int left, int right,
 // speed, so the original 81-unit threshold would classify ordinary PC steps
 // as stuck. Only treat an essentially stationary native actor as stuck.
 constexpr bool PcWallStuck(bool hadPosition, float moved) {
-  return hadPosition && moved < 2.0f;
+  return hadPosition && moved < 10.0f;
 }
 
 // PC type 11 selects 15 for the fall, then selects 4 after the completion

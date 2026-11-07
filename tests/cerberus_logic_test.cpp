@@ -39,7 +39,8 @@ int main() {
   CHECK(AvoidWallSide(0, 4, 5, 6, 1000, 1) == 0);
   CHECK(!PcWallStuck(false, 0.0f));
   CHECK(PcWallStuck(true, 1.0f));
-  CHECK(!PcWallStuck(true, 2.0f));
+  CHECK(PcWallStuck(true, 2.0f));
+  CHECK(!PcWallStuck(true, 15.0f));
   CHECK(!PcWallStuck(true, 50.0f));
   // Sleep/alert gating (RoamStep: alert on gunfire or dist < 6001; the
   // wrapper wakes on damage or proximity).

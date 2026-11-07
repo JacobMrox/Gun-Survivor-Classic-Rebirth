@@ -46,6 +46,9 @@ struct Config {
   bool ps1ZombieVoiceBanks = true;
   // PS1 separation between zombie and player (circle 600 + 380 with 80081FF0).
   bool ps1ZombiePush = true;
+  // Crows (ENEMPROG 52, crow.c): flying animation correction. Independent of
+  // Ps1Zombies (different enemy slots), on by default when loading config.
+  bool ps1Crows = true;
   // Monsters also bite from behind (the PC filtered out the hits from behind).
   bool biteFromBehind = true;
   // PS1 size of the zombie shadow (80073C5C). Follows Ps1ShadowBlend, the shadow blending setting.

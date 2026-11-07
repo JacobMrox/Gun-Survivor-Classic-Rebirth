@@ -33,6 +33,7 @@
 //#include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
+#include "mod_sdk.h"
 #include "resource.h"
 #include "AviFfmpegHook.h" // Access to g_Video
 #include "globals.h"
@@ -84,7 +85,14 @@ static bool WriteEmbeddedResourceIfMissing(const char* path, int resourceId)
     HGLOBAL resource = info ? LoadResource(g_hWrapperModule, info) : nullptr;
     const void* bytes = resource ? LockResource(resource) : nullptr;
     const DWORD size = info ? SizeofResource(g_hWrapperModule, info) : 0;
-    if (!bytes || !size) return false;
+    if (!info) return false;
+    if (size == 0) {
+        HANDLE empty = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (empty == INVALID_HANDLE_VALUE) return false;
+        CloseHandle(empty);
+        return true;
+    }
+    if (!bytes) return false;
     HANDLE file = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;
@@ -115,6 +123,53 @@ static void RestoreEmbeddedMiscIfMissing()
     CreateDirectoryA(modulePath, nullptr);
     strcat_s(modulePath, "\\MISC.BMP");
     WriteEmbeddedResourceIfMissing(modulePath, IDR_MISC_BMP);
+}
+
+static bool EnsureEmptyFileIfMissing(const char* path)
+{
+    if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) return true;
+    HANDLE file = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    // Stock GBIO.CFG is 16 zero bytes; match it exactly (existence is what
+    // the original checks, but keep the size for safety).
+    const unsigned char zeros[16] = {};
+    DWORD written = 0;
+    WriteFile(file, zeros, sizeof(zeros), &written, nullptr);
+    CloseHandle(file);
+    return written == sizeof(zeros);
+}
+
+// The PC build refuses to start without a GBIO.CFG in the game directory.
+// Stock file is 16 zero bytes and its content is otherwise ignored.
+// Auto-create it from the embedded resource (or as 16 zero bytes) next to both
+// the wrapper DLL and the running executable, never overwriting an existing file.
+static void RestoreMissingGBIOConfig()
+{
+    char paths[2][MAX_PATH]{};
+    char exePath[MAX_PATH]{};
+    if (GetModuleFileNameA(nullptr, exePath, MAX_PATH)) {
+        char* s = strrchr(exePath, '\\');
+        if (s) {
+            *s = '\0';
+            strcpy_s(paths[0], MAX_PATH, exePath);
+            strcat_s(paths[0], MAX_PATH, "\\GBIO.CFG");
+        }
+    }
+    char dllPath[MAX_PATH]{};
+    if (GetModuleFileNameA(g_hWrapperModule, dllPath, MAX_PATH)) {
+        char* s = strrchr(dllPath, '\\');
+        if (s) {
+            *s = '\0';
+            strcpy_s(paths[1], MAX_PATH, dllPath);
+            strcat_s(paths[1], MAX_PATH, "\\GBIO.CFG");
+        }
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (!paths[i][0]) continue;
+        if (GetFileAttributesA(paths[i]) != INVALID_FILE_ATTRIBUTES) continue;
+        if (!WriteEmbeddedResourceIfMissing(paths[i], IDR_GBIO_CFG))
+            EnsureEmptyFileIfMissing(paths[i]);
+    }
 }
 
 // Use the D3D9 texture type from d3d9.h
@@ -1760,6 +1815,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         // --- Resident Evil Survivor Fixes ---
         InstallCDBypass();
         InstallDInputHook();
+        RestoreMissingGBIOConfig();
 
         // --- Config Reading ---
         char path[MAX_PATH]{};
@@ -1797,6 +1853,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         SurvivorPc_LoadConfig(path);
         SurvivorPc_ApplyDpiAware();//before the game creates its window
         SurvivorFix_Attach(hModule, path);//start-up fixes, before the game's code runs
+        ModSdk_Init(path);
 
         // Initialize Limiter
         if (fFPSLimit > 0.0f) {
@@ -2064,6 +2121,7 @@ IDirect3D8* WINAPI Direct3DCreate8(UINT SDKVersion)
     static bool restoredEmbeddedAssets = false;
     if (!restoredEmbeddedAssets) {
         RestoreEmbeddedMiscIfMissing();
+        RestoreMissingGBIOConfig();
         restoredEmbeddedAssets = true;
     }
     // 1. Config Window (Only once)

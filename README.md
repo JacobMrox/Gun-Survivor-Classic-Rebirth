@@ -227,7 +227,7 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 * Fix movie player by replacing DirectShow with ffmpeg (In progress...)- Done; only few movies not working (Jacob)
 * Remove old log printing shipped with the original game (debug.txt) - working on it.
-* Remove the need for the game to have GBIO.CFG in the directory to launch - working on it.
+* Remove the need for the game to have GBIO.CFG in the directory to launch - Done; DLL auto-creates GBIO.CFG next to exe and d3d8.dll (embedded IDR_GBIO_CFG, empty fallback)
 * Fix Zombie footstep sound - Done (Trigger)
 * Fix NPC/enemy lighting/shader - Done (Jacob)
 * Restore missing screen flash/fade effects for title and menus - Fixed (Trigger)
@@ -237,10 +237,24 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 * Fix Item shine/glitter effect interval - Done (Jacob)
 * Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
 * Fix enemy behaviour and animations - partially done
+* Zombie dog footstep gait fix - Done (Jacob): type-11 handler 0043D630 now plays no sound when idle (request 0/1), slower cadence when walking (2-4), normal when running (5-7); asleep sleep-suppression preserved
+* Fix non playing in-game enemy ambush scenes (crows busting through windows, dogs, and Mr. X busting through wall, etc..) - Not yet
+* Some items cannot be taken (like the crowbar in one of the rooms) - Not yet
+* Crows do not play proper animations when flying etc... - Done phase 1 (Jacob): type-12 crow flying clip 4 forced while locomotion (2-7) via ps1/crow_logic.h + CrowAnimMap in zombie_common.cpp (Ps1Crows config, default on); PS1 ref RESPeCt crow.c ENEMPROG 52, PC type 12 hypothesized 52-40 — verify live before full flight AI
+* Mr. X doesn't behave properly nor his event based ambushes play - Not yet
+* Hunters cannot jump over obstacles - Not yet
+* The Cleaners/Hank unit cannot climb down - Not yet
 * Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
-* Mod Support - Not yet
+* Mod Support - Done phase 1 (Jacob): Gemini Mod-Sdk replica — mods/mod_<id>/ folders + mods/mod_<id>.7z (auto-extract via 7z), manifest.txt (Name/Title/Module), Module DLL loaded from mod folder, CreateFileA override in cd_bypass.cpp; see source/mod_sdk.cpp
+
+# Future
+* New In-game Config Menu based on PS1 code
+* Ragdolls
+* Third person mode (using RE2 source code/decomp to port it over)
+* Nemesis Mode (new difficulty where Nemesis roams the map and stalks the player after taking the first item until the last stage
+* Multiplayer
 
 # Progress Videos
 
@@ -258,8 +272,8 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 1) Head over to the [releases section](https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth/releases) and get the latest release.
 2) Extract all files into your game installation directory, replacing any files when prompted.
-3) The game requires every included file to run correctly, including GBIO.CFG (a dummy file the original game expects at startup).
-4) This requirement will be automated by the DLL in the next version
+3) GBIO.CFG is now auto-created by d3d8.dll (empty dummy) next to gun_bio.exe and d3d8.dll — no manual step needed. Existing GBIO.CFG files are never overwritten.
+4) (Optional) Mod support: create `mods/mod_<id>/` with `manifest.txt` (see `source/mod_sdk.cpp` header), mirroring game-relative paths, or drop `mods/mod_<id>.7z` (non-solid, contents at root). Set `config.ini` `[Mod] Active = mod_<id>`; the `Module` DLL in the manifest is loaded from that folder.
 5) This project is provided free, as-is, without warranty, and will continue improving over time
 
 The release includes the x86 FFmpeg runtime required for movie playback:

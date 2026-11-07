@@ -4,6 +4,7 @@
 
 #include "zombie_shared.h"
 #include "../../../survivor_pc.h"
+#include "../../ps1/crow_logic.h"
 
 namespace sf::features::zombie {
 
@@ -271,17 +272,49 @@ bool nativeOnlyUpdate = false;
 // 0043D630 is the type-11 sound handler (__thiscall, two arguments, RET 8).
 // Its periodic footsteps at 43D6B5-43D745 depend on the native movement
 // request rather than the displayed animation. Preserve its other cues.
+// Gait map for type 11 (matches IsLocomotion 2-4 in zombie_common.cpp):
+//   request 0/1 = idle/sleep -> no running sound
+//   request 2-4 = walking   -> slower cadence (every other call)
+//   request 5-7 = running   -> normal cadence
 using DogSoundFn = void(__fastcall*)(void*, void*, int, int);
 DogSoundFn g_dogSound = nullptr;
+std::unordered_map<void*, unsigned> g_dogWalkStep;
 void __fastcall DogSoundDetour(void* s, void* edx, int a, int b) {
   uint8_t *o, *t;
+  if (game::Read<int>(s, game::S::kType) != 11 ||
+      !GetObjects(s, o, t) || game::Read<float>(o, game::O::kHealth) <= 0.0f) {
+    g_dogWalkStep.erase(s);
+    g_dogSound(s, edx, a, b);
+    return;
+  }
   const int request = game::Read<int>(s, game::S::kRequest);
-  const bool quiet = game::Read<int>(s, game::S::kType) == 11 &&
-      !CerberusAwake(s) && request >= 2 && request <= 7 &&
-      GetObjects(s, o, t) && game::Read<float>(o, game::O::kHealth) > 0.0f;
-  if (quiet) *game::Field<int>(s, game::S::kRequest) = 0;
+  const bool asleep = !CerberusAwake(s);
+  // Asleep: no footsteps (user-confirmed fix).
+  if (asleep && request >= 2 && request <= 7) {
+    *game::Field<int>(s, game::S::kRequest) = 0;
+    g_dogSound(s, edx, a, b);
+    *game::Field<int>(s, game::S::kRequest) = request;
+    return;
+  }
+  // Awake idle: no running sound.
+  if (!asleep && (request == 0 || request == 1)) {
+    *game::Field<int>(s, game::S::kRequest) = 0;
+    g_dogSound(s, edx, a, b);
+    *game::Field<int>(s, game::S::kRequest) = request;
+    return;
+  }
+  // Awake walking: slower version (halve the footstep cadence).
+  if (!asleep && request >= 2 && request <= 4) {
+    const unsigned step = g_dogWalkStep[s]++;
+    if ((step & 1) == 0) {
+      *game::Field<int>(s, game::S::kRequest) = 0;
+      g_dogSound(s, edx, a, b);
+      *game::Field<int>(s, game::S::kRequest) = request;
+      return;
+    }
+  }
+  // Running (5-7) and all other cues: normal native behaviour.
   g_dogSound(s, edx, a, b);
-  if (quiet) *game::Field<int>(s, game::S::kRequest) = request;
 }
 
 struct NativeOnly {
@@ -289,6 +322,14 @@ struct NativeOnly {
   NativeOnly() { nativeOnlyUpdate = true; }
   ~NativeOnly() { nativeOnlyUpdate = previous; }
 };
+
+int CrowAnimMap(void* s, int request, int native) {
+  if (!g_config.ps1Crows) return native;
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return native;
+  const bool alive = game::Read<float>(o, game::O::kHealth) > 0.0f;
+  return ps1::crow::ApproachSelector(game::Read<int>(s, game::S::kType), request, native, alive);
+}
 
 int __fastcall MapAnimDetour(void* s, void* edx, int request) {
   if (nativeOnlyUpdate) {
@@ -300,12 +341,12 @@ int __fastcall MapAnimDetour(void* s, void* edx, int request) {
     if (g_config.ps1ZombieDeath && held != g_entries.end() && held->second.phase == Phase::Death) {
       return SelectorOf(held->second);
     }
-    return CerberusDeathMap(s, request, CerberusSleepMap(s, request, native, false));
+    return CrowAnimMap(s, request, CerberusDeathMap(s, request, CerberusSleepMap(s, request, native, false)));
   }
   request = HitMapRequest(s, request);  // hit without PC reaction: the request from before
   g_blendModel = nullptr;  // the PS1 blend applies only to the application of this request
   const int native = ApplyPendingBlend(s, ApplyBiteClip(s, request, ApplyWalkHold(s, request, MapAnimInner(s, edx, request))));
-  return CerberusDeathMap(s, request, CerberusSleepMap(s, request, native));
+  return CrowAnimMap(s, request, CerberusDeathMap(s, request, CerberusSleepMap(s, request, native)));
 }
 
 // The same entry check as 0043A8A0 (game.h, kUpdateGateCall): outside gameplay (cut-scenes, menus) or
@@ -412,22 +453,13 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   const bool dog = game::Read<int>(s, game::S::kType) == 11;
   float holdFx = 0.0f, holdFz = 0.0f;
   const bool dogAsleep = dog && CerberusHoldSleep(s, holdFx, holdFz);
-  int dogRequest = -1;
-  float dogFx = 0.0f, dogFz = 0.0f;
-  float dogX = 0.0f, dogZ = 0.0f;
-  if (dog && !dogAsleep) {
-    uint8_t *o, *t;
-    if (GetObjects(s, o, t)) {
-      const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
-      const float* pos = reinterpret_cast<const float*>(o + game::O::kPos);
-      dogFx = fw[0]; dogFz = fw[2];
-      dogX = pos[0]; dogZ = pos[2];
-      dogRequest = game::Read<int>(s, game::S::kRequest);
-    }
-  }
+  int dogRequest = game::Read<int>(s, game::S::kRequest);
+  if (dog && !dogAsleep) CerberusSteer(s, dogRequest);
   const int result = UpdateWithNavigation(s, edx);
-  if (dogRequest >= 0) CerberusClearApproach(s, dogRequest, dogFx, dogFz, dogX, dogZ);
-  if (dog) CerberusFinishUpdate(s, dogAsleep, holdFx, holdFz);
+  if (dog && !dogAsleep) CerberusPostSteer(s);
+  if (dog) {
+    if (dogAsleep) CerberusFinishUpdate(s, true, holdFx, holdFz);
+  }
   UpdateCerberusDeath(s);
   HitAfter(s, hit);
   if (partner) *partner = savedPartner;

@@ -5,6 +5,7 @@
 #include "cd_bypass.h"
 #include "debug.h"
 #include "file_events.h"
+#include "mod_sdk.h"
 //#include "alpha_fix.h"
 
 static void LogMH(const char* what, MH_STATUS s)
@@ -201,6 +202,14 @@ static HANDLE WINAPI Hook_CreateFileA(
 
             return Real_CreateFileA
                 ? Real_CreateFileA(localExe, access, share, sa, creation, flags, templateFile)
+                : INVALID_HANDLE_VALUE;
+        }
+        // Mod-Sdk override (Gemini Classic Rebirth): same game-relative
+        // path inside mods/mod_<active>/ wins over the stock file.
+        // Module DLLs are loaded in ModSdk_Init from that folder.
+        if (const char* overridePath = ModSdk_ResolvePathA(name)) {
+            return Real_CreateFileA
+                ? Real_CreateFileA(overridePath, access, share, sa, creation, flags, templateFile)
                 : INVALID_HANDLE_VALUE;
         }
     }

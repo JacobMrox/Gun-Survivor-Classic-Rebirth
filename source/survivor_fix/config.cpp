@@ -36,6 +36,7 @@ void LoadConfig(const char* iniPath) {
   c.ps1ZombieDeathAudio = Read("Ps1ZombieDeathAudio", zombies);
   c.ps1ZombieVoiceBanks = Read("Ps1ZombieVoiceBanks", zombies);
   c.ps1ZombiePush = Read("Ps1ZombiePush", zombies);
+  c.ps1Crows = Read("Ps1Crows", true);
   c.biteFromBehind = Read("BiteFromBehind", zombies);
   // The shadow switch of the window (Ps1ShadowBlend, survivor_pc.cpp) also gives the shadow its PS1 size.
   c.ps1ZombieShadowSize = Read("Ps1ZombieShadowSize", Read("Ps1ShadowBlend", true));

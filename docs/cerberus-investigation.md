@@ -112,7 +112,11 @@ The full PS1 Cerberus AI replacement remains outstanding.
 
 The user confirmed the sleeping and death poses work, but reports that the
 run still slides. A type-11 native sound-handler adapter suppresses periodic
-footsteps during sleep; the user confirmed this works. The cosine adjustment
+footsteps during sleep; the user confirmed this works. Gait-correct footsteps
+are now in place at the same 0043D630 hook: idle (request 0/1) plays no footstep,
+walking (2-4, the IsLocomotion range) plays at half cadence (per-dog toggle,
+every other call), running (5-7) plays normally. Other cues (bark/growl on a/b)
+are preserved by the request=0 masking. The cosine adjustment
 does not reproduce PS1 steering or fix the observed run animation. Neither
 the complete PS1 AI nor room-wide spawn replacement has been implemented.
 

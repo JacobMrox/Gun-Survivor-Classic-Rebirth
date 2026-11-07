@@ -1,0 +1,71 @@
+# MODLOG — Biohazard Gun Survivor (RE: Survivor) Chinese/Taiwanese PC port
+
+Game: Biohazard Gun Survivor (Resident Evil: Survivor), Chinese PC port — native x86 D3D8
+Idea: Fix the rest of the issues plaguing this port using current dd8 wrapper source (Gun-Survivor-Classic-Rebirth)
+Done means: working in-game fix + 20-45s showcase clip
+Safety: single-player/offline only — no online anti-cheat concerns. Never ship game files/decompiled code.
+
+## 0. Intake (2026-11-07)
+- Repo: C:\Users\user\source\repos\Gun-Survivor-Classic-Rebirth (d3d8.dll wrapper, source/ in this repo)
+- Session dir: C:\Users\user\source\repos\Tool Hazard (knowledge/tools, not the wrapper)
+- Done = in-game working + clip per skill step 0
+
+## 1. Recon (skill: game-recon analogue)
+- Knowledge base: universal-modder knowledge/INDEX.md searched — no Gun Survivor classic note; only RE2 (2019) RE Engine note (not applicable, RE Engine != 2000-era native).
+- `um scan` unavailable (no um / no npx / no node on this machine). Manual recon instead:
+  - Wrapper is a proxy DLL: d3d8.dll (d3d8to9 D3D8->D3D9) + survivor_pc.cpp hooks + AviFfmpegHook/DirectShowHook movie replacement.
+  - Exe: gun_bio.exe, image base 0x00400000, verified signatures in source/survivor_pc.cpp (e.g. 0x005FD0BC input, 0x00436E40 mapper, 0x005F2C14 skip byte).
+  - Save/config: config.ini + d3d8.ini [SurvivorFix] section; per README, GBIO.CFG dummy currently required at startup.
+- Community route: already established — native hooks via proxy DLL. No official loader for this title.
+- Docs read: docs/cerberus-investigation.md, nab-mesh-crash-investigation.md (resolved: Tool Hazard packer aux-array bug, not a global triangle limit), player-door-stair-compatibility.md, title-new-game-fade.md, ps1-enemy-and-foot-research.md, zombie-*-audio docs.
+- GitHub page https://github.com/JacobMrox/Gun-Survivor-Classic-Rebirth — Issues: 0 open. All tracking is README "Project Status & To-do" (v1.2 dev). List captured at top of this log in session output.
+
+## 2. Route picked
+- Native hooks (proxy DLL d3d8.dll + MinHook, Win32 API hooks for DirectShow/MCI, ffmpeg for movies).
+- Reason: no loader/data API for this 2000-era title; wrapper already covers DPI, crosshair sync, D3D8->D3D9, PS1 zombie/player adapters, movie system.
+- Reason recorded here before building, per skill.
+
+## 3. Lab setup (TODO before first modded launch)
+- Backup saves/config with a snapshot tool before touching game folder (um backup equivalent — take manual copy + note restore path).
+- Use a separate game copy / mod-manager profile if available; never overwrite the only install.
+- Windowed mode at fixed client size (existing KeepAspect/ForceWidth x ForceHeight) for stable screenshots.
+- Decompiled/RE notes stay outside git (RESpect PS1 decomp baseline is GPL-3.0 — attribution required for any adapted code).
+- Keep all edits in source/ of this repo (survivor_pc.cpp, dllmain.cpp, AviFfmpegHook.cpp, DirectShowHook.cpp, cd_bypass.*) and note each in this log.
+
+## 4. Source of truth (read, don't guess)
+- source/survivor_pc.h — [SurvivorFix] toggles, HudAspect, shadow blend, screen-fx, title transition.
+- source/survivor_pc.cpp — PS1 zombie/player adapters, height support, death-pose hold, mouse handling.
+- source/dllmain.cpp — D3D8 create/reset, config load, DirectShow/AviFfmpegHook install, GBIO.CFG handling.
+- source/DirectShowHook.cpp — debug.txt redirect already present (lines ~432, 440, 463, 470). Verify if fully wired.
+- source/AviFfmpegHook.cpp — movie replacement; few movies still failing per README.
+- RESPeCt decomp (Survivor PS1, GPL-3.0, port/decomp/, ~1,100 funcs, RAM-verified) — primary fix oracle; see docs/decomp-references.md.
+- bio2-ds (RE2 DualShock SLUS_007.48, symbology from 1997 beta MAIN.SYM) — secondary, for third-person / engine symbols.
+- Tests in tests/ (cerberus, config_defaults, held_frame, mouse_drain, movie_skip, player_wall_adapter, title_fade, zombie_*). Run target list before each change.
+
+## 5. Vertical slice order (cheapest first, one at a time)
+1. Remove need for GBIO.CFG — DONE: DLL auto-creates 16-zero-byte GBIO.CFG next to exe/dll (embedded IDR_GBIO_CFG in source/resource.h + Resource.rc, RestoreMissingGBIOConfig in source/dllmain.cpp; stock size verified 16x00 at E:\Games\Biohazard Gun Survivor\GBIO.CFG). Oracle: delete GBIO.CFG, launch, check recreated.
+2. Remove debug.txt log printing — working on it (redirect to debug.log in DirectShowHook already present; verified E:\Games has both debug.log 7.8 MB and debug.txt 5545 bytes, so not fully eliminated yet).
+3. Investigate few failing movies (ffmpeg) — need exact movie list + log.
+4. Item prompt + ambush/enemy batch (README 2026-11-07 update): item pickup Done in local README; crowbar/crow-ambush/Mr. X/hunters/cleaners still Not yet. Crow flight anim phase 1 Done (type-12 mapping in ps1/crow_logic.h, tested).
+5. Cerberus sound gait — DONE for sound gait (idle/walk/run at 0043D630 in zombie_common.cpp); larger AI/steering still outstanding per docs/cerberus-investigation.md.
+6. Shooting screen flash (Not yet).
+7. XInput + Raw Input — Not yet.
+8. Key bindings — Not yet.
+9. Mod Support — DONE phase 1: Gemini replica in source/mod_sdk.cpp (mods/mod_<id>/ + .7z auto-extract, manifest.txt Name/Title/Module, Module DLL LoadLibrary, CreateFileA override in cd_bypass.cpp, config [Mod] Active). Needs in-game oracle + proper lib (7z.exe shell-out currently).
+10. README future goals (2026-11-07): PS1-based config menu, ragdolls, third-person (RE2 decomp), Nemesis Mode, multiplayer — all Not yet. Do not start without an explicit pick.
+
+Circuit breaker: 3 repeats of same failure -> stop, log, change approach or ask user.
+
+## Lab (install found 2026-11-07)
+- Install: E:\Games\Biohazard Gun Survivor\gun_bio.exe (2,048,000 bytes, 2002-06-20, SHA256 2e5b7a3d...be3f9 — matches source/survivor_pc.cpp header).
+- Backup: E:\Games\Biohazard Gun Survivor\Save-backup-20261107-204816 (Save/*.SAV + QUICK.SAV + config.ini + GBIO.CFG). Restore = copy back. Do not deploy new d3d8.dll over this folder without explicit OK (15x dog-experiment .bak already there).
+
+Circuit breaker: 3 repeats of same failure -> stop, log, change approach or ask user.
+
+## Log
+- 2026-11-07: Skill loaded via direct fetch (npx unavailable). Recon complete. Awaiting game install path / backup confirmation before touching game folder. Starting with slice 1 (GBIO.CFG) once install confirmed.
+- 2026-11-07 slices in source/ (no game launch yet — gun_bio.exe not found in quick scan): (1) data/FIXRES/GBIO.CFG + IDR_GBIO_CFG 2009 + RestoreMissingGBIOConfig() in dllmain.cpp + empty-resource fix in WriteEmbeddedResourceIfMissing; (2) zombie_common.cpp DogSoundDetour 3-state gait (idle mute, walk half-cadence, run normal) + per-dog g_dogWalkStep map; (3) source/mod_sdk.h/.cpp Gemini replica (folders + 7z cache, manifest parse, Module DLL load, cd_bypass CreateFileA override, dllmain ModSdk_Init). README Installation + Project Status updated. Next oracle needs game install path.
+- 2026-11-07 GitHub README sync: added ambush batch (crowbar/crows/Mr. X/hunters/cleaners) + Future goals (PS1 config menu, ragdolls, third-person, Nemesis, multiplayer) into local README. GitHub page still behind on GBIO/crow/mod (local ahead).
+- 2026-11-07 lab found: E:\Games\Biohazard Gun Survivor\gun_bio.exe SHA256 2e5b7a3d...be3f9 matches header; backup E:\Games\Biohazard Gun Survivor\Save-backup-20261107-204816. GBIO.CFG stock = 16 zero bytes (fixed data/FIXRES/GBIO.CFG + EnsureEmptyFileIfMissing to match).
+- 2026-11-07 crow slice (first ambush pick): source/survivor_fix/ps1/crow_logic.h (kCrowType 12 = ENEMPROG 52-40, PickFlight/ApproachSelector from RESPeCt crow.c), config Ps1Crows (default on), CrowAnimMap wired in MapAnimDetour (zombie_common.cpp). tests/crow_logic_test.cpp passes (vcvars64 cl). Build: premake vs2022 + MSBuild Release 18.10 Win32 -> data/d3d8.dll (1,310,720 bytes, SHA256 E3F3347C...50BBB). Build needed vcpkg include (x86-windows/x86-windows) + AdditionalDependencies (avcodec/avformat/avutil/swscale/swresample/minhook.x32.lib) in build/*.vcxproj (generated; port to premake5.lua separately). Oracle still open: deploy data/d3d8.dll over E:\... (backup first) and verify stage 9 room 2 crow flying anim live.
+- 2026-11-07 deploy fix: new d3d8.dll links minhook dynamically (LNK via minhook.x32.lib), so game folder needs source/vcpkg_installed/x86-windows/x86-windows/bin/minhook.x32.dll (18,944 bytes) beside d3d8.dll — previously statically linked, no DLL needed. Copied to E:\Games\Biohazard Gun Survivor\minhook.x32.dll. Retest with ShowConfigOnLaunch=0: PID 27172 stayed alive 18s, GBIO.CFG recreated (16x00), debug.log grew to 7,876,832 with CerberusSound + FFmpeg CAPCOM30. Remaining oracle: stage 9 room 2 crow flight anim visual check (human playtest) + Cleaners/Hank type id still TBD (hypnos.c = final boss per maintainer).

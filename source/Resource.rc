@@ -10,6 +10,7 @@ IDR_MISC_BMP         RCDATA "..\\data\\FIXRES\\MISC.BMP"
 IDR_PS1_SHADOW_PNG   RCDATA "..\\data\\FIXRES\\ps1_shadow.png"
 IDR_PS1_BLOODX1_PNG  RCDATA "..\\data\\FIXRES\\ps1_bloodx1.png"
 IDR_PS1_BLOODX2_PNG  RCDATA "..\\data\\FIXRES\\ps1_bloodx2.png"
+IDR_GBIO_CFG         RCDATA "..\\data\\FIXRES\\GBIO.CFG"
 
 1 RT_MANIFEST "Fluent.manifest"
 

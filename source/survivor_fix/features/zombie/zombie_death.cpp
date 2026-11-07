@@ -335,8 +335,15 @@ struct Dog {
   bool seen = false;
   float lastHealth = 0.0f;
   int wallTurn = 0;
+  ps1::NavState nav;
+  bool deadHeadingValid = false;
+  float deadFx = 0.0f, deadFz = 0.0f;
+  int soundToggle = 0;
   bool lastPositionValid = false;
   float lastX = 0.0f, lastZ = 0.0f;
+  int lastYaw = 0;
+  bool hasSavedAim = false;
+  float savedAim[3] = {};
 };
 
 std::unordered_map<void*, Dog> g_cerberus;
@@ -412,97 +419,76 @@ bool CerberusHoldSleep(void* s, float& fx, float& fz) {
 // Keep the native update for collision, damage and attack selection, but
 // replace its resulting heading in the narrowly gated locomotion case.
 // Visibility and the full circling/wander/leap state are not mapped yet.
-void CerberusClearApproach(void* s, int previousRequest, float fx, float fz,
-                           float previousX, float previousZ) {
+void CerberusSteer(void* s, int previousRequest) {
   uint8_t *o, *t;
   if (!GetObjects(s, o, t)) return;
-  float* p = game::Field<float>(o, game::O::kPos);
+  const float* p = reinterpret_cast<const float*>(o + game::O::kPos);
   const float* target = reinterpret_cast<const float*>(t + game::O::kPos);
-  // Native type-11 movement is retained for animation, attack selection and
-  // vertical support, but its completed XZ step must obey the same ROOMENV
-  // wall response as the PS1 dog. Steering without committing this response
-  // let the PC step cross or continually penetrate the wall first.
-  if (CurrentRoomGeometryReady() && std::isfinite(previousX) && std::isfinite(previousZ) &&
-      std::isfinite(p[0]) && std::isfinite(p[2])) {
-    ps1::WallPoint to{static_cast<int32_t>(std::lround(p[0])),
-                      static_cast<int32_t>(std::lround(-p[2]))};
-    ps1::StepAgainstEnemyWalls(CurrentRoomWalls(), CurrentEnemyOnlyWalls(),
-                               {static_cast<int32_t>(std::lround(previousX)),
-                                static_cast<int32_t>(std::lround(-previousZ))}, to);
-    if (p[0] != static_cast<float>(to.x) || p[2] != static_cast<float>(-to.z)) {
-      p[0] = static_cast<float>(to.x);
-      p[2] = static_cast<float>(-to.z);
-      SyncObjectPose(o);
-    }
-  }
-  const Geometry g = Measure(o, t);
-  if (!std::isfinite(fx) || !std::isfinite(fz) || !std::isfinite(g.distance) ||
-      fx * fx + fz * fz < 0.25f) return;
-  const bool geometryReady = CurrentRoomGeometryReady();
-  Dog& dog = g_cerberus[s];
-  const bool hadPosition = dog.lastPositionValid;
-  const float moved = hadPosition ? std::hypot(p[0] - dog.lastX, p[2] - dog.lastZ) : 0.0f;
-  dog.lastX = p[0]; dog.lastZ = p[2]; dog.lastPositionValid = true;
-  const int request = game::Read<int>(s, game::S::kRequest);
-  const bool locomotion = previousRequest >= 2 && previousRequest <= 6 && request >= 2 && request <= 6;
-  bool blocked = true;
-  int wall = -1;
-  const ps1::Vec2 from{p[0], -p[2]}, to{target[0], -target[2]};
-  if (geometryReady) {
-    wall = ps1::FirstBlockingWall(CurrentRoomWalls(), from, to);
-    blocked = wall >= 0 ||
-              ps1::FirstBlockingWall(CurrentEnemyOnlyWalls(), from, to) >= 0;
-  }
-  // 80101ABC: when a room wall blocks the player, move round a wall ahead;
-  // when barely moving, turn by 0x80 instead. Keep the PC's damage, attack,
-  // collision and actual movement. Enemy-only walls remain native fallback:
-  // their room-specific PS1 edge rules are not yet mapped for this bridge.
-  if (geometryReady && wall >= 0 && locomotion && CerberusAwake(s) &&
-      game::Read<float>(o, game::O::kHealth) > 0.0f &&
-      ps1::FirstBlockingWall(CurrentEnemyOnlyWalls(), from, to) < 0) {
-    int yaw = AngleUnits(std::atan2(fx, -fz));
-    // The original uses <81 PS1 units; native PC dog displacement has not
-    // been calibrated to PS1 speed and can be smaller while still moving.
-    if (ps1::cerberus::PcWallStuck(hadPosition, moved)) {
-      yaw = (yaw + 0x80) & 4095;
-    } else {
-      const auto& walls = CurrentRoomWalls();
-      auto probe = [&](int angle) {
-        const float a = angle * ps1::kAngleUnit;
-        return ps1::FirstBlockingWall(walls, from,
-            {from.x + std::sin(a) * 1000.0f, from.z + std::cos(a) * 1000.0f});
-      };
-      const int ahead = probe(yaw);
-      const int left = probe(yaw + 0x400);
-      const int right = probe(yaw - 0x400);
-      const float dist = ahead >= 0 ? ps1::DistanceToWall(from, walls[ahead]) : 0.0f;
-      const bool randomSide = ahead >= 0 && dog.wallTurn == 0 && ahead != left && ahead != right &&
-          ((left == -1 && right == -1) || (left != -1 && right != -1 && dist < 1000.0f));
-      dog.wallTurn = ps1::cerberus::AvoidWallSide(dog.wallTurn, ahead, left, right,
-          static_cast<int>(dist), randomSide ? NextRngByte() : 0);
-      yaw = (yaw + (dog.wallTurn == 1 ? -0x120 : dog.wallTurn == 2 ? 0x120 : 0)) & 4095;
-    }
-    const float a = yaw * ps1::kAngleUnit;
-    SetHeading(o, std::sin(a), -std::cos(a));
+  const float* fw = reinterpret_cast<const float*>(o + game::O::kForward);
+  if (!std::isfinite(fw[0]) || !std::isfinite(fw[2]) || fw[0]*fw[0]+fw[2]*fw[2] < 0.25f) return;
+  if (game::Read<float>(o, game::O::kHealth) <= 0.0f) {
+    Dog& dd = g_cerberus[s];
+    dd.deadHeadingValid = true;
+    dd.deadFx = fw[0]; dd.deadFz = fw[2];
     return;
   }
-  if (!blocked) dog.wallTurn = 0;
-  if (!ps1::cerberus::ClearApproachEligible(game::Read<int>(s, game::S::kType), CerberusAwake(s),
-        game::Read<float>(o, game::O::kHealth) > 0.0f, geometryReady, blocked, g.distance,
-        previousRequest, request)) return;
-  const int yaw = AngleUnits(std::atan2(fx, fz));
-  const int targetYaw = AngleUnits(std::atan2(g.toX, g.toZ));
-  // The PC visibility flag is not yet mapped; this experiment uses the
-  // visible-player 0x40 step, not a claim to port the whole chase branch.
-  const int next = ps1::cerberus::SteerYaw(yaw, targetYaw, 0x40, true);
-  const float angle = next * ps1::kAngleUnit;
-  SetHeading(o, std::sin(angle), std::cos(angle));
+  if (!CurrentRoomGeometryReady()) return;
+  Dog& dog = g_cerberus[s];
+  const Geometry g = Measure(o, t);
+  if (!std::isfinite(g.distance) || g.distance <= 0.0f) return;
+  // Reuse the proven zombie wall navigation (80100E24/8007F210) for the
+  // dog's heading. It probes ahead and at +/-90 degrees and goes around
+  // walls instead of into them, which the partial cerberus_AvoidWalls port
+  // did not reproduce. The dog's own run speed and animation are kept.
+  ps1::NavParams params;
+  params.probeDistance = ps1::kProbeDistance;
+  params.turnStep = 0x40 * ps1::kAngleUnit;   // dog turns faster than a zombie
+  params.rateScale = 1.0f;
+  params.playerWallMargin = 0.0f;
+  params.ps1IntegerSteer = false;
+  const ps1::NavOutput nav = ps1::NavStep(dog.nav, CurrentRoomWalls(),
+      {{p[0], -p[2]}, {fw[0], -fw[2]}, {target[0], -target[2]}}, params);
+  const float hx = nav.heading.x, hz = -nav.heading.z;
+  const float len = std::hypot(hx, hz);
+  if (len < 0.01f) return;
+  const float nx = hx / len, nz = hz / len;
+  const float a = std::atan2(nx, nz);
+  dog.lastYaw = AngleUnits(a);
+  SetHeading(o, nx, nz);
+  float* aim = game::Field<float>(t, game::O::kAimPoint);
+  dog.savedAim[0] = aim[0]; dog.savedAim[1] = aim[1]; dog.savedAim[2] = aim[2];
+  dog.hasSavedAim = true;
+  const float* op = reinterpret_cast<const float*>(o + game::O::kPos);
+  aim[0] = op[0] + nx * 10000.0f;
+  aim[2] = op[2] + nz * 10000.0f;
+  (void)previousRequest;
 }
 
-// Post-update for type 11. Asleep: restore the saved heading and zero the walk
-// accumulation so the native movement does not creep. Awake: leave native
-// movement alone. Scaling it by alignment to the player prevented moving away
-// from the player while navigating around a wall.
+void CerberusPostSteer(void* s) {
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return;
+  Dog& dog = g_cerberus[s];
+  if (dog.deadHeadingValid) {
+    SetHeading(o, dog.deadFx, dog.deadFz);
+    if (dog.hasSavedAim) {
+      float* aim = game::Field<float>(t, game::O::kAimPoint);
+      aim[0] = dog.savedAim[0]; aim[1] = dog.savedAim[1]; aim[2] = dog.savedAim[2];
+      dog.hasSavedAim = false;
+    }
+    return;
+  }
+  if (dog.hasSavedAim) {
+    float* aim = game::Field<float>(t, game::O::kAimPoint);
+    aim[0] = dog.savedAim[0]; aim[1] = dog.savedAim[1]; aim[2] = dog.savedAim[2];
+    dog.hasSavedAim = false;
+  }
+  const float a = dog.lastYaw * ps1::kAngleUnit;
+  SetHeading(o, std::sin(a), std::cos(a));
+  dog.lastX = reinterpret_cast<const float*>(o + game::O::kPos)[0];
+  dog.lastZ = reinterpret_cast<const float*>(o + game::O::kPos)[2];
+  dog.lastPositionValid = true;
+}
+
 void CerberusFinishUpdate(void* s, bool wasAsleep, float fx, float fz) {
   if (!wasAsleep) return;
   uint8_t *o, *t;

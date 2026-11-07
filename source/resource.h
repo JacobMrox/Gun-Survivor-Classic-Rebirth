@@ -42,3 +42,4 @@
 #define IDR_PS1_SHADOW_PNG        2006
 #define IDR_PS1_BLOODX1_PNG       2007
 #define IDR_PS1_BLOODX2_PNG       2008
+#define IDR_GBIO_CFG              2009
