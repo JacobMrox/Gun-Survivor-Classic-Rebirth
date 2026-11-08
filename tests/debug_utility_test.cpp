@@ -25,4 +25,9 @@ int main() {
   assert(!UtilitySuppressDamage(true, true, -5));
   assert(!UtilitySuppressDamage(false, true, 5));
   assert(!UtilitySuppressDamage(true, false, 5));
+  assert(UtilityRestoredHealth(true, 50) == 200);
+  assert(UtilityRestoredHealth(true, 200) == 200);
+  assert(UtilityRestoredHealth(true, 250) == 250);
+  assert(UtilityRestoredHealth(true, 0) == 0);
+  assert(UtilityRestoredHealth(false, 50) == 50);
 }

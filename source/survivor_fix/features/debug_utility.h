@@ -22,4 +22,8 @@ constexpr bool UtilitySuppressAmmoUse(bool enabled, bool playerStats) {
 constexpr bool UtilitySuppressDamage(bool enabled, bool playerStats, int damage) {
   return enabled && playerStats && damage > 0;
 }
+// PC stats constructor 00463D1B initializes player HP to 0xC8.
+constexpr int UtilityRestoredHealth(bool enabled, int health) {
+  return enabled && health > 0 && health < 200 ? 200 : health;
+}
 }

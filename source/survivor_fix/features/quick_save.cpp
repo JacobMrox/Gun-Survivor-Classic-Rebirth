@@ -536,6 +536,14 @@ void ToggleFullscreen() {
 }  // namespace
 
 int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
+  if (g_infiniteHealth.load()) {
+    void* stats = *reinterpret_cast<void**>(game::kGameStats);
+    if (stats) {
+      int* hp = game::Field<int>(stats, game::kGameStatsHp);
+      const int restored = UtilityRestoredHealth(true, *hp);
+      if (restored != *hp) *hp = restored;
+    }
+  }
   if (UtilityActionReady(g_utilityPending, g_debugInputGate.Captured())) {
     const UtilityAction action = g_utilityPending;
     g_utilityPending = UtilityAction::None;
