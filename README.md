@@ -236,7 +236,7 @@ Current devlopment version: 1.2
 * Blood Color option - Done (Jacob)
 * Fix Item shine/glitter effect interval - Done (Jacob)
 * Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
-* Debug menu utility page: quick save/load and native save/load menus. Quick save overwrites `Save\QUICK.SAV`; infinite ammo and health are placeholders, not cheats yet.
+* Debug menu utility page: quick save/load, native save/load menus, and experimental infinite-ammo and health toggles (off by default). Quick save overwrites `Save\QUICK.SAV`. The toggles require the supported PC executable and do not persist after exiting the game.
 * Realtime stencil shadows replacing the PS1 shadow fix [optional] - Done (Jacob)
 * Zombie Dog AI / Cerberus fix - partially done (Jacob)
 * Crows do not play proper animations when flying etc... - Fixed
