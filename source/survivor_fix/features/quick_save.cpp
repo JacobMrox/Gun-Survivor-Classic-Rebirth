@@ -10,6 +10,7 @@
 #include "../hooks.h"
 #include "../log.h"
 #include "features.h"
+#include "debug_menu_input.h"
 #include "../../aim_shared.h"
 #include "../../survivor_pc.h"
 
@@ -45,6 +46,7 @@ bool g_f8Down = false;
 bool g_f2Down = false;
 bool g_f10Down = false;
 bool g_debugOpen = false;
+DebugMenuInputGate g_debugInputGate;
 bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
 int g_debugSel = 1;
 int g_debugRow = 0;  // 0 JUMP, 1..6 dummy rows (RE2 layout)
@@ -557,6 +559,7 @@ void QuickSavePollWindowToggle() {
   if ((f2 || f10) && !g_f2Down && !g_f10Down) {
     g_debugOpen = !g_debugOpen;
     if (g_debugOpen) {
+      g_debugInputGate.Capture();
       int cur = *reinterpret_cast<int*>(game::kSceneId);
       g_debugSel = (cur > 0 && cur <= 0x79) ? cur : 1;
       g_debugRow = 0;
@@ -684,6 +687,12 @@ bool QuickSaveReloadPending() {
 }
 
 bool DebugMenuVisible() { return g_debugOpen; }
+bool DebugMenuSuppressPad(uint32_t pad) {
+  const int keys[] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE, VK_F2, VK_F10};
+  bool keyDown = false;
+  for (int key : keys) keyDown |= (GetAsyncKeyState(key) & 0x8000) != 0;
+  return g_debugInputGate.Filter(g_debugOpen, keyDown, pad);
+}
 int DebugMenuSelected() { return g_debugSel; }
 int DebugMenuRow() { return g_debugRow; }
 int DebugMenuCurrentScene() { return *reinterpret_cast<int*>(game::kSceneId); }

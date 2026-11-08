@@ -248,11 +248,7 @@ int __fastcall EndFrameDetour(void* game, void* edx, int a) {
 uint32_t __fastcall ReadPadDetour(void* game, void* edx, int a) {
   uint32_t pad = g_readPad(game, edx, a);
   if (g_dying) return 0;  // 8008369C step 0: 80062DEC = 0, controls off
-  if (sf::features::DebugMenuVisible()) {
-    // Debug menu owns confirm/keys while open; game must not see them
-    // (prevents inventory/status popping through the jump).
-    pad &= ~game::kPadConfirm;
-  }
+  if (DebugMenuSuppressPad(pad)) return 0;
   if (g_config.ps1PlayerDeath && MainState() == kStateYouDied) {
     // Step 9: a button just pressed (800B4B94 & 0x20 and not 800B3CC4) after at least 0x28 frames.
     const bool down = (pad & game::kPadConfirm) != 0;
@@ -275,15 +271,9 @@ uint32_t __fastcall ReadPadDetour(void* game, void* edx, int a) {
 int __fastcall MouseClickDetour(void* mouse, void* edx, int a, int b, int c, int d, int e, int f) {
   if (sf::features::DebugMenuVisible()) return 0;  // debug owns clicks while open
   if (g_dying) return 0;  // no shooting during the death
-  const int hit = g_mouseClick(mouse, edx, a, b, c, d, e, f);
-  // 0046A775 uses a non-zero result inside the fire rect: that is the shot.
-  // Debounce: one strobe per press so rapid clicks don't restack.
-  if (hit != 0 && g_config.ps1ShootFlash && !sf::features::DebugMenuVisible() &&
-      g_shootFlashFrames <= 0 &&
-      MainState() == kStateRooms &&
-      *reinterpret_cast<const uint8_t*>(*reinterpret_cast<const uint8_t* const*>(game::kGameState) + game::kGameModeOffset) == 3)
-    g_shootFlashFrames = g_config.ps1ShootFlashFrames;
-  return hit;
+  // A mouse hit is not proof that a weapon fired (it includes dry fire).
+  // Leave the flash inactive until a verified shot event is available.
+  return g_mouseClick(mouse, edx, a, b, c, d, e, f);
 }
 
 int __fastcall RoomTickDetour(void* game, void* edx, uint32_t* pad, uint32_t* prev, int* turns, float p5, int* scene,
@@ -481,11 +471,14 @@ bool InstallScreenFx() {
   }
   bool ok = Hook("EndFrame", game::kEndFrame, reinterpret_cast<void*>(&EndFrameDetour),
                  reinterpret_cast<void**>(&g_endFrame));
-  if (ok && g_config.ps1PlayerDeath) {
+  if (ok) {
     ok = Hook("ReadPad", game::kReadPad, reinterpret_cast<void*>(&ReadPadDetour),
               reinterpret_cast<void**>(&g_readPad)) &&
          Hook("MouseClick", game::kMouseClick, reinterpret_cast<void*>(&MouseClickDetour),
-              reinterpret_cast<void**>(&g_mouseClick)) &&
+              reinterpret_cast<void**>(&g_mouseClick));
+  }
+  if (ok && g_config.ps1PlayerDeath) {
+    ok =
          Hook("RoomTick", game::kRoomTick, reinterpret_cast<void*>(&RoomTickDetour),
               reinterpret_cast<void**>(&g_roomTick)) &&
          Hook("DrawHud", game::kDrawHud, reinterpret_cast<void*>(&DrawHudDetour),

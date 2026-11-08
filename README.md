@@ -240,7 +240,7 @@ Current devlopment version: 1.2
 * Zombie Dog AI / Cerberus fix - partially done (Jacob)
 * Crows do not play proper animations when flying etc... - Fixed
 * Fix enemy behaviour and animations - partially done
-* Add shooting screen flash (gun con flash simulation) effect - Not yet
+* Add shooting screen flash (gun con flash simulation) effect - Temporarily inactive: a mouse click does not reliably indicate that a shot was fired. The `Ps1ShootFlash` settings are retained but have no effect until a verified shot event is hooked.
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
 * Mod Support - Done phase 1 (Jacob): Gemini Mod-Sdk replica — mods/mod_<id>/ folders + mods/mod_<id>.7z (auto-extract via 7z), manifest.txt (Name/Title/Module), Module DLL loaded from mod folder, CreateFileA override in cd_bypass.cpp; see source/mod_sdk.cpp
@@ -284,8 +284,9 @@ The release includes the x86 FFmpeg runtime required for movie playback:
 `swresample-5.dll`. Keep all five beside `d3d8.dll` and `gun_bio.exe`.
 They are dependencies of Classic Rebirth and are not supplied by the original
 game. These builds also require the Microsoft Visual C++ x86 runtime.
-`d3d8.dll` itself is a single self-contained DLL (MSVC static runtime,
-MinHook compiled in from `source/minhook/`); no `minhook.x32.dll` is needed.
+MinHook is compiled into `d3d8.dll` from `source/minhook/`, so no
+`minhook.x32.dll` is needed. The wrapper is not self-contained: it imports
+the FFmpeg runtime DLLs listed above.
 See `licenses/FFmpeg-NOTICE.txt` in the release for the FFmpeg license and source
 information.
 

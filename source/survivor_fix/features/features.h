@@ -57,6 +57,7 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
 bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha);
 bool QuickSaveReloadPending();
 bool DebugMenuVisible();
+bool DebugMenuSuppressPad(uint32_t pad);
 int DebugMenuSelected();
 int DebugMenuRow();
 int DebugMenuCurrentScene();
