@@ -144,7 +144,7 @@
       <DeploymentContent>false</DeploymentContent>
     </ClInclude>
     <ClInclude Include="ConfigWindow.h" />
-    <ClInclude Include="debug_menu.h" />
+    <ClInclude Include="survivor_fix\debug_menu.h" />
     <ClInclude Include="mod_sdk.h" />
     <ClInclude Include="d3d8.hpp" />
     <ClInclude Include="d3d8to9.hpp" />
@@ -152,7 +152,7 @@
     <ClInclude Include="d3dx9.hpp" />
     <ClInclude Include="debug.h" />
     <ClInclude Include="dinputhook.h" />
-    <ClInclude Include="survivor_pc.h" />
+    <ClInclude Include="survivor_fix\survivor_pc.h" />
     <ClInclude Include="survivor_fix\config.h" />
     <ClInclude Include="survivor_fix\features\features.h" />
     <ClInclude Include="survivor_fix\features\debug_menu_input.h" />
@@ -231,13 +231,13 @@
     <ClCompile Include="d3d8to9_volume.cpp" />
     <ClCompile Include="d3d8types.cpp" />
     <ClCompile Include="dinputhook.cpp" />
-    <ClCompile Include="debug_menu.cpp" />
+    <ClCompile Include="survivor_fix\debug_menu.cpp" />
     <ClCompile Include="minhook\hook.c" />
     <ClCompile Include="minhook\buffer.c" />
     <ClCompile Include="minhook\trampoline.c" />
     <ClCompile Include="minhook\hde\hde32.c" />
     <ClCompile Include="mod_sdk.cpp" />
-    <ClCompile Include="survivor_pc.cpp" />
+    <ClCompile Include="survivor_fix\survivor_pc.cpp" />
     <ClCompile Include="survivor_fix\config.cpp" />
     <ClCompile Include="survivor_fix\features\bite_from_behind.cpp" />
     <ClCompile Include="survivor_fix\features\exit_fix.cpp" />

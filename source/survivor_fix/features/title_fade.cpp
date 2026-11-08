@@ -5,7 +5,7 @@
 #include "../hooks.h"
 #include "../log.h"
 #include "../ps1/title_fade_logic.h"
-#include "../../survivor_pc.h"
+#include "../survivor_pc.h"
 #include "features.h"
 #include <intrin.h>
 namespace sf::features {

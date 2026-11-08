@@ -62,8 +62,11 @@ void LoadConfig(const char* iniPath) {
   c.ps1PlayerDeath = Read("Ps1PlayerDeath", true);
   c.ps1DoorFade = Read("Ps1DoorFade", true);
   c.ps1TitleFade = Read("Ps1TitleFade", true);
-  c.ps1ShootFlash = Read("Ps1ShootFlash", false);
-  c.ps1ShootFlashFrames = GetPrivateProfileIntA("SurvivorFix", "Ps1ShootFlashFrames", 2, g_ini);
+  // [Fixes] is canonical; preserve existing [SurvivorFix] configurations.
+  const int legacyFlash = GetPrivateProfileIntA("SurvivorFix", "Ps1ShootFlash", 0, g_ini);
+  const int legacyFrames = GetPrivateProfileIntA("SurvivorFix", "Ps1ShootFlashFrames", 2, g_ini);
+  c.ps1ShootFlash = GetPrivateProfileIntA("Fixes", "Ps1ShootFlash", legacyFlash, g_ini) != 0;
+  c.ps1ShootFlashFrames = GetPrivateProfileIntA("Fixes", "Ps1ShootFlashFrames", legacyFrames, g_ini);
   if (c.ps1ShootFlashFrames < 1) c.ps1ShootFlashFrames = 1;
   if (c.ps1ShootFlashFrames > 5) c.ps1ShootFlashFrames = 5;
   c.itemApproachPrompt = GetPrivateProfileIntA("Fixes", "ItemApproachPrompt", 1, iniPath) != 0;

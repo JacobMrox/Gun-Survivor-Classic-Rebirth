@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-#include "../../survivor_pc.h"
+#include "../survivor_pc.h"
 #include "../config.h"
 #include "../game.h"
 #include "../hooks.h"

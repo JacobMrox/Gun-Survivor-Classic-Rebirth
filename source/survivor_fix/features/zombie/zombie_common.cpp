@@ -3,7 +3,7 @@
 #include <intrin.h>
 
 #include "zombie_shared.h"
-#include "../../../survivor_pc.h"
+#include "../../survivor_pc.h"
 #include "../../ps1/crow_logic.h"
 
 namespace sf::features::zombie {

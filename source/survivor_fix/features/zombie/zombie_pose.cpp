@@ -12,7 +12,7 @@
 #include <intrin.h>
 
 #include "../../ps1/pose_logic.h"
-#include "../../../survivor_pc.h"
+#include "../../survivor_pc.h"
 
 namespace sf::features::zombie {
 

@@ -243,7 +243,7 @@ Current development version: **1.2**
 - Fix zombie dog/Cerberus AI — partially done (Jacob).
 - ~~Fix crow flight animations~~ — further landing and stacking verification remains.
 - Fix enemy behavior and animations — partially done.
-- Test shooting screen flash (GunCon simulation) across weapons and dry fire. **Photosensitivity warning:** this is a full-screen white strobe, OFF by default; opt in with `[SurvivorFix] Ps1ShootFlash=1` and adjust `Ps1ShootFlashFrames` (1–5).
+- Shooting screen flash (GunCon simulation). **Photosensitivity warning:** this is a full-screen white strobe, OFF by default; opt in with `[Fixes] Ps1ShootFlash=1` and adjust `Ps1ShootFlashFrames` (1–5). Existing `[SurvivorFix]` settings remain supported; `[Fixes]` takes precedence.
 - Add XInput and Raw Input support alongside DirectInput.
 - Add key bindings.
 - Mod support — phase 1 completed (Jacob); see `source/mod_sdk.cpp` for mod folders, archives, manifests, and module loading.
@@ -278,6 +278,9 @@ Current development version: **1.2**
 4) (Optional) Mod support: create `mods/mod_<id>/` with `manifest.txt` (see `source/mod_sdk.cpp` header), mirroring game-relative paths, or drop `mods/mod_<id>.7z` (non-solid, contents at root). Set `config.ini` `[Mod] Active = mod_<id>`; the `Module` DLL in the manifest is loaded from that folder.
 5) This project is provided free, as-is, without warranty, and will continue improving over time
 
+The embedded `MISC.BMP` is restored to `FIXRES\MISC.BMP` if missing. The wrapper
+does not create a root-level copy or remove an existing one.
+
 The release includes the x86 FFmpeg runtime required for movie playback:
 `avcodec-61.dll`, `avformat-61.dll`, `avutil-59.dll`, `swscale-8.dll` and
 `swresample-5.dll`. Keep all five beside `d3d8.dll` and `gun_bio.exe`.
@@ -294,6 +297,10 @@ the runtime DLLs, their hash manifest and `licenses/`. Run
 `powershell -NoProfile -File scripts/verify-runtime.ps1` before packaging.
 The AppVeyor packaging step checks the runtimes and archives the complete
 `data/` payload.
+
+Survivor-specific implementation, including the debug menu and PC adapter, lives
+under `source/survivor_fix/`. The maintained Visual Studio project is
+`source/d3d8-wrapper.vcxproj`; the Premake-generated project is under `build/`.
 
 # F.A.Q.
 

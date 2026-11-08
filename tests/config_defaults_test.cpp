@@ -56,8 +56,16 @@ int main(){
   check(sf::g_config.*(option.field),std::string("explicit per-fix override: ")+option.key);
  }
  ini.load("[SurvivorFix]\n");enabled(sf::g_config,"reload restores defaults");
- ini.load("[SurvivorFix]\nPs1ShootFlash=1\n");
- check(sf::g_config.ps1ShootFlash,"explicit shooting flash opt-in");
+  ini.load("[SurvivorFix]\nPs1ShootFlash=1\n");
+  check(sf::g_config.ps1ShootFlash,"explicit shooting flash opt-in");
+  ini.load("[SurvivorFix]\nPs1ShootFlash=1\nPs1ShootFlashFrames=4\n");
+  check(sf::g_config.ps1ShootFlash && sf::g_config.ps1ShootFlashFrames==4,"legacy flash settings remain supported");
+  ini.load("[Fixes]\nPs1ShootFlash=1\nPs1ShootFlashFrames=5\n");
+  check(sf::g_config.ps1ShootFlash && sf::g_config.ps1ShootFlashFrames==5,"flash reads Fixes section");
+  ini.load("[SurvivorFix]\nPs1ShootFlash=1\nPs1ShootFlashFrames=2\n[Fixes]\nPs1ShootFlash=0\nPs1ShootFlashFrames=3\n");
+  check(!sf::g_config.ps1ShootFlash && sf::g_config.ps1ShootFlashFrames==3,"Fixes overrides legacy flash values");
+  ini.load("[Fixes]\nPs1ShootFlashFrames=99\n");
+  check(sf::g_config.ps1ShootFlashFrames==5,"flash duration stays within its upper bound");
  if(failures)return 1;
  std::puts("PASS: production INI defaults, existing configurations and diagnostic overrides");
 }

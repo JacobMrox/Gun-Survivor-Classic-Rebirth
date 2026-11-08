@@ -9,7 +9,7 @@
 #include "../ps1/shadow_logic.h"
 #include "../ps1/zombie_profile.h"
 #include "features.h"
-#include "../../survivor_pc.h"
+#include "../survivor_pc.h"
 
 namespace sf::features {
 

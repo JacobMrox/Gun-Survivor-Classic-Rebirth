@@ -34,10 +34,10 @@
 //                     that draw gets src*a + dst*(1-a) with a = texture alpha * 0x80 and colour = texture *
 //                     0x40 (TEXTUREFACTOR 0x80404040). The alpha test keeps the colour-keyed edge.
 #include "survivor_pc.h"
-#include "survivor_fix/ps1/title_fade_logic.h"
+#include "ps1/title_fade_logic.h"
 
-#include "d3d8types.hpp"  // D3DSURFACE_DESC8, as in dllmain.cpp
-#include "d3d8.h"
+#include "../d3d8types.hpp"  // D3DSURFACE_DESC8, as in dllmain.cpp
+#include "../d3d8.h"
 
 #include <cmath>
 #include <cstdint>

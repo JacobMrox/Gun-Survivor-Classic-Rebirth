@@ -15,7 +15,7 @@
 */
 
 #include "d3d8.h"
-#include "survivor_pc.h"
+#include "survivor_fix/survivor_pc.h"
 
 HRESULT m_IDirect3DVertexBuffer8::QueryInterface(THIS_ REFIID riid, void** ppvObj)
 {

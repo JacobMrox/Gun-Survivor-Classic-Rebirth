@@ -2,7 +2,7 @@
 // Growing its buffer without repeating the native read queues old movement and delays the crosshair.
 // Both the game and Classic Rebirth receive the unchanged batches through the existing mouse bridge.
 #include <windows.h>
-#include "../../survivor_pc.h"
+#include "../survivor_pc.h"
 #include "../game.h"
 #include "../hooks.h"
 #include "../log.h"

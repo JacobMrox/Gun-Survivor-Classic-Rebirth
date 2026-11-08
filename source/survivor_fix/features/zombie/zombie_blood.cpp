@@ -20,7 +20,7 @@
 #include "zombie_shared.h"
 
 #include "../../ps1/blood_logic.h"
-#include "../../../survivor_pc.h"
+#include "../../survivor_pc.h"
 
 namespace sf::features::zombie {
 

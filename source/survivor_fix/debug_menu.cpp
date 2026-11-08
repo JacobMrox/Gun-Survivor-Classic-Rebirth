@@ -5,10 +5,10 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
-#include "d3d8types.hpp"
+#include "../d3d8types.hpp"
 #include "d3dx8tex.h"
 #include "debug_menu.h"
-#include "survivor_fix/features/features.h"
+#include "features/features.h"
 
 extern HMODULE g_hWrapperModule;
 

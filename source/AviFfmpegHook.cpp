@@ -7,7 +7,7 @@
 #include "globals.h"
 #include "debug.h"
 #include "survivor_fix/log.h"
-#include "survivor_pc.h"
+#include "survivor_fix/survivor_pc.h"
 #include <mmsystem.h>
 #include <string>
 #include <algorithm>

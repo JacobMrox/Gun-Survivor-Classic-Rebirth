@@ -141,7 +141,10 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="survivor_pc.cpp">
+    <ClCompile Include="survivor_fix\survivor_pc.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\debug_menu.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
     <ClCompile Include="survivor_fix\config.cpp">
@@ -291,7 +294,16 @@
     <ClCompile Include="survivor_fix\survivor_fix.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
-    <ClInclude Include="survivor_pc.h">
+    <ClInclude Include="survivor_fix\survivor_pc.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\debug_menu.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\features\debug_menu_input.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\features\debug_utility.h">
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\config.h">

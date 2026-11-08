@@ -14,7 +14,7 @@
 #include "debug_menu_input.h"
 #include "debug_utility.h"
 #include "../../aim_shared.h"
-#include "../../survivor_pc.h"
+#include "../survivor_pc.h"
 
 namespace sf { extern std::wstring g_dir; }
 extern int ForceWidth, ForceHeight;

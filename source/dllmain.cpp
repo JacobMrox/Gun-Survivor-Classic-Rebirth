@@ -27,14 +27,14 @@
 #include "file_events.h"
 #include "aim_shared.h"
 #include "debug.h"
-#include "survivor_pc.h"
+#include "survivor_fix/survivor_pc.h"
 #include "survivor_fix/survivor_fix.h"
 #include "survivor_fix/features/features.h"
 //#include "alpha_fix.h"
 #include "DirectShowHook.h"
 #include "ConfigWindow.h"
 #include "mod_sdk.h"
-#include "debug_menu.h"
+#include "survivor_fix/debug_menu.h"
 #include "resource.h"
 #include "AviFfmpegHook.h" // Access to g_Video
 #include "globals.h"
@@ -114,11 +114,8 @@ static void RestoreEmbeddedMiscIfMissing()
     char* slash = strrchr(modulePath, '\\');
     if (!slash) return;
 
-    // This PC build opens MISC.BMP from the process root.  Keep a FIXRES copy
-    // as well for packaged overrides and tools, but never replace a loose file.
-    strcpy_s(slash + 1, MAX_PATH - static_cast<size_t>(slash + 1 - modulePath), "MISC.BMP");
-    WriteEmbeddedResourceIfMissing(modulePath, IDR_MISC_BMP);
-
+    // The PC bitmap loader at 00403822 requests FIXRES\MISC.BMP; the bare
+    // MISC.BMP string is used only in its error message at 0040384D.
     *slash = '\0';
     strcat_s(modulePath, "\\FIXRES");
     CreateDirectoryA(modulePath, nullptr);

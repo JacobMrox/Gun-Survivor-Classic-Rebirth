@@ -19,7 +19,7 @@
 #include <d3d9.h>
 #include <intrin.h>
 #include "d3d8.h"
-#include "survivor_pc.h"
+#include "survivor_fix/survivor_pc.h"
 #include "survivor_fix/log.h"
 #include "survivor_fix/config.h"
 #include "resource.h"

@@ -8,7 +8,7 @@
 #include "MinHook.h"
 #include "aim_shared.h"
 #include "debug.h"
-#include "survivor_pc.h"
+#include "survivor_fix/survivor_pc.h"
 
 // ---- shared globals we already use in EndScene ----
 extern HWND  g_hFocusWindow;
