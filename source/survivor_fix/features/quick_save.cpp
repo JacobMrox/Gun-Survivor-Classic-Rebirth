@@ -55,9 +55,11 @@ bool g_ammoAvailable = false, g_healthAvailable = false;
 using AmmoCountFn = int(__fastcall*)(void*, void*);
 using AmmoUseFn = void(__fastcall*)(void*, void*);
 using DamageFn = void(__fastcall*)(void*, void*, int);
+using InventoryDrawFn = void(__fastcall*)(void*, void*, int, int, int, int, int, int);
 AmmoCountFn g_ammoCount = nullptr;
 AmmoUseFn g_ammoUse = nullptr;
 DamageFn g_damage = nullptr;
+InventoryDrawFn g_inventoryDraw = nullptr;
 
 bool IsPlayerStats(void* stats) {
   return stats && stats == *reinterpret_cast<void**>(game::kGameStats);
@@ -70,6 +72,11 @@ void __fastcall AmmoUseDetour(void* stats, void* edx) {
 }
 void __fastcall DamageDetour(void* stats, void* edx, int damage) {
   if (!UtilitySuppressDamage(g_infiniteHealth.load(), IsPlayerStats(stats), damage)) g_damage(stats, edx, damage);
+}
+void __fastcall InventoryDrawDetour(void* menu, void* edx, int item, int amount,
+                                    int variant, int row, int y, int x) {
+  g_inventoryDraw(menu, edx, item, UtilityInventoryAmount(g_infiniteAmmo.load(), item, amount),
+                  variant, row, y, x);
 }
 DebugMenuInputGate g_debugInputGate;
 bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
@@ -937,6 +944,7 @@ bool InstallQuickSave() {
   const uint8_t ammoCountBytes[] = {0x8B, 0x41, 0x1C, 0x8B, 0x44, 0x81, 0x20, 0xC3};
   const uint8_t ammoUseBytes[] = {0x8B, 0x41, 0x1C, 0x8D, 0x44, 0x81, 0x20, 0xFF, 0x08, 0xC3};
   const uint8_t damageBytes[] = {0xA0, 0x78, 0x3D, 0x5F, 0x00, 0x84, 0xC0};
+  const uint8_t inventoryDrawBytes[] = {0x83, 0xEC, 0x5C, 0x8B, 0x44, 0x24, 0x6C};
   if (game::CheckBytes({0x004645A0, ammoCountBytes, sizeof ammoCountBytes}) &&
       game::CheckBytes({0x00464630, ammoUseBytes, sizeof ammoUseBytes}) &&
       Hook("UtilityAmmoCount", 0x004645A0, reinterpret_cast<void*>(&AmmoCountDetour), reinterpret_cast<void**>(&g_ammoCount)) &&
@@ -945,6 +953,10 @@ bool InstallQuickSave() {
   if (game::CheckBytes({0x00463E70, damageBytes, sizeof damageBytes}) &&
       Hook("UtilityDamage", 0x00463E70, reinterpret_cast<void*>(&DamageDetour), reinterpret_cast<void**>(&g_damage)))
     g_healthAvailable = true;
+  if (!game::CheckBytes({0x00587A70, inventoryDrawBytes, sizeof inventoryDrawBytes}) ||
+      !Hook("UtilityInventoryDraw", 0x00587A70, reinterpret_cast<void*>(&InventoryDrawDetour),
+            reinterpret_cast<void**>(&g_inventoryDraw)))
+    Log("DebugUtility: inventory infinity display unavailable; ammo toggle remains usable");
   Log("DebugUtility: ammo hook %s; health hook %s", g_ammoAvailable ? "ready" : "unavailable", g_healthAvailable ? "ready" : "unavailable");
   const game::ByteSignature dispatcher = {game::kRoomDispatcher, game::kRoomDispatcherBytes,
                                           sizeof(game::kRoomDispatcherBytes)};

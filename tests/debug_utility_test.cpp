@@ -30,4 +30,14 @@ int main() {
   assert(UtilityRestoredHealth(true, 250) == 250);
   assert(UtilityRestoredHealth(true, 0) == 0);
   assert(UtilityRestoredHealth(false, 50) == 50);
+  for (int item = 1; item <= 6; ++item) {
+    assert(UtilityInventoryAmount(true, item, 23) == -1);
+    assert(UtilityInventoryAmount(false, item, 23) == 23);
+  }
+  assert(UtilityInventoryAmount(true, 9, 5) == -1);
+  assert(UtilityInventoryAmount(false, 9, 5) == 5);
+  assert(UtilityInventoryAmount(true, 8, -1) == -1);
+  assert(UtilityInventoryAmount(false, 8, -1) == -1);
+  assert(UtilityInventoryAmount(true, 10, 7) == 7);
+  assert(UtilityInventoryAmount(true, 0, 7) == 7);
 }
