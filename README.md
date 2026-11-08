@@ -222,45 +222,41 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 # Project Status & To-do
 
-Current devlopment version: 1.2
+Current development version: **1.2**
 
 <img width="962" height="758" alt="image" src="https://github.com/user-attachments/assets/f2e5d51f-e0e3-4e08-8271-f85f2ef48407" />
 
-* Fix movie player by replacing DirectShow with ffmpeg - Done; only few movies not working; investigate (Jacob)
-* Skip FMV/Video movies by pressing enter - Done (Jacob)
-* Remove old log printing shipped with the original game (debug.txt) - working on it.
-* Remove the need for the game to have GBIO.CFG in the directory to launch - Done; DLL auto-creates GBIO.CFG next to exe and d3d8.dll (embedded IDR_GBIO_CFG, empty fallback)
-* Fix Zombie footstep sound - Done (Trigger)
-* Fix NPC/enemy lighting/shader - Done (Jacob)
-* Restore missing screen flash/fade effects for title and menus - Done/Fixed (Trigger)
-* Add laser dot + trailer - Done (Jacob)
-* Add item pickup prompt option - Halfway there/partially done (Jacob)
-* Blood Color option - Done (Jacob)
-* Fix Item shine/glitter effect interval - Done (Jacob)
-* Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
-* Debug menu utility page: quick save/load, native save/load menus, and experimental infinite-ammo and health toggles (off by default). Quick save overwrites `Save\QUICK.SAV`. The toggles require the supported PC executable and do not persist after exiting the game.
-* Realtime stencil shadows replacing the PS1 shadow fix [optional] - Done (Jacob)
-* Zombie Dog AI / Cerberus fix - partially done (Jacob)
-* Crows do not play proper animations when flying etc... - Fixed
-* Fix enemy behaviour and animations - partially done
-* Add shooting screen flash (gun con flash simulation) effect - Temporarily inactive: a mouse click does not reliably indicate that a shot was fired. The `Ps1ShootFlash` settings are retained but have no effect until a verified shot event is hooked.
-* Add Xinput and Raw Input support, in addition to Dinput - Not yet
-* Add key bindings - Not yet
-* Mod Support - Done phase 1 (Jacob): Gemini Mod-Sdk replica — mods/mod_<id>/ folders + mods/mod_<id>.7z (auto-extract via 7z), manifest.txt (Name/Title/Module), Module DLL loaded from mod folder, CreateFileA override in cd_bypass.cpp; see source/mod_sdk.cpp
+- Replace DirectShow movie playback with FFmpeg — implemented; a few movies still need investigation (Jacob).
+- ~~Skip FMV/video movies with Enter~~ (Jacob).
+- Remove original game log printing (`debug.txt`) — in progress.
+- ~~Remove the manual `GBIO.CFG` requirement~~ — the DLL creates it next to the executable if missing.
+- ~~Fix zombie footstep sounds~~ (Trigger).
+- ~~Fix NPC/enemy lighting and shaders~~ (Jacob).
+- ~~Restore missing title and menu flash/fade effects~~ (Trigger).
+- ~~Add laser dot and trail~~ (Jacob).
+- Add item pickup prompt option — partially done (Jacob).
+- ~~Add blood color option~~ (Jacob).
+- ~~Fix item shine/glitter interval~~ (Jacob).
+- ~~Add quick save/load and native save/load menus~~ (Jacob): Shift+F5 saves, Shift+F6 loads, F5 opens Save Game, and F6 opens Load Game.
+- ~~Add debug utility save/load actions~~ — quick save overwrites `Save\QUICK.SAV`. Infinite-ammo and health toggles are available for the supported PC executable, default to OFF, and reset when the game exits.
+- ~~Add optional real-time stencil shadows~~ (Jacob).
+- Fix zombie dog/Cerberus AI — partially done (Jacob).
+- ~~Fix crow flight animations~~ — further landing and stacking verification remains.
+- Fix enemy behavior and animations — partially done.
+- Add shooting screen flash (GunCon simulation) — temporarily inactive until a verified shot event is hooked; `Ps1ShootFlash` settings currently have no effect.
+- Add XInput and Raw Input support alongside DirectInput.
+- Add key bindings.
+- Mod support — phase 1 completed (Jacob); see `source/mod_sdk.cpp` for mod folders, archives, manifests, and module loading.
 
 # Future
-* New In-game Config Menu based on PS1 code
-* Ragdolls
-* Third person mode (using RE2 source code/decomp to port it over)
-* Nemesis Mode (new difficulty where Nemesis roams the map and stalks the player after taking the first item until the last stage
-* Multiplayer
 
-# Future
-* New In-game Config Menu based on PS1 code
-* Ragdolls
-* Third person mode (using RE2 source code/decomp to port it over)
-* Nemesis Mode (new difficulty where Nemesis roams the map and stalks the player after taking the first item until the last stage
-* Multiplayer
+- New in-game configuration menu based on PS1 code.
+- HD textures.
+- Arabic, Farsi, Italian, Dutch, and Spanish language support.
+- Ragdolls.
+- Third-person mode using RE2 source code/decompilation as a reference.
+- Nemesis Mode: a difficulty where Nemesis stalks the player from the first item until the final stage.
+- Multiplayer.
 
 # Progress Videos
 
