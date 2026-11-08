@@ -19,9 +19,11 @@
     <ClCompile Include="ConfigWindow.cpp">
       <Filter>Config Window %28User Interface%29</Filter>
     </ClCompile>
-    <ClCompile Include="alpha_fix.cpp">
-      <Filter>Survivor Fixes</Filter>
-    </ClCompile>
+    <ClCompile Include="minhook\buffer.c" />
+    <ClCompile Include="minhook\hook.c" />
+    <ClCompile Include="minhook\trampoline.c" />
+    <ClCompile Include="minhook\hde\hde32.c" />
+    <ClCompile Include="mod_sdk.cpp" />
     <ClCompile Include="AviFfmpegHook.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
@@ -91,9 +93,14 @@
     <ClInclude Include="resource.h">
       <Filter>Config Window %28User Interface%29</Filter>
     </ClInclude>
-    <ClInclude Include="alpha_fix.h">
-      <Filter>Survivor Fixes</Filter>
-    </ClInclude>
+    <ClInclude Include="MinHook.h" />
+    <ClInclude Include="minhook\buffer.h" />
+    <ClInclude Include="minhook\trampoline.h" />
+    <ClInclude Include="minhook\hde\hde32.h" />
+    <ClInclude Include="minhook\hde\pstdint.h" />
+    <ClInclude Include="minhook\hde\table32.h" />
+    <ClInclude Include="minhook\include\MinHook.h" />
+    <ClInclude Include="mod_sdk.h" />
     <ClInclude Include="AviFfmpegHook.h">
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
@@ -145,6 +152,12 @@
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
     <ClCompile Include="survivor_fix\debug_menu.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\item_glitter.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
+    <ClCompile Include="survivor_fix\features\quick_save.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
     <ClCompile Include="survivor_fix\config.cpp">
@@ -346,6 +359,12 @@
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\cadence_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\cerberus_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\crow_logic.h">
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\damage_view_logic.h">

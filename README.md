@@ -301,6 +301,10 @@ The AppVeyor packaging step checks the runtimes and archives the complete
 Survivor-specific implementation, including the debug menu and PC adapter, lives
 under `source/survivor_fix/`. The maintained Visual Studio project is
 `source/d3d8-wrapper.vcxproj`; the Premake-generated project is under `build/`.
+After regenerating with `premake5.exe vs2022`, run
+`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-project-sync.ps1`
+to check that both projects and the maintained Solution Explorer filters list
+the same existing C/C++ sources and headers.
 
 # F.A.Q.
 

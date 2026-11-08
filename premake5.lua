@@ -22,7 +22,7 @@ workspace "d3d8-wrapper"
    defines { "rsc_FileDescription=\"https://thirteenag.github.io/wfp\"" }
    defines { "rsc_UpdateUrl=\"https://github.com/ThirteenAG/%{prj.name}\"" }
    
-   files { "source/*.h", "source/*.cpp" }
+   files { "source/*.h", "source/*.hpp", "source/*.cpp", "source/dxsdk/d3d8types.h" }
    files { "source/survivor_fix/**.h", "source/survivor_fix/**.cpp" }
    files { "source/minhook/*.c", "source/minhook/*.h", "source/minhook/hde/*.c", "source/minhook/hde/*.h", "source/minhook/include/*.h" }
    files { "source/*.def" }
