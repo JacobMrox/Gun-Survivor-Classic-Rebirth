@@ -24,11 +24,12 @@ workspace "d3d8-wrapper"
    
    files { "source/*.h", "source/*.cpp" }
    files { "source/survivor_fix/**.h", "source/survivor_fix/**.cpp" }
+   files { "source/minhook/*.c", "source/minhook/*.h", "source/minhook/hde/*.c", "source/minhook/hde/*.h", "source/minhook/include/*.h" }
    files { "source/*.def" }
    files { "source/*.rc" }
-   includedirs { "source/dxsdk", "source/vcpkg_installed/x86-windows/x86-windows/include" }
+   includedirs { "source/dxsdk", "source/vcpkg_installed/x86-windows/x86-windows/include", "source/minhook/include" }
    libdirs { "source/dxsdk", "source/vcpkg_installed/x86-windows/x86-windows/lib" }
-   links { "avcodec", "avformat", "avutil", "swscale", "swresample", "minhook.x32", "d3d9", "winmm" }
+   links { "avcodec", "avformat", "avutil", "swscale", "swresample", "d3d9", "winmm" }
 	  
    filter "configurations:Debug"
       defines "DEBUG"

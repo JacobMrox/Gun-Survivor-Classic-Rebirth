@@ -94,8 +94,9 @@ struct Config {
   bool ps1TitleFade = true;
   // Bottom-centre hint while near, but still outside, an original scripted interaction range.
   bool itemApproachPrompt = true;
-  // GunCon shooting flash (white strobe, 1 PS1 frame on fire).
+  // GunCon shooting flash (white strobe, 1-3 PS1 frames on fire).
   bool ps1ShootFlash = true;
+  int ps1ShootFlashFrames = 2;
   // Optional restoration of the PS1 lethal head-part rule, exposed in the configuration window.
   bool lethalZombieHeadshots = false;
   // Original-trilogy-style head explosion: hide the head and emit the stable blood/pop effects.

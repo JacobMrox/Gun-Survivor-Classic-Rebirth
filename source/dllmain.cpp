@@ -624,30 +624,43 @@ char WinDir[MAX_PATH + 1];
             };
             drawMenuText("- DEBUG MENU -", boxX + marginX, boxY + marginY, D3DCOLOR_ARGB(255, 0, 255, 255));
             char line[48] = {};
+            // Scene (dispatcher slot) -> stage/room (walls log) + Sheena area name.
+            // Filled from live logs (reconstructed scene -> next walls line) and
+            // EvilResource Sheena map areas. Edit freely.
             auto roomName = [](int sc) -> const char* {
                 switch (sc) {
                     case 0x00: return "00/00 HELICOPTER CRASH";
                     case 0x01: return "00/01 BACK ALLEY";
-                    case 0x02: return "00/02 ALLEY EXT";
+                    case 0x02: return "00/02 CHURCH HALL";
                     case 0x03: return "00/03 BACK ALLEY B";
                     case 0x04: return "00/04 CHURCH CORRIDOR";
-                    case 0x05: return "00/05 CHURCH HALL";
+                    case 0x05: return "00/05 CHURCH PLAYROOM";
                     case 0x06: return "00/06 CHURCH BASEMENT";
-                    case 0x07: return "00/07 PRODUCTION WEST";
+                    case 0x07: return "00/07 CHURCH STOREROOM";
                     case 0x08: return "00/08 FACTORY OFFICE";
                     case 0x09: return "00/09 PROJECTOR ROOM";
                     case 0x0A: return "00/0A CROW HALLWAY";
                     case 0x0B: return "00/0B CITY STREET N";
                     case 0x0C: return "00/0C CITY STREET";
                     case 0x0D: return "00/0D COAST ROAD";
-                    case 0x0E: return "00/0E ???";
+                    case 0x0E: return "00/0E FREEZER";
                     case 0x0F: return "00/0F COAST ROAD B";
-                    case 0x10: return "07/02 COAST ROAD N";
-                    case 0x11: return "07/03 LOWER BRIDGE PROMENADE";
-                    case 0x38: return "03/0A ROOM 03/0A";
+                    case 0x10: return "00/10 COAST ROAD N";
+                    case 0x11: return "00/11 LOWER BRIDGE PROMENADE";
+                    case 0x1D: return "0E/01 SEWERS";
+                    case 0x1E: return "07/00 HELICOPTER CRASH";
+                    case 0x1F: return "0C/00 OUTSKIRTS";
+                    case 0x20: return "0C/01 OUTSKIRTS B";
+                    case 0x23: return "0C/03 OUTSKIRTS ROAD";
+                    case 0x24: return "0C/01 OUTSKIRTS C";
+                    case 0x35: return "03/08 CHURCH BASEMENT";
+                    case 0x38: return "03/0A CHURCH WAKE";
                     case 0x4A: return "09/02 PROJECTOR ROOM";
-                    case 0x73: return "02/0F ROOM 02/0F";
-                    case 0x74: return "11/00 ROOM 11/00";
+                    case 0x54: return "0B/00 HOSPITAL";
+                    case 0x73: return "02/0F RESTAURANT KITCHEN";
+                    case 0x74: return "11/00 UMBRELLA HQ";
+                    case 0x75: return "02/0E RESTAURANT";
+                    case 0x77: return "02/0E RESTAURANT B";
                     case 0x79: return "HELIPORT FINAL BOSS";
                     default: return "ROOM";
                 }

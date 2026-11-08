@@ -1,0 +1,27 @@
+Gun-Survivor-Classic-Rebirth — Copyright Notice
+
+Copyright (C) Jacob Qarooni (JacobMrox), Giuseppe Marsiglia (Trigger117),
+and contributors. Original Classic Rebirth work copyright Gemini-Loboto3
+(classicrebirth.com). Survivor Fix zombie/player code copyright Trigger117
+(github.com/Trigger117). RESPeCt decomp references copyright MachinaAeon
+(github.com/MachinaAeon/RESPeCt). Portions of the wrapper originate from
+the d3d8to9 lineage (Elisha Riedlinger, Jacob Qarooni).
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version. See LICENSE for the full text.
+
+Attribution is mandatory. Any redistribution, in source or binary form,
+must:
+  1. preserve all copyright and license notices in LICENSE and this NOTICE,
+  2. give visible credit to the above authors in the redistribution's
+     documentation, "about" box, or release notes (e.g. "Based on
+     Gun-Survivor-Classic-Rebirth by Jacob Qarooni / Trigger117, inspired
+     by Classic Rebirth by Gemini-Loboto3"),
+  3. provide the complete corresponding source for any modified version
+     under the same GPLv3 terms (copyleft).
+
+This software is provided as-is, without warranty. Resident Evil and
+Biohazard Gun Survivor are trademarks of Capcom Co., Ltd. This project is
+not affiliated with or endorsed by Capcom or Classic Rebirth.

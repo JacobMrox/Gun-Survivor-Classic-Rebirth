@@ -221,35 +221,36 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 <img width="320" height="240" alt="image" src="https://github.com/user-attachments/assets/c996912e-d21a-44c6-bed0-29a7f9ef2bf6" />
 
 # Project Status & To-do
-<img width="442" height="467" alt="image" src="https://github.com/user-attachments/assets/356e2032-1aa2-4945-a103-5f311813bba7" />
-<img width="402" height="338" alt="image" src="https://github.com/user-attachments/assets/515c39a4-5db3-4750-a3f8-8b678d8fce6a" />
 
+Current devlopment version: 1.2
 
-* Fix movie player by replacing DirectShow with ffmpeg (In progress...)- Done; only few movies not working (Jacob)
+* Fix movie player by replacing DirectShow with ffmpeg - Done; only few movies not working; investigate (Jacob)
+* Skip FMV/Video movies by pressing enter - Done (Jacob)
 * Remove old log printing shipped with the original game (debug.txt) - working on it.
 * Remove the need for the game to have GBIO.CFG in the directory to launch - Done; DLL auto-creates GBIO.CFG next to exe and d3d8.dll (embedded IDR_GBIO_CFG, empty fallback)
 * Fix Zombie footstep sound - Done (Trigger)
 * Fix NPC/enemy lighting/shader - Done (Jacob)
-* Restore missing screen flash/fade effects for title and menus - Fixed (Trigger)
+* Restore missing screen flash/fade effects for title and menus - Done/Fixed (Trigger)
 * Add laser dot + trailer - Done (Jacob)
-* Add item pickup prompt option - Done (Jacob)
+* Add item pickup prompt option - Halfway there/partially done (Jacob)
 * Blood Color option - Done (Jacob)
 * Fix Item shine/glitter effect interval - Done (Jacob)
 * Quick save/load; uses game's own native save/load feature (shift + f5 to quick save, shift + f6 to quick load, f5 to load save menu and f6 to load load menu - Done (Jacob)
+* Realtime stencil shadows replacing the PS1 shadow fix [optional] - Done (Jacob)
+* Zombie Dog AI / Cerberus fix - partially done (Jacob)
+* Crows do not play proper animations when flying etc... - Fixed
 * Fix enemy behaviour and animations - partially done
-* Zombie dog footstep gait fix - Done (Jacob): type-11 handler 0043D630 now plays no sound when idle (request 0/1), slower cadence when walking (2-4), normal when running (5-7); asleep sleep-suppression preserved
-* Fix non playing in-game enemy ambush scenes (crows busting through windows, dogs, and Mr. X busting through wall, etc..) - Not yet
-* Some items cannot be taken (like the crowbar in one of the rooms) - Not yet
-* Crows do not play proper animations when flying etc... - Done phase 1 (Jacob): type-12 crow flying clip 4 forced while locomotion (2-7) via ps1/crow_logic.h + CrowAnimMap in zombie_common.cpp (Ps1Crows config, default on); PS1 ref RESPeCt crow.c ENEMPROG 52, PC type 12 hypothesized 52-40 — verify live before full flight AI
-* Crow wing flap sound / dead fall - Done phase 2 (Jacob): wing (bank 9 cue 2) emitted per-flight-step in zombie_audio.cpp; dead fall accelerates 10→+2/frame and clamps at 0 via CrowDeadFall in zombie_common.cpp (crow_logic.h DeadFallNextY); log "CrowWingAudio" first 16
-* Debug menu (RE2-style) - Done phase 1 (Jacob): F10 overlay (unused: F1/F5/F6/F8/F9 in config box), black box cyan list FONT000 glyphs, scrollable scenes 00-79 dummy names, Enter jumps via QuickSave scene reload preserving live state (DebugQueueJump), ESC close; see source/survivor_fix/features/quick_save.cpp + DrawDebugMenu in source/dllmain.cpp
-* Mr. X doesn't behave properly nor his event based ambushes play - Not yet
-* Hunters cannot jump over obstacles - Not yet
-* The Cleaners/Hank unit cannot climb down - Not yet
-* Add shooting screen flash (gun con flash simulation) effect - Done (Jacob): white strobe 1 PS1 frame via SurvivorScreenFx.whiteFlash, set on MouseClick hit (00407810/0046A775), config [SurvivorFix] Ps1ShootFlash=1 (default on)
+* Add shooting screen flash (gun con flash simulation) effect - Not yet
 * Add Xinput and Raw Input support, in addition to Dinput - Not yet
 * Add key bindings - Not yet
 * Mod Support - Done phase 1 (Jacob): Gemini Mod-Sdk replica — mods/mod_<id>/ folders + mods/mod_<id>.7z (auto-extract via 7z), manifest.txt (Name/Title/Module), Module DLL loaded from mod folder, CreateFileA override in cd_bypass.cpp; see source/mod_sdk.cpp
+
+# Future
+* New In-game Config Menu based on PS1 code
+* Ragdolls
+* Third person mode (using RE2 source code/decomp to port it over)
+* Nemesis Mode (new difficulty where Nemesis roams the map and stalks the player after taking the first item until the last stage
+* Multiplayer
 
 # Future
 * New In-game Config Menu based on PS1 code
@@ -283,6 +284,8 @@ The release includes the x86 FFmpeg runtime required for movie playback:
 `swresample-5.dll`. Keep all five beside `d3d8.dll` and `gun_bio.exe`.
 They are dependencies of Classic Rebirth and are not supplied by the original
 game. These builds also require the Microsoft Visual C++ x86 runtime.
+`d3d8.dll` itself is a single self-contained DLL (MSVC static runtime,
+MinHook compiled in from `source/minhook/`); no `minhook.x32.dll` is needed.
 See `licenses/FFmpeg-NOTICE.txt` in the release for the FFmpeg license and source
 information.
 

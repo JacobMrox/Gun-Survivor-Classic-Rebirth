@@ -248,6 +248,11 @@ int __fastcall EndFrameDetour(void* game, void* edx, int a) {
 uint32_t __fastcall ReadPadDetour(void* game, void* edx, int a) {
   uint32_t pad = g_readPad(game, edx, a);
   if (g_dying) return 0;  // 8008369C step 0: 80062DEC = 0, controls off
+  if (sf::features::DebugMenuVisible()) {
+    // Debug menu owns confirm/keys while open; game must not see them
+    // (prevents inventory/status popping through the jump).
+    pad &= ~game::kPadConfirm;
+  }
   if (g_config.ps1PlayerDeath && MainState() == kStateYouDied) {
     // Step 9: a button just pressed (800B4B94 & 0x20 and not 800B3CC4) after at least 0x28 frames.
     const bool down = (pad & game::kPadConfirm) != 0;
@@ -268,10 +273,16 @@ uint32_t __fastcall ReadPadDetour(void* game, void* edx, int a) {
 }
 
 int __fastcall MouseClickDetour(void* mouse, void* edx, int a, int b, int c, int d, int e, int f) {
+  if (sf::features::DebugMenuVisible()) return 0;  // debug owns clicks while open
   if (g_dying) return 0;  // no shooting during the death
   const int hit = g_mouseClick(mouse, edx, a, b, c, d, e, f);
   // 0046A775 uses a non-zero result inside the fire rect: that is the shot.
-  if (hit != 0 && g_config.ps1ShootFlash) g_shootFlashFrames = 3;
+  // Debounce: one strobe per press so rapid clicks don't restack.
+  if (hit != 0 && g_config.ps1ShootFlash && !sf::features::DebugMenuVisible() &&
+      g_shootFlashFrames <= 0 &&
+      MainState() == kStateRooms &&
+      *reinterpret_cast<const uint8_t*>(*reinterpret_cast<const uint8_t* const*>(game::kGameState) + game::kGameModeOffset) == 3)
+    g_shootFlashFrames = g_config.ps1ShootFlashFrames;
   return hit;
 }
 

@@ -225,6 +225,7 @@
     <ClCompile Include="d3d8to9_volume.cpp" />
     <ClCompile Include="d3d8types.cpp" />
     <ClCompile Include="dinputhook.cpp" />
+    <ClCompile Include="mod_sdk.cpp" />
     <ClCompile Include="survivor_pc.cpp" />
     <ClCompile Include="survivor_fix\config.cpp" />
     <ClCompile Include="survivor_fix\features\bite_from_behind.cpp" />

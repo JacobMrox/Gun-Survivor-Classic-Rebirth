@@ -63,6 +63,9 @@ void LoadConfig(const char* iniPath) {
   c.ps1DoorFade = Read("Ps1DoorFade", true);
   c.ps1TitleFade = Read("Ps1TitleFade", true);
   c.ps1ShootFlash = Read("Ps1ShootFlash", true);
+  c.ps1ShootFlashFrames = GetPrivateProfileIntA("SurvivorFix", "Ps1ShootFlashFrames", 2, g_ini);
+  if (c.ps1ShootFlashFrames < 1) c.ps1ShootFlashFrames = 1;
+  if (c.ps1ShootFlashFrames > 5) c.ps1ShootFlashFrames = 5;
   c.itemApproachPrompt = GetPrivateProfileIntA("Fixes", "ItemApproachPrompt", 1, iniPath) != 0;
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
   char uncensored[16] = {};
