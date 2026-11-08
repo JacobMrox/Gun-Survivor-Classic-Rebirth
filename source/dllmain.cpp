@@ -627,6 +627,7 @@ char WinDir[MAX_PATH + 1];
             // Scene (dispatcher slot) -> stage/room (walls log) + Sheena area name.
             // Filled from live logs (reconstructed scene -> next walls line) and
             // EvilResource Sheena map areas. Edit freely.
+			// Note: work in progress; some scene IDs are missing or unknown. The menu is for testing.
             auto roomName = [](int sc) -> const char* {
                 switch (sc) {
                     case 0x00: return "00/00 HELICOPTER CRASH";
@@ -638,11 +639,11 @@ char WinDir[MAX_PATH + 1];
                     case 0x06: return "00/06 CHURCH BASEMENT";
                     case 0x07: return "00/07 CHURCH STOREROOM";
                     case 0x08: return "00/08 FACTORY OFFICE";
-                    case 0x09: return "00/09 PROJECTOR ROOM";
+                    case 0x09: return "00/09 VIEWING ROOM";
                     case 0x0A: return "00/0A CROW HALLWAY";
-                    case 0x0B: return "00/0B CITY STREET N";
-                    case 0x0C: return "00/0C CITY STREET";
-                    case 0x0D: return "00/0D COAST ROAD";
+                    case 0x0B: return "00/0B PROJECTOR ROOM";
+                    case 0x0C: return "00/0C KITCHEN";
+                    case 0x0D: return "00/0D WINE CELLAR";
                     case 0x0E: return "00/0E FREEZER";
                     case 0x0F: return "00/0F COAST ROAD B";
                     case 0x10: return "00/10 COAST ROAD N";
