@@ -515,7 +515,8 @@ char WinDir[MAX_PATH + 1];
         float alpha = 0.0f;
         const bool hotkey = sf::features::QuickSaveGetNotification(text, sizeof text, &alpha) && alpha > 0.0f;
         const bool itemApproach = sf::features::ItemApproachPromptVisible();
-        if (!hotkey && !itemApproach) return;
+        const bool debugOpen = sf::features::DebugMenuVisible();
+        if (!hotkey && !itemApproach && !debugOpen) return;
         EnsureHotkeyFontTexture(dev);
         if (!gHotkeyFontTex) return;
 
@@ -590,6 +591,76 @@ char WinDir[MAX_PATH + 1];
             // message directly above it at every output resolution.
             const float y = static_cast<float>(backDesc.Height) - marginY - glyphHeight * 10.0f;
             drawText(prompt, (std::max)(marginX, x), y, 1.0f);
+        }
+        // RE2-style debug menu (F2/F10): black box, scrollable scene list with
+        // dummy names (ids as hex). Enter jumps via QuickSave scene reload.
+        // Box mirrors RE2: JUMP row selected; dummy rows greyed for later.
+        if (sf::features::DebugMenuVisible()) {
+            const int sel = sf::features::DebugMenuSelected();
+            const int row = sf::features::DebugMenuRow();
+            const int cur = sf::features::DebugMenuCurrentScene();
+            const float boxW = 430.0f * scale, boxH = 300.0f * scale;
+            const float boxX = (static_cast<float>(backDesc.Width) - boxW) * 0.5f;
+            const float boxY = (static_cast<float>(backDesc.Height) - boxH) * 0.32f;
+            const DWORD black = D3DCOLOR_ARGB(220, 0, 0, 0);
+            FontVertex8 boxVerts[4] = {
+                {boxX, boxY, 0.0f, 1.0f, black, 0.0f, 0.0f},
+                {boxX + boxW, boxY, 0.0f, 1.0f, black, 0.0f, 0.0f},
+                {boxX, boxY + boxH, 0.0f, 1.0f, black, 0.0f, 0.0f},
+                {boxX + boxW, boxY + boxH, 0.0f, 1.0f, black, 0.0f, 0.0f},
+            };
+            dev->SetTexture(0, nullptr);
+            dev->SetVertexShader(FVF_FONTVERTEX8);
+            dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+            dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, boxVerts, sizeof(FontVertex8));
+            dev->SetTexture(0, gHotkeyFontTex);
+            auto drawMenuText = [&](const char* value, float x, float y, DWORD color) {
+                const size_t length = strlen(value);
+                for (size_t i = 0; i < length; ++i) {
+                    const int glyph = NativeFontGlyph(value[i]);
+                    if (glyph >= 0)
+                        DrawNativeFontGlyph(dev, glyph, x + glyphWidth * i, y, glyphWidth, glyphHeight, fontDesc.Width, fontDesc.Height, color);
+                }
+            };
+            drawMenuText("- DEBUG MENU -", boxX + marginX, boxY + marginY, D3DCOLOR_ARGB(255, 0, 255, 255));
+            char line[48] = {};
+            auto roomName = [](int sc) -> const char* {
+                switch (sc) {
+                    case 0x00: return "07/00 HELICOPTER CRASH";
+                    case 0x01: return "00/00 BACK ALLEY";
+                    case 0x04: return "00/01 CHURCH CORRIDOR";
+                    case 0x09: return "09/02 PROJECTOR ROOM";
+                    case 0x0A: return "09/03 CROW HALLWAY";
+                    case 0x11: return "07/03 LOWER BRIDGE PROMENADE";
+                    case 0x38: return "03/0A ROOM 03/0A";
+                    case 0x4A: return "09/02 PROJECTOR ROOM";
+                    case 0x73: return "02/0F ROOM 02/0F";
+                    case 0x74: return "11/00 ROOM 11/00";
+                    case 0x79: return "HELIPORT FINAL BOSS";
+                    default: return "ROOM";
+                }
+            };
+            const char* selName = roomName(sel);
+            const char* curName = roomName(cur);
+            const DWORD cyan = D3DCOLOR_ARGB(255, 0, 255, 255);
+            const DWORD grey = D3DCOLOR_ARGB(255, 90, 90, 90);
+            const DWORD white = D3DCOLOR_ARGB(255, 255, 255, 255);
+            snprintf(line, sizeof(line), "%c JUMP %02X %-16s", (row == 0) ? '-' : ' ', sel, selName);
+            drawMenuText(line, boxX + marginX, boxY + marginY + glyphHeight * 2, (row == 0) ? cyan : grey);
+            const char* dummies[] = {"UTILITY MENU", "MEMORY OVERWRITE", "XA PLAY TEST", "CP MAP HIR", "SHORT CHECK DISP", "MONOSASHI"};
+            for (int i = 0; i < 6; ++i) {
+                snprintf(line, sizeof(line), "%c %s", ((row == i + 1) ? '-' : ' '), dummies[i]);
+                drawMenuText(line, boxX + marginX, boxY + marginY + glyphHeight * (3 + i), ((row == i + 1) ? cyan : grey));
+            }
+            snprintf(line, sizeof(line), "CUR %02X %-16s", cur, curName);
+            drawMenuText(line, boxX + marginX, boxY + marginY + glyphHeight * 10, white);
+            static DWORD t0 = GetTickCount();
+            const DWORD el = GetTickCount() - t0;
+            snprintf(line, sizeof(line), "%02lu:%02lu:%02lu", (el / 3600000) % 24, (el / 60000) % 60, (el / 1000) % 60);
+            drawMenuText(line, boxX + boxW - glyphWidth * 10, boxY + boxH - glyphHeight * 2, D3DCOLOR_ARGB(255, 255, 0, 255));
+            snprintf(line, sizeof(line), "UP DOWN LEFT RIGHT ENTER ESC F2");
+            drawMenuText(line, boxX + marginX, boxY + marginY + glyphHeight * 11, white);
+            dev->SetTexture(0, gHotkeyFontTex);
         }
         dev->ApplyStateBlock(state);
         dev->DeleteStateBlock(state);

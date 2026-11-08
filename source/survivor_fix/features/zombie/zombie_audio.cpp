@@ -2,6 +2,7 @@
 #include "zombie_shared.h"
 #include "../../ps1/zombie_audio_logic.h"
 #include "../../ps1/zombie_voice_samples.h"
+#include "../../ps1/crow_logic.h"
 #include <fstream>
 #include <iterator>
 #include <intrin.h>
@@ -119,6 +120,33 @@ void WalkAudioBefore(void* s) {
 }
 void WalkAudioAfter(void* s) {
   const bool active=subject==s;subject=nullptr;
+  // Crow wing flap (crow.c FlyStep: frame 3 -> FN_EN_ANIM_SOUND e,9,2).
+  // The native crow dispatcher only fires on sequence reapplication, which
+  // the held flying clip suppresses, so emit it here per-update instead.
+  // Family 9/2 on PC resolves to a zombie bank, so redirect the pooled load
+  // to the PC crow wing file (SND-002, index-matched to sound 2).
+  if (!active && g_config.ps1Crows && nativeSound &&
+      game::Read<int>(s, game::S::kType) == ps1::crow::kCrowType) {
+    static std::unordered_map<void*, unsigned> crowStep;
+    static const char* kCrowWing = "PSX_DATA\\WAV\\ENEMY\\crow\\SND-002.WAV";
+    const int selector = game::Read<int>(s, game::S::kSelector);
+    const int request = game::Read<int>(s, game::S::kRequest);
+    uint8_t *o,*t;
+    if (GetObjects(s,o,t) && game::Read<float>(o, 0x11C) > 0.0f &&
+        selector == ps1::crow::kAnimFly && ps1::crow::IsLocomotionRequest(request)) {
+      const unsigned step = ++crowStep[s];
+      if (step % 12u == 3u) {
+        void* manager=*reinterpret_cast<void**>(game::kGameState);
+        if (manager) {
+          ReplacementScope crowScope(kCrowWing, ReplacementKind::Walk);
+          nativeSound(manager,nullptr,ps1::crow::kWingBank,ps1::crow::kWingSound);
+          if (emitted++<16) Log("CrowWingAudio: S=%p via %s family=%d cue=%d",s,kCrowWing,ps1::crow::kWingBank,ps1::crow::kWingSound);
+        }
+      }
+    } else {
+      crowStep.erase(s);
+    }
+  }
   if(!active || !Managed(s))return;
   uint32_t tick;if(!Ps1LogicFrame(&tick))return;
   auto& entry=g_entries[s];if(entry.walkAudioTick==tick)return;

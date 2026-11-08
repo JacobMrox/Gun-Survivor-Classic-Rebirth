@@ -547,7 +547,7 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
   const bool trail = fx.trail == 1 || fx.trail == 2;
   const bool held = fx.heldBlend > 0 && gFrameValid && gFrame;
   const bool loadingBlack = gTitleLoadingBlackFrames > 0;
-  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.subtract > 0 || loadingBlack ||
+  const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.whiteFlash || fx.subtract > 0 || loadingBlack ||
                     (gTitleActive && (gTitleBrightness < 128 || gTitleFlash > 0));
   const bool copy = (trail || fx.keep || gTitleActive) && !gHolding;
   if (!dev || (!draw && !copy)) return;
@@ -615,6 +615,7 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
       if (gTitleActive && gTitleFlash > 0)
         Box(dev,w,h,D3DCOLOR_ARGB(255,gTitleFlash,gTitleFlash,gTitleFlash),false);
       if (loadingBlack) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0xFF, 0xFF, 0xFF), true);
+      if (fx.whiteFlash) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0xFF, 0xFF, 0xFF), false);
       if (fx.redFlash) Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0x40, 0, 0), false);  // 0x70000000: + (FF, 0, 0) / 4
       if (fx.fade > 0) {
         const int v = Clamp255(fx.fade);

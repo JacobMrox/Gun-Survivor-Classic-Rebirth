@@ -42,12 +42,37 @@ inline int PickFlight(int crowCount, int roll) {
 
 // Animation correction for the PC mapper: crows in flight must keep the
 // flying clip (4) while locomotion is requested. The broken PC port plays
-// perched/idle clips while flying. Attacks (5/6), land/takeoff (3/8) and
-// death (9/11/13) are left to native handling outside this slice.
+// perched/idle clips while flying. Attacks (5/6), land/takeoff (3/8) are left
+// to native handling; once dead the crow must take the dead-fall clip (13,
+// DeadFallStep) so it falls to the floor instead of looping the twitch (11)
+// or freezing mid-air. Any death request maps to 13.
 constexpr int ApproachSelector(int type, int request, int native, bool alive) {
-  return type == kCrowType && alive && IsLocomotionRequest(request) && native != kAnimFly
+  if (type != kCrowType) return native;
+  if (!alive) return kAnimDeadFall;
+  return IsLocomotionRequest(request) && native != kAnimFly
       ? kAnimFly
       : native;
 }
+
+// Dead fall (crow.c 80103898 DeadFallStep, action 13): fall to the floor with
+// accelerating velocity (starts 0xA, +2 per frame), then anim 11. PC Y is
+// negative aloft (PS1 scale), 0 at the floor — same as zombie support logs.
+constexpr float kDeadFallStart = 10.0f;
+constexpr float kDeadFallAccel = 2.0f;
+inline float DeadFallNextY(float y, float& vel) {
+  if (y >= 0.0f) { vel = 0.0f; return 0.0f; }
+  if (vel <= 0.0f) vel = kDeadFallStart;
+  y += vel;
+  vel += kDeadFallAccel;
+  if (y > 0.0f) y = 0.0f;
+  if (y == 0.0f) vel = 0.0f;
+  return y;
+}
+
+// Wing flap (FlyStep 80101C58: CW_FRAME==3 -> FN_EN_ANIM_SOUND e,9,2;
+// TakeoffStep frame C/17 same). PC family/cue reuse PS1 bank/sound numbers.
+constexpr int kWingBank = 9;
+constexpr int kWingSound = 2;
+constexpr int kWingFrame = 3;
 
 }  // namespace ps1::crow

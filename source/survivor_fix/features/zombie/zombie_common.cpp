@@ -331,6 +331,36 @@ int CrowAnimMap(void* s, int request, int native) {
   return ps1::crow::ApproachSelector(game::Read<int>(s, game::S::kType), request, native, alive);
 }
 
+std::unordered_map<void*, float> g_crowFallVel;
+void CrowDeadFall(void* s) {
+  if (!g_config.ps1Crows) return;
+  if (game::Read<int>(s, game::S::kType) != ps1::crow::kCrowType) return;
+  uint8_t *o, *t;
+  if (!GetObjects(s, o, t)) return;
+  if (game::Read<float>(o, game::O::kHealth) > 0.0f) { g_crowFallVel.erase(s); return; }
+  float* pos = game::Field<float>(o, game::O::kPos);
+  float vel = g_crowFallVel[s];
+  float newY = ps1::crow::DeadFallNextY(pos[1], vel);
+  // Stall guard: the native loop sometimes holds Y (mid-air freeze). If the
+  // frame didn't move for a long stretch, snap to the floor.
+  static std::unordered_map<void*, unsigned> stall;
+  if (newY == pos[1] && pos[1] < -50.0f) {
+    if (++stall[s] > 30) {
+      newY = 0.0f;
+      stall[s] = 0;
+      Log("CrowDeadFall: S=%p stuck at %.0f, snapped to floor", s, pos[1]);
+    }
+  } else {
+    stall[s] = 0;
+  }
+  pos[1] = newY;
+  g_crowFallVel[s] = vel;
+  float* accum = game::Field<float>(o, game::O::kAccum);
+  accum[0] = accum[1] = accum[2] = 0.0f;
+  static unsigned logged = 0;
+  if (logged++ < 32) Log("CrowDeadFall: S=%p Y=%.0f vel=%.0f sel=%d req=%d", s, pos[1], vel, game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest));
+}
+
 int __fastcall MapAnimDetour(void* s, void* edx, int request) {
   if (nativeOnlyUpdate) {
     const int native = g_mapAnim(s, edx, request);
@@ -461,6 +491,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
     if (dogAsleep) CerberusFinishUpdate(s, true, holdFx, holdFz);
   }
   UpdateCerberusDeath(s);
+  CrowDeadFall(s);
   HitAfter(s, hit);
   if (partner) *partner = savedPartner;
   BiteAfter(s, bite);

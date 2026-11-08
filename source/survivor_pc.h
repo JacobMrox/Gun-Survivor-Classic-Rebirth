@@ -102,6 +102,7 @@ struct SurvivorScreenFx {
   int heldBlend;   // 0..255: the kept frame is drawn over the game's with this opacity (it stops being copied when
                    // keep is 0). GAME OVER over the Continue picture: the PS1 brightens only the words (8007B2A8),
                    // the game composes them once, so the picture without them fades out over them.
+  int whiteFlash;  // non-zero: opaque white GunCon strobe (shooting flash), 1 frame
 };
 
 void SurvivorPc_SetScreenFx(const SurvivorScreenFx* fx);

@@ -48,6 +48,7 @@ int g_deathPitch = 0;                 // 800A865C of the view: the steps of 8008
 int g_deathEyeStart = ps1::kEyeRest;  // 800A8634 at step 0 (with the bob: DuckStation -1642)
 bool g_dying = false;                 // 8008369C steps 0-6: the room stays open
 bool g_redFlash = false;
+int g_shootFlashFrames = 0;  // GunCon strobe remaining (PS1 frames)
 int g_lastState = -1;
 int g_youDiedFrames = 0;  // 800BB074 in steps 8-9
 int g_youDiedLoad = 0;    // black loading frames (step 7) still to go
@@ -141,6 +142,7 @@ void Send() {
     fx.subtract = g_death.subtract;
   }
   fx.redFlash = g_dying && g_redFlash;
+  fx.whiteFlash = g_shootFlashFrames > 0 ? 1 : 0;
   fx.keep = g_config.ps1DoorFade && state == kStateRooms;
   fx.noCrosshair = g_dying;
   if (state == kStateContinue && g_gameOver >= 0) {
@@ -236,6 +238,7 @@ int __fastcall EndFrameDetour(void* game, void* edx, int a) {
       if (g_youDiedFrames < ps1::kYouDiedMinFrames) ++g_youDiedFrames;
       if (g_youDiedLeaving && ps1::FadeBlack(g_fade)) g_injectConfirm = true;
     }
+    if (g_shootFlashFrames > 0) --g_shootFlashFrames;
     ps1::StepFade(g_fade);
   }
   Send();
@@ -266,7 +269,10 @@ uint32_t __fastcall ReadPadDetour(void* game, void* edx, int a) {
 
 int __fastcall MouseClickDetour(void* mouse, void* edx, int a, int b, int c, int d, int e, int f) {
   if (g_dying) return 0;  // no shooting during the death
-  return g_mouseClick(mouse, edx, a, b, c, d, e, f);
+  const int hit = g_mouseClick(mouse, edx, a, b, c, d, e, f);
+  // 0046A775 uses a non-zero result inside the fire rect: that is the shot.
+  if (hit != 0 && g_config.ps1ShootFlash) g_shootFlashFrames = 3;
+  return hit;
 }
 
 int __fastcall RoomTickDetour(void* game, void* edx, uint32_t* pad, uint32_t* prev, int* turns, float p5, int* scene,

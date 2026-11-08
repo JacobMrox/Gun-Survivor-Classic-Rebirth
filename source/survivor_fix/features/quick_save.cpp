@@ -42,6 +42,12 @@ struct QuickState {
 bool g_f5Down = false;
 bool g_f6Down = false;
 bool g_f8Down = false;
+bool g_f2Down = false;
+bool g_f10Down = false;
+bool g_debugOpen = false;
+bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
+int g_debugSel = 1;
+int g_debugRow = 0;  // 0 JUMP, 1..6 dummy rows (RE2 layout)
 RECT g_windowedRect = {};
 bool g_haveWindowedRect = false;
 std::array<char, 64> g_notice = {};
@@ -543,6 +549,55 @@ void QuickSavePollWindowToggle() {
   const bool f8 = Foreground() && (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
   if (f8 && !g_f8Down) ToggleFullscreen();
   g_f8Down = f8;
+  // RE2-style debug menu: F2 or F10 toggle via the EndScene poll (DirectInput
+  // eats WM_KEYDOWN for F-keys, so the window-message path never fires).
+  const bool fg = Foreground();
+  const bool f2 = fg && (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
+  const bool f10 = fg && (GetAsyncKeyState(VK_F10) & 0x8000) != 0;
+  if ((f2 || f10) && !g_f2Down && !g_f10Down) {
+    g_debugOpen = !g_debugOpen;
+    if (g_debugOpen) {
+      int cur = *reinterpret_cast<int*>(game::kSceneId);
+      g_debugSel = (cur > 0 && cur <= 0x79) ? cur : 1;
+      g_debugRow = 0;
+      Log("DebugMenu: open via poll, current scene %02X", cur);
+      Notify("F2/F10  DEBUG OPEN");
+    } else {
+      Log("DebugMenu: closed via poll");
+      Notify("F2/F10  DEBUG CLOSE");
+    }
+  }
+  g_f2Down = f2;
+  g_f10Down = f10;
+  if (g_debugOpen && fg) {
+    const bool up = (GetAsyncKeyState(VK_UP) & 0x8000) != 0;
+    const bool down = (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0;
+    const bool left = (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0;
+    const bool right = (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
+    const bool enter = (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
+    const bool esc = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+    if (esc && !g_debugEscDown) { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
+    g_debugEscDown = esc;
+    if (up && !g_debugUpDown) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : 6;
+    g_debugUpDown = up;
+    if (down && !g_debugDownDown) g_debugRow = (g_debugRow < 6) ? g_debugRow + 1 : 0;
+    g_debugDownDown = down;
+    if (g_debugRow == 0 && left && !g_debugLeftDown) g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
+    g_debugLeftDown = left;
+    if (g_debugRow == 0 && right && !g_debugRightDown) g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
+    g_debugRightDown = right;
+    if (enter && !g_debugEnterDown) {
+      if (g_debugRow != 0) {
+        Notify("UNIMPLEMENTED");
+        Log("DebugMenu: row %d unimplemented", g_debugRow);
+      } else {
+        const int target = g_debugSel;
+        g_debugOpen = false;
+        DebugQueueJump(target);
+      }
+    }
+    g_debugEnterDown = enter;
+  }
 }
 
 bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t lparam) {
@@ -568,7 +623,7 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
     }
   }
   const bool isHotkey = wparam == VK_F1 || wparam == VK_F5 || wparam == VK_F6 ||
-                        wparam == VK_F8 || wparam == VK_F9;
+                        wparam == VK_F8 || wparam == VK_F9 || wparam == VK_F10 || wparam == VK_F2;
   if (!isHotkey) return false;
   if (message == WM_KEYUP || message == WM_SYSKEYUP) {
     if (wparam == VK_F5) g_f5Down = false;
@@ -578,7 +633,7 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
   }
   if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) return false;
   const bool repeated = (static_cast<uintptr_t>(lparam) & (uintptr_t{1} << 30)) != 0;
-  if (repeated) return wparam == VK_F5 || wparam == VK_F6 || wparam == VK_F8;
+  if (repeated) return wparam == VK_F5 || wparam == VK_F6 || wparam == VK_F8 || wparam == VK_F10 || wparam == VK_F2;
   switch (wparam) {
     case VK_F1:
       Notify("F1  OPTIONS");
@@ -598,6 +653,9 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
     case VK_F9:
       Notify("F9  QUIT GAME");
       return false;  // The native quit path must still receive F9.
+    case VK_F2:
+    case VK_F10:
+      return true;  // Toggle is handled by the EndScene poll (DirectInput).
     default:
       return false;
   }
@@ -623,6 +681,40 @@ bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha) {
 
 bool QuickSaveReloadPending() {
   return g_reloadStage == ReloadStage::Requested || g_reloadStage == ReloadStage::Fading;
+}
+
+bool DebugMenuVisible() { return g_debugOpen; }
+int DebugMenuSelected() { return g_debugSel; }
+int DebugMenuRow() { return g_debugRow; }
+int DebugMenuCurrentScene() { return *reinterpret_cast<int*>(game::kSceneId); }
+
+// Room jump through the same scene-load path as quick load (QuickSaveApplyPendingReload):
+// snapshot live state so inventory/flags survive, only the scene changes.
+// Exit inventory/status (mode 6) to gameplay (3) first, otherwise the modal
+// menu state rides across the room exit and pops back up in the new room.
+// Player origin is NOT restored: the old XZ is outside new-room geometry and
+// strands the player; let the new room place them at its entry.
+void DebugQueueJump(int scene) {
+  if (scene <= 0 || scene > 0x79) { Log("DebugMenu: invalid scene %02X ignored", scene); return; }
+  void* gameObject = *reinterpret_cast<void**>(game::kGameState);
+  if (gameObject) {
+    // +351C main state 6 = rooms, +41 mode 3 = gameplay (see screen_fx/game.h).
+    *game::Field<uint8_t>(gameObject, game::kMainState) = 6;
+    *game::Field<uint8_t>(gameObject, game::kGameModeOffset) = 3;
+  }
+  QuickState state;
+  if (!CaptureState(&state)) { Notify("F10  JUMP UNAVAILABLE"); Log("DebugMenu: jump ignored, state unavailable"); return; }
+  state.scene = scene;
+  state.roomArgument = 0;
+  state.playerValid = 0;
+  memset(&state.player, 0, sizeof(state.player));
+  state.checksum = Checksum(state);
+  g_pendingReload = state;
+  g_reloadStage = ReloadStage::Requested;
+  char notice[48] = {};
+  snprintf(notice, sizeof(notice), "F10  SCENE %02X", scene);
+  Notify(notice);
+  Log("DebugMenu: queued room jump to scene %02X (safe spawn)", scene);
 }
 
 bool QuickSaveReloadFadeStarted() { return g_reloadStage == ReloadStage::Fading; }
@@ -698,7 +790,7 @@ void __fastcall RoomDispatcherDetour(void* gameObject, void* edx) {
                                  (std::min<size_t>)(g_pendingReload.zombieCount,
                                                     g_pendingReload.zombies.size()));
   g_reloadStage = ReloadStage::WaitingForRoom;
-  Notify("F6  QUICK LOAD RESTORED");
+  Notify("LOADED SUCCESSFULLY.");
   Log("QuickSave: restored native record and room/event state after cleanup; scene %02X queued",
       g_pendingReload.scene);
 }

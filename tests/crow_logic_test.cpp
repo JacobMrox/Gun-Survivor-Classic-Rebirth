@@ -19,7 +19,7 @@ int main() {
   CHECK(ApproachSelector(12, 5, 4, true) == 4);
   CHECK(ApproachSelector(12, 0, 1, true) == 1);
   CHECK(ApproachSelector(12, 5, 3, true) == 4);
-  CHECK(ApproachSelector(12, 5, 11, false) == 11);
+  CHECK(ApproachSelector(12, 5, 11, false) == kAnimDeadFall);
   CHECK(ApproachSelector(11, 5, 11, true) == 11);
   CHECK(ApproachSelector(10, 5, 11, true) == 11);
   // PickFlight thresholds (mirrors crow.c 80101650).
@@ -30,6 +30,11 @@ int main() {
   CHECK(PickFlight(4, 0) == kAnimLand);
   CHECK(PickFlight(4, 1) == 0);
   CHECK(PickFlight(4, 3) == 1);
+  float vel = 0.0f;
+  CHECK(DeadFallNextY(-100.0f, vel) == -90.0f);
+  CHECK(vel == 12.0f);
+  CHECK(DeadFallNextY(-5.0f, vel) == 0.0f);
+  CHECK(DeadFallNextY(5.0f, vel) == 0.0f);
   if (failures) { std::printf("%d failures\n", failures); return 1; }
   std::printf("all crow checks passed\n");
   return 0;

@@ -70,7 +70,7 @@ CONTROL         "Smooth Model Lighting", IDC_SMOOTH_MODEL_LIGHTING, "Button", BS
 CONTROL         "Dynamic Model Shadows", IDC_DYNAMIC_MODEL_SHADOWS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 220, 249, 180, 10
 
 GROUPBOX        "In-Game Hotkeys", IDC_STATIC, 7, 230, 198, 34
-CTEXT           "F1 Options  F5 Save  F6 Load  F8 Display  F9 Quit", IDC_STATIC, 15, 244, 182, 10
+CTEXT           "F1 Options  F5 Save  F6 Load  F8 Display  F9 Quit  F2 Debug", IDC_STATIC, 15, 244, 182, 10
 
 CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.2 © Jacob Qarooni @Mehrqarox\nGiuseppe Marsiglia @Trigger117", IDC_STATIC, 7, 286, 406, 20, WS_DISABLED
 

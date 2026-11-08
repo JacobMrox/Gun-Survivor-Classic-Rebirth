@@ -26,8 +26,9 @@ workspace "d3d8-wrapper"
    files { "source/survivor_fix/**.h", "source/survivor_fix/**.cpp" }
    files { "source/*.def" }
    files { "source/*.rc" }
-   includedirs { "source/dxsdk" }
-   libdirs { "source/dxsdk" }
+   includedirs { "source/dxsdk", "source/vcpkg_installed/x86-windows/x86-windows/include" }
+   libdirs { "source/dxsdk", "source/vcpkg_installed/x86-windows/x86-windows/lib" }
+   links { "avcodec", "avformat", "avutil", "swscale", "swresample", "minhook.x32", "d3d9", "winmm" }
 	  
    filter "configurations:Debug"
       defines "DEBUG"

@@ -56,6 +56,11 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
 // Routine diagnostics stay in hook.log; this channel is only for actions and actionable failures.
 bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha);
 bool QuickSaveReloadPending();
+bool DebugMenuVisible();
+int DebugMenuSelected();
+int DebugMenuRow();
+int DebugMenuCurrentScene();
+void DebugQueueJump(int scene);
 bool QuickSaveReloadFadeStarted();
 void QuickSaveStartReloadFade();
 bool QuickSaveApplyPendingReload(void* gameObject, int* scene);
