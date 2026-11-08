@@ -156,6 +156,7 @@
     <ClInclude Include="survivor_fix\config.h" />
     <ClInclude Include="survivor_fix\features\features.h" />
     <ClInclude Include="survivor_fix\features\debug_menu_input.h" />
+    <ClInclude Include="survivor_fix\features\debug_utility.h" />
     <ClInclude Include="survivor_fix\features\zombie\zombie_shared.h" />
     <ClInclude Include="survivor_fix\game.h" />
     <ClInclude Include="survivor_fix\hooks.h" />

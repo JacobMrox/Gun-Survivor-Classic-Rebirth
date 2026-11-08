@@ -122,7 +122,8 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const DWORD cyan = D3DCOLOR_ARGB(255, 0, 255, 255);
     const DWORD grey = D3DCOLOR_ARGB(255, 90, 90, 90);
     const DWORD white = D3DCOLOR_ARGB(255, 255, 255, 255);
-    text("- DEBUG MENU -", boxX + marginX, boxY + marginY, cyan);
+    const bool utility = sf::features::DebugMenuUtilityVisible();
+    text(utility ? "- UTILITY MENU -" : "- DEBUG MENU -", boxX + marginX, boxY + marginY, cyan);
     char line[48] = {};
     auto roomName = [](int sc) -> const char* {
         switch (sc) {
@@ -165,12 +166,20 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const int sel = sf::features::DebugMenuSelected();
     const int row = sf::features::DebugMenuRow();
     const int cur = sf::features::DebugMenuCurrentScene();
-    snprintf(line, sizeof(line), "%c JUMP %02X %-16s", (row == 0) ? '-' : ' ', sel, roomName(sel));
-    text(line, boxX + marginX, boxY + marginY + glyphH * 2, (row == 0) ? cyan : grey);
-    const char* dummies[] = {"UTILITY MENU", "MEMORY OVERWRITE", "XA PLAY TEST", "CP MAP HIR", "SHORT CHECK DISP", "MONOSASHI"};
-    for (int i = 0; i < 6; ++i) {
-        snprintf(line, sizeof(line), "%c %s", ((row == i + 1) ? '-' : ' '), dummies[i]);
-        text(line, boxX + marginX, boxY + marginY + glyphH * (3 + i), ((row == i + 1) ? cyan : grey));
+    if (utility) {
+        const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO", "INFINITE HEALTH"};
+        for (int i = 0; i < 6; ++i) {
+            snprintf(line, sizeof(line), "%c %s%s", row == i ? '-' : ' ', options[i], i >= 4 ? " NOT READY" : "");
+            text(line, boxX + marginX, boxY + marginY + glyphH * (2 + i), row == i ? cyan : grey);
+        }
+    } else {
+        snprintf(line, sizeof(line), "%c JUMP %02X %-16s", (row == 0) ? '-' : ' ', sel, roomName(sel));
+        text(line, boxX + marginX, boxY + marginY + glyphH * 2, (row == 0) ? cyan : grey);
+        const char* dummies[] = {"UTILITY MENU", "MEMORY OVERWRITE", "XA PLAY TEST", "CP MAP HIR", "SHORT CHECK DISP", "MONOSASHI"};
+        for (int i = 0; i < 6; ++i) {
+            snprintf(line, sizeof(line), "%c %s", ((row == i + 1) ? '-' : ' '), dummies[i]);
+            text(line, boxX + marginX, boxY + marginY + glyphH * (3 + i), ((row == i + 1) ? cyan : grey));
+        }
     }
     snprintf(line, sizeof(line), "CUR %02X %-16s", cur, roomName(cur));
     text(line, boxX + marginX, boxY + marginY + glyphH * 10, white);

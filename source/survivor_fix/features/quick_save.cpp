@@ -11,6 +11,7 @@
 #include "../log.h"
 #include "features.h"
 #include "debug_menu_input.h"
+#include "debug_utility.h"
 #include "../../aim_shared.h"
 #include "../../survivor_pc.h"
 
@@ -46,6 +47,8 @@ bool g_f8Down = false;
 bool g_f2Down = false;
 bool g_f10Down = false;
 bool g_debugOpen = false;
+bool g_debugUtility = false;
+UtilityAction g_utilityPending = UtilityAction::None;
 DebugMenuInputGate g_debugInputGate;
 bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
 int g_debugSel = 1;
@@ -511,6 +514,17 @@ void ToggleFullscreen() {
 }  // namespace
 
 int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
+  if (UtilityActionReady(g_utilityPending, g_debugInputGate.Captured())) {
+    const UtilityAction action = g_utilityPending;
+    g_utilityPending = UtilityAction::None;
+    switch (action) {
+      case UtilityAction::QuickSave: SaveNow(); break;
+      case UtilityAction::QuickLoad: LoadNow(); break;
+      case UtilityAction::SaveMenu: OpenNativeMenu(true); break;
+      case UtilityAction::LoadMenu: OpenNativeMenu(false); break;
+      default: break;
+    }
+  }
   const bool active = Foreground();
   const bool f5 = active && (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
   const bool f6 = active && (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
@@ -560,6 +574,7 @@ void QuickSavePollWindowToggle() {
     g_debugOpen = !g_debugOpen;
     if (g_debugOpen) {
       g_debugInputGate.Capture();
+      g_debugUtility = false;
       int cur = *reinterpret_cast<int*>(game::kSceneId);
       g_debugSel = (cur > 0 && cur <= 0x79) ? cur : 1;
       g_debugRow = 0;
@@ -579,18 +594,29 @@ void QuickSavePollWindowToggle() {
     const bool right = (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
     const bool enter = (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
     const bool esc = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
-    if (esc && !g_debugEscDown) { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
+    if (esc && !g_debugEscDown) {
+      if (g_debugUtility) { g_debugUtility = false; g_debugRow = 1; }
+      else { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
+    }
     g_debugEscDown = esc;
-    if (up && !g_debugUpDown) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : 6;
+    const int lastRow = g_debugUtility ? 5 : 6;
+    if (up && !g_debugUpDown) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : lastRow;
     g_debugUpDown = up;
-    if (down && !g_debugDownDown) g_debugRow = (g_debugRow < 6) ? g_debugRow + 1 : 0;
+    if (down && !g_debugDownDown) g_debugRow = (g_debugRow < lastRow) ? g_debugRow + 1 : 0;
     g_debugDownDown = down;
-    if (g_debugRow == 0 && left && !g_debugLeftDown) g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
+    if (!g_debugUtility && g_debugRow == 0 && left && !g_debugLeftDown) g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
     g_debugLeftDown = left;
-    if (g_debugRow == 0 && right && !g_debugRightDown) g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
+    if (!g_debugUtility && g_debugRow == 0 && right && !g_debugRightDown) g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
     g_debugRightDown = right;
     if (enter && !g_debugEnterDown) {
-      if (g_debugRow != 0) {
+      if (g_debugUtility) {
+        const UtilityAction action = UtilityActionForRow(g_debugRow);
+        if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
+        else { g_utilityPending = action; g_debugOpen = false; }
+      } else if (g_debugRow == 1) {
+        g_debugUtility = true;
+        g_debugRow = 0;
+      } else if (g_debugRow != 0) {
         Notify("UNIMPLEMENTED");
         Log("DebugMenu: row %d unimplemented", g_debugRow);
       } else {
@@ -687,6 +713,7 @@ bool QuickSaveReloadPending() {
 }
 
 bool DebugMenuVisible() { return g_debugOpen; }
+bool DebugMenuUtilityVisible() { return g_debugUtility; }
 bool DebugMenuSuppressPad(uint32_t pad) {
   const int keys[] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE, VK_F2, VK_F10};
   bool keyDown = false;

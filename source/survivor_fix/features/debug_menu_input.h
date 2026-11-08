@@ -6,6 +6,7 @@ namespace sf::features {
 class DebugMenuInputGate {
  public:
   void Capture() { captured_ = true; }
+  bool Captured() const { return captured_; }
   bool Filter(bool menuOpen, bool menuKeyDown, uint32_t pad) {
     if (menuOpen) captured_ = true;
     if (!captured_) return false;
