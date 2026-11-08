@@ -2,6 +2,7 @@
 
 #include <array>
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -49,6 +50,27 @@ bool g_f10Down = false;
 bool g_debugOpen = false;
 bool g_debugUtility = false;
 UtilityAction g_utilityPending = UtilityAction::None;
+std::atomic<bool> g_infiniteAmmo{false}, g_infiniteHealth{false};
+bool g_ammoAvailable = false, g_healthAvailable = false;
+using AmmoCountFn = int(__fastcall*)(void*, void*);
+using AmmoUseFn = void(__fastcall*)(void*, void*);
+using DamageFn = void(__fastcall*)(void*, void*, int);
+AmmoCountFn g_ammoCount = nullptr;
+AmmoUseFn g_ammoUse = nullptr;
+DamageFn g_damage = nullptr;
+
+bool IsPlayerStats(void* stats) {
+  return stats && stats == *reinterpret_cast<void**>(game::kGameStats);
+}
+int __fastcall AmmoCountDetour(void* stats, void* edx) {
+  return UtilityAmmoCount(g_infiniteAmmo.load(), IsPlayerStats(stats), g_ammoCount(stats, edx));
+}
+void __fastcall AmmoUseDetour(void* stats, void* edx) {
+  if (!UtilitySuppressAmmoUse(g_infiniteAmmo.load(), IsPlayerStats(stats))) g_ammoUse(stats, edx);
+}
+void __fastcall DamageDetour(void* stats, void* edx, int damage) {
+  if (!UtilitySuppressDamage(g_infiniteHealth.load(), IsPlayerStats(stats), damage)) g_damage(stats, edx, damage);
+}
 DebugMenuInputGate g_debugInputGate;
 bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
 int g_debugSel = 1;
@@ -611,7 +633,15 @@ void QuickSavePollWindowToggle() {
     if (enter && !g_debugEnterDown) {
       if (g_debugUtility) {
         const UtilityAction action = UtilityActionForRow(g_debugRow);
-        if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
+        if (g_debugRow == 4 && g_ammoAvailable) {
+          const bool enabled = !g_infiniteAmmo.load();
+          g_infiniteAmmo.store(enabled);
+          Notify(enabled ? "INFINITE AMMO ON" : "INFINITE AMMO OFF");
+        } else if (g_debugRow == 5 && g_healthAvailable) {
+          const bool enabled = !g_infiniteHealth.load();
+          g_infiniteHealth.store(enabled);
+          Notify(enabled ? "INFINITE HEALTH ON" : "INFINITE HEALTH OFF");
+        } else if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
         else { g_utilityPending = action; g_debugOpen = false; }
       } else if (g_debugRow == 1) {
         g_debugUtility = true;
@@ -714,6 +744,8 @@ bool QuickSaveReloadPending() {
 
 bool DebugMenuVisible() { return g_debugOpen; }
 bool DebugMenuUtilityVisible() { return g_debugUtility; }
+bool DebugUtilityCheatAvailable(int row) { return row == 4 ? g_ammoAvailable : row == 5 && g_healthAvailable; }
+bool DebugUtilityCheatEnabled(int row) { return row == 4 ? g_infiniteAmmo.load() : row == 5 && g_infiniteHealth.load(); }
 bool DebugMenuSuppressPad(uint32_t pad) {
   const int keys[] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE, VK_F2, VK_F10};
   bool keyDown = false;
@@ -892,6 +924,20 @@ void QuickSaveOnNativeLoad(int slot, bool succeeded) {
 }
 
 bool InstallQuickSave() {
+  // PC shot path 0046A61C queries the selected ammunition and 0046A99D
+  // consumes it after a shot; 00463E70 subtracts health for enemy damage.
+  const uint8_t ammoCountBytes[] = {0x8B, 0x41, 0x1C, 0x8B, 0x44, 0x81, 0x20, 0xC3};
+  const uint8_t ammoUseBytes[] = {0x8B, 0x41, 0x1C, 0x8D, 0x44, 0x81, 0x20, 0xFF, 0x08, 0xC3};
+  const uint8_t damageBytes[] = {0xA0, 0x78, 0x3D, 0x5F, 0x00, 0x84, 0xC0};
+  if (game::CheckBytes({0x004645A0, ammoCountBytes, sizeof ammoCountBytes}) &&
+      game::CheckBytes({0x00464630, ammoUseBytes, sizeof ammoUseBytes}) &&
+      Hook("UtilityAmmoCount", 0x004645A0, reinterpret_cast<void*>(&AmmoCountDetour), reinterpret_cast<void**>(&g_ammoCount)) &&
+      Hook("UtilityAmmoUse", 0x00464630, reinterpret_cast<void*>(&AmmoUseDetour), reinterpret_cast<void**>(&g_ammoUse)))
+    g_ammoAvailable = true;
+  if (game::CheckBytes({0x00463E70, damageBytes, sizeof damageBytes}) &&
+      Hook("UtilityDamage", 0x00463E70, reinterpret_cast<void*>(&DamageDetour), reinterpret_cast<void**>(&g_damage)))
+    g_healthAvailable = true;
+  Log("DebugUtility: ammo hook %s; health hook %s", g_ammoAvailable ? "ready" : "unavailable", g_healthAvailable ? "ready" : "unavailable");
   const game::ByteSignature dispatcher = {game::kRoomDispatcher, game::kRoomDispatcherBytes,
                                           sizeof(game::kRoomDispatcherBytes)};
   const uint8_t metadataBytes[] = {0x53, 0x8B, 0xD9, 0x56, 0x57};

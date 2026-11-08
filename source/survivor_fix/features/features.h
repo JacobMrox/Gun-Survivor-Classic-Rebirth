@@ -58,6 +58,8 @@ bool QuickSaveGetNotification(char* text, size_t capacity, float* alpha);
 bool QuickSaveReloadPending();
 bool DebugMenuVisible();
 bool DebugMenuUtilityVisible();
+bool DebugUtilityCheatAvailable(int row);
+bool DebugUtilityCheatEnabled(int row);
 bool DebugMenuSuppressPad(uint32_t pad);
 int DebugMenuSelected();
 int DebugMenuRow();

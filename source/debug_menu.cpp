@@ -169,7 +169,10 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     if (utility) {
         const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO", "INFINITE HEALTH"};
         for (int i = 0; i < 6; ++i) {
-            snprintf(line, sizeof(line), "%c %s%s", row == i ? '-' : ' ', options[i], i >= 4 ? " NOT READY" : "");
+            const char* status = "";
+            if (i >= 4) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
+                sf::features::DebugUtilityCheatEnabled(i) ? " ON" : " OFF";
+            snprintf(line, sizeof(line), "%c %s%s", row == i ? '-' : ' ', options[i], status);
             text(line, boxX + marginX, boxY + marginY + glyphH * (2 + i), row == i ? cyan : grey);
         }
     } else {
