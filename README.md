@@ -224,6 +224,8 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 
 Current devlopment version: 1.2
 
+<img width="962" height="758" alt="image" src="https://github.com/user-attachments/assets/f2e5d51f-e0e3-4e08-8271-f85f2ef48407" />
+
 * Fix movie player by replacing DirectShow with ffmpeg - Done; only few movies not working; investigate (Jacob)
 * Skip FMV/Video movies by pressing enter - Done (Jacob)
 * Remove old log printing shipped with the original game (debug.txt) - working on it.
