@@ -6,8 +6,11 @@
 #include <cstring>
 #include <algorithm>
 #include "d3d8types.hpp"
+#include "d3dx8tex.h"
 #include "debug_menu.h"
 #include "survivor_fix/features/features.h"
+
+extern HMODULE g_hWrapperModule;
 
 namespace {
 
@@ -35,7 +38,6 @@ int NativeFontGlyph(char ch) {
 struct FontVertex8 { float x, y, z, rhw; DWORD color; float u, v; };
 
 IDirect3DTexture8* g_debugFontTex = nullptr;
-extern HMODULE g_hWrapperModule;
 
 void EnsureDebugFont(IDirect3DDevice8* dev) {
     if (g_debugFontTex || !dev) return;
