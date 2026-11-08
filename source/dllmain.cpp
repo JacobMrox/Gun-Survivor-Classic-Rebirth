@@ -626,11 +626,23 @@ char WinDir[MAX_PATH + 1];
             char line[48] = {};
             auto roomName = [](int sc) -> const char* {
                 switch (sc) {
-                    case 0x00: return "07/00 HELICOPTER CRASH";
-                    case 0x01: return "00/00 BACK ALLEY";
-                    case 0x04: return "00/01 CHURCH CORRIDOR";
-                    case 0x09: return "09/02 PROJECTOR ROOM";
-                    case 0x0A: return "09/03 CROW HALLWAY";
+                    case 0x00: return "00/00 HELICOPTER CRASH";
+                    case 0x01: return "00/01 BACK ALLEY";
+                    case 0x02: return "00/02 ALLEY EXT";
+                    case 0x03: return "00/03 BACK ALLEY B";
+                    case 0x04: return "00/04 CHURCH CORRIDOR";
+                    case 0x05: return "00/05 CHURCH HALL";
+                    case 0x06: return "00/06 CHURCH BASEMENT";
+                    case 0x07: return "00/07 PRODUCTION WEST";
+                    case 0x08: return "00/08 FACTORY OFFICE";
+                    case 0x09: return "00/09 PROJECTOR ROOM";
+                    case 0x0A: return "00/0A CROW HALLWAY";
+                    case 0x0B: return "00/0B CITY STREET N";
+                    case 0x0C: return "00/0C CITY STREET";
+                    case 0x0D: return "00/0D COAST ROAD";
+                    case 0x0E: return "00/0E ???";
+                    case 0x0F: return "00/0F COAST ROAD B";
+                    case 0x10: return "07/02 COAST ROAD N";
                     case 0x11: return "07/03 LOWER BRIDGE PROMENADE";
                     case 0x38: return "03/0A ROOM 03/0A";
                     case 0x4A: return "09/02 PROJECTOR ROOM";
