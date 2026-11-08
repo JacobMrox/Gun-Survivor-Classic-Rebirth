@@ -243,7 +243,7 @@ Current development version: **1.2**
 - Fix zombie dog/Cerberus AI — partially done (Jacob).
 - ~~Fix crow flight animations~~ — further landing and stacking verification remains.
 - Fix enemy behavior and animations — partially done.
-- Add shooting screen flash (GunCon simulation) — temporarily inactive until a verified shot event is hooked; `Ps1ShootFlash` settings currently have no effect.
+- Test shooting screen flash (GunCon simulation) across weapons and dry fire. **Photosensitivity warning:** this is a full-screen white strobe, OFF by default; opt in with `[SurvivorFix] Ps1ShootFlash=1` and adjust `Ps1ShootFlashFrames` (1–5).
 - Add XInput and Raw Input support alongside DirectInput.
 - Add key bindings.
 - Mod support — phase 1 completed (Jacob); see `source/mod_sdk.cpp` for mod folders, archives, manifests, and module loading.

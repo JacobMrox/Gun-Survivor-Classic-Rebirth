@@ -143,8 +143,9 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
             case 0x0D: return "00/0D WINE CELLAR";
             case 0x0E: return "00/0E FREEZER";
             case 0x0F: return "00/0F COAST ROAD B";
-            case 0x10: return "00/10 COAST ROAD N";
+            case 0x10: return "00/10 SHOPPING STREET A";
             case 0x11: return "00/11 LOWER BRIDGE PROMENADE";
+			case 0x12: return "00/12 SHOPPING STREET B";
             case 0x1D: return "0E/01 SEWERS";
             case 0x1E: return "07/00 HELICOPTER CRASH";
             case 0x1F: return "0C/00 OUTSKIRTS";

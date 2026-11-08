@@ -49,6 +49,7 @@ bool InstallHudConditionBounds();
 bool InstallMovieSkip();
 // F5/F6 game-aware quick save/load and F8 window/fullscreen toggle.
 bool InstallQuickSave();
+void ScreenFxOnPlayerShot();
 int QuickSaveAfterRoomTick(void* gameObject, int nativeResult);
 void QuickSavePollWindowToggle();
 bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t lparam);

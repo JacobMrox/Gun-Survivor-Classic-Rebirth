@@ -26,6 +26,16 @@
 
 namespace ps1 {
 
+// Wrapper-side GunCon strobe timer; a native shot starts or refreshes it.
+struct ShootFlash {
+  int frames = 0;
+  void Shot(bool enabled, int duration) { if (enabled && duration > 0) frames = duration; }
+  bool Visible() const { return frames > 0; }
+  void AfterPresent(int elapsed) {
+    if (elapsed > 0) frames = elapsed >= frames ? 0 : frames - elapsed;
+  }
+};
+
 struct Fade {
   int state = 0;  // 800A55A2: speed << 8 | 6 to black, | 5 from black, 4 black and still, 0 off
   int level = 0;  // 800BBCE0

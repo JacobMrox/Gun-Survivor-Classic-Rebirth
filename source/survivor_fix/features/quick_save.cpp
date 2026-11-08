@@ -68,7 +68,10 @@ int __fastcall AmmoCountDetour(void* stats, void* edx) {
   return UtilityAmmoCount(g_infiniteAmmo.load(), IsPlayerStats(stats), g_ammoCount(stats, edx));
 }
 void __fastcall AmmoUseDetour(void* stats, void* edx) {
-  if (!UtilitySuppressAmmoUse(g_infiniteAmmo.load(), IsPlayerStats(stats))) g_ammoUse(stats, edx);
+  const bool playerStats = IsPlayerStats(stats);
+  if (!UtilitySuppressAmmoUse(g_infiniteAmmo.load(), playerStats)) g_ammoUse(stats, edx);
+  // Both PC callers (0042C83D and 0046A99D) have passed the native firing checks.
+  if (playerStats) ScreenFxOnPlayerShot();
 }
 void __fastcall DamageDetour(void* stats, void* edx, int damage) {
   if (!UtilitySuppressDamage(g_infiniteHealth.load(), IsPlayerStats(stats), damage)) g_damage(stats, edx, damage);

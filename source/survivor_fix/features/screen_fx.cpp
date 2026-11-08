@@ -48,7 +48,7 @@ int g_deathPitch = 0;                 // 800A865C of the view: the steps of 8008
 int g_deathEyeStart = ps1::kEyeRest;  // 800A8634 at step 0 (with the bob: DuckStation -1642)
 bool g_dying = false;                 // 8008369C steps 0-6: the room stays open
 bool g_redFlash = false;
-int g_shootFlashFrames = 0;  // GunCon strobe remaining (PS1 frames)
+ps1::ShootFlash g_shootFlash;
 int g_lastState = -1;
 int g_youDiedFrames = 0;  // 800BB074 in steps 8-9
 int g_youDiedLoad = 0;    // black loading frames (step 7) still to go
@@ -142,7 +142,7 @@ void Send() {
     fx.subtract = g_death.subtract;
   }
   fx.redFlash = g_dying && g_redFlash;
-  fx.whiteFlash = g_shootFlashFrames > 0 ? 1 : 0;
+  fx.whiteFlash = g_shootFlash.Visible() ? 1 : 0;
   fx.keep = g_config.ps1DoorFade && state == kStateRooms;
   fx.noCrosshair = g_dying;
   if (state == kStateContinue && g_gameOver >= 0) {
@@ -238,11 +238,13 @@ int __fastcall EndFrameDetour(void* game, void* edx, int a) {
       if (g_youDiedFrames < ps1::kYouDiedMinFrames) ++g_youDiedFrames;
       if (g_youDiedLeaving && ps1::FadeBlack(g_fade)) g_injectConfirm = true;
     }
-    if (g_shootFlashFrames > 0) --g_shootFlashFrames;
     ps1::StepFade(g_fade);
   }
   Send();
-  return g_endFrame(game, edx, a);
+  const int result = g_endFrame(game, edx, a);
+  // Count frames after presentation, so a one-frame flash is actually visible.
+  g_shootFlash.AfterPresent(frames);
+  return result;
 }
 
 uint32_t __fastcall ReadPadDetour(void* game, void* edx, int a) {
@@ -272,7 +274,7 @@ int __fastcall MouseClickDetour(void* mouse, void* edx, int a, int b, int c, int
   if (sf::features::DebugMenuVisible()) return 0;  // debug owns clicks while open
   if (g_dying) return 0;  // no shooting during the death
   // A mouse hit is not proof that a weapon fired (it includes dry fire).
-  // Leave the flash inactive until a verified shot event is available.
+  // The ammunition-use hook signals the flash after the native firing checks.
   return g_mouseClick(mouse, edx, a, b, c, d, e, f);
 }
 
@@ -448,6 +450,11 @@ int __fastcall ContinueDetour(DWORD* screen, void* edx, int a, char continues) {
 }  // namespace
 
 bool PlayerDying() { return g_dying; }
+
+void ScreenFxOnPlayerShot() {
+  g_shootFlash.Shot(g_config.ps1ShootFlash && MainState() == kStateRooms && !g_dying,
+                    g_config.ps1ShootFlashFrames);
+}
 
 
 bool InstallScreenFx() {

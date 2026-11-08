@@ -33,6 +33,7 @@ void enabled(const sf::Config& config,const char* context){
  check(config.ps1ZombieWalk&&config.ps1ZombieWorld&&config.ps1ZombieNavigation&&config.ps1ZombieDeath&&
        config.ps1PlayerWalls&&config.ps1DoorFade&&config.ps1Cadence,"existing prerequisite fixes stay enabled");
  check(!config.ps1ZombieBackFall,"unsupported backward-fall trigger stays disabled");
+ check(!config.ps1ShootFlash,"shooting flash is opt-in");
 }
 }
 int main(){
@@ -55,6 +56,8 @@ int main(){
   check(sf::g_config.*(option.field),std::string("explicit per-fix override: ")+option.key);
  }
  ini.load("[SurvivorFix]\n");enabled(sf::g_config,"reload restores defaults");
+ ini.load("[SurvivorFix]\nPs1ShootFlash=1\n");
+ check(sf::g_config.ps1ShootFlash,"explicit shooting flash opt-in");
  if(failures)return 1;
  std::puts("PASS: production INI defaults, existing configurations and diagnostic overrides");
 }
