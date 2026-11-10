@@ -34,6 +34,7 @@
 //                     that draw gets src*a + dst*(1-a) with a = texture alpha * 0x80 and colour = texture *
 //                     0x40 (TEXTUREFACTOR 0x80404040). The alpha test keeps the colour-keyed edge.
 #include "survivor_pc.h"
+#include "game.h"
 #include "ps1/title_fade_logic.h"
 
 #include "../d3d8types.hpp"  // D3DSURFACE_DESC8, as in dllmain.cpp
@@ -548,9 +549,11 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
   const bool held = fx.heldBlend > 0 && gFrameValid && gFrame;
   const bool loadingBlack = gTitleLoadingBlackFrames > 0;
   const bool draw = trail || held || fx.fade > 0 || fx.redFlash || fx.whiteFlash || fx.subtract > 0 || loadingBlack ||
-                    (gTitleActive && (gTitleBrightness < 128 || gTitleFlash > 0));
+                    (gTitleActive && (gTitleBrightness < 128 || gTitleFlash > 0)) ||
+                    (*reinterpret_cast<int*>(game::kSceneId) == 0x2D);
   const bool copy = (trail || fx.keep || gTitleActive) && !gHolding;
   if (!dev || (!draw && !copy)) return;
+
   IDirect3DSurface8* back = nullptr;
   D3DSURFACE_DESC8 desc{};
   if (!BackBuffer(dev, &back, &desc)) {gScreenFxDrawSucceeded=false;return;}
@@ -620,6 +623,11 @@ void SurvivorPc_DrawScreenFx(IDirect3DDevice8* wrapper, IDirect3DDevice8* dev) {
       if (fx.fade > 0) {
         const int v = Clamp255(fx.fade);
         Box(dev, w, h, D3DCOLOR_ARGB(0xFF, v, v, v), true);
+      }
+      // Scene 0x2D is pitch black on PC but dimly lit on PS1. Force a minimal
+      // ambient overlay so the room is visible without the light switch.
+      if (*reinterpret_cast<int*>(game::kSceneId) == 0x2D) {
+        Box(dev, w, h, D3DCOLOR_ARGB(0xFF, 0x40, 0x40, 0x40), false);
       }
       if(FAILED(dev->EndScene()))gScreenFxDrawSucceeded=false;
     } else {
