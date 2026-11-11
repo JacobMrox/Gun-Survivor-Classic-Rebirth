@@ -95,6 +95,8 @@ void LoadConfig(const char* iniPath) {
   const int aimSpeed = GetPrivateProfileIntA("Gamepad", "AimSpeed", 20, iniPath);
   c.padAimSpeed = static_cast<float>(aimSpeed < 0 ? 0 : (aimSpeed > 200 ? 200 : aimSpeed));
   c.padAimInvertY = GetPrivateProfileIntA("Gamepad", "AimInvertY", 0, iniPath) != 0;
+  c.ds4 = Read("DualShock4", true);
+  c.ds4Speaker = Read("Ds4Speaker", true);
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
   char uncensored[16] = {};
   GetPrivateProfileStringA("Fixes", "UncensoredHeadshots", "", uncensored, sizeof(uncensored), iniPath);

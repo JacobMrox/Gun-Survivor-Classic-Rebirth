@@ -168,6 +168,7 @@
     <ClInclude Include="survivor_fix\game.h" />
     <ClInclude Include="survivor_fix\hooks.h" />
     <ClInclude Include="survivor_fix\hud_condition_logic.h" />
+        <ClInclude Include="survivor_fix\ds4_logic.h" />
     <ClInclude Include="survivor_fix\log.h" />
     <ClInclude Include="survivor_fix\movie_skip_logic.h" />
     <ClInclude Include="survivor_fix\mouse_drain_logic.h" />
@@ -250,6 +251,7 @@
     <ClCompile Include="survivor_fix\xinput_logic.cpp" />
     <ClCompile Include="survivor_fix\config.cpp" />
     <ClCompile Include="survivor_fix\features\bite_from_behind.cpp" />
+    <ClCompile Include="survivor_fix\features\ds4.cpp" />
     <ClCompile Include="survivor_fix\features\exit_fix.cpp" />
     <ClCompile Include="survivor_fix\features\hud_condition.cpp" />
     <ClCompile Include="survivor_fix\features\input_device_fix.cpp" />

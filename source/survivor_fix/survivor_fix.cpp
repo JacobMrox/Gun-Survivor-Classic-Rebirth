@@ -87,6 +87,7 @@ void SurvivorFix_Start(const char* iniPath, bool log) {
   ApplyItemGlitterCadence();
   if (c.ps1ZombieShadowSize) InstallPs1ZombieShadowSize();
   if (c.exitCrashFix) InstallExitCrashFix();
+  if (c.ds4) InstallDs4();
   // The Cerberus death-pose correction is mandatory; its checked hooks also
   // provide the existing optional zombie features.
   InstallZombies();

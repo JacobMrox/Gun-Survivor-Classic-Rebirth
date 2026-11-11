@@ -461,6 +461,7 @@ bool PlayerDying() { return g_dying; }
 void ScreenFxOnPlayerShot() {
   g_shootFlash.Shot(g_config.ps1ShootFlash && MainState() == kStateRooms && !g_dying,
                     g_config.ps1ShootFlashFrames);
+  Ds4OnPlayerShot();
 }
 
 

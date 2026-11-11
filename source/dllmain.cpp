@@ -604,6 +604,7 @@ char WinDir[MAX_PATH + 1];
             drawText(prompt, (std::max)(marginX, x), y, 1.0f);
         }
         DebugMenu_Draw(dev);
+        sf::features::Ds4Tick();
         dev->ApplyStateBlock(state);
         dev->DeleteStateBlock(state);
     }

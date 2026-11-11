@@ -153,6 +153,12 @@ int PlayerEyeBob();
 bool ItemApproachPromptVisible();
 // PS1 screen effects (screen_fx.cpp): Ps1PlayerDeath, Ps1DoorFade.
 bool InstallScreenFx();
+
+// DualShock 4 (ds4.cpp): the lightbar breathes with the player's health and the controller speaker
+// plays the gunshots. Ds4Tick runs from the render tick, Ds4OnPlayerShot from the native shot path.
+bool InstallDs4();
+void Ds4Tick();
+void Ds4OnPlayerShot();
 // The player is in PS1 state 3 (8008369C, Ps1PlayerDeath): no jolt or view rotation.
 bool PlayerDying();
 
