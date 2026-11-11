@@ -401,75 +401,6 @@ namespace
     };
 
     // --- Hooks ---
-    using CreateFileA_t = HANDLE(WINAPI*)(LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
-    static CreateFileA_t Real_CreateFileA = nullptr;
-    using CreateFileW_t = HANDLE(WINAPI*)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
-    static CreateFileW_t Real_CreateFileW = nullptr;
-    using GetFileAttributesA_t = DWORD(WINAPI*)(LPCSTR);
-    static GetFileAttributesA_t Real_GetFileAttributesA = nullptr;
-    using GetFileAttributesW_t = DWORD(WINAPI*)(LPCWSTR);
-    static GetFileAttributesW_t Real_GetFileAttributesW = nullptr;
-
-    static std::string DebugLogPathA() {
-        char path[MAX_PATH] = {};
-        GetModuleFileNameA(GetModuleHandleA("d3d8.dll"), path, MAX_PATH);
-        char* slash = strrchr(path, '\\');
-        if (slash) strcpy_s(slash + 1, MAX_PATH - (slash + 1 - path), "debug.log");
-        return path;
-    }
-
-    static std::wstring DebugLogPathW() {
-        wchar_t path[MAX_PATH] = {};
-        GetModuleFileNameW(GetModuleHandleW(L"d3d8.dll"), path, MAX_PATH);
-        wchar_t* slash = wcsrchr(path, L'\\');
-        if (slash) wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"debug.log");
-        return path;
-    }
-
-    static HANDLE WINAPI Hook_CreateFileA(LPCSTR f, DWORD a, DWORD s, LPSECURITY_ATTRIBUTES sa, DWORD c, DWORD fl, HANDLE h) {
-        if (f) {
-            std::string n = f;
-            if (n.find("debug.txt") != std::string::npos) return Real_CreateFileA(DebugLogPathA().c_str(), a, s, sa, c, fl, h);
-        }
-        return Real_CreateFileA(f, a, s, sa, c, fl, h);
-    }
-
-    static HANDLE WINAPI Hook_CreateFileW(LPCWSTR f, DWORD a, DWORD s, LPSECURITY_ATTRIBUTES sa, DWORD c, DWORD fl, HANDLE h) {
-        if (f) {
-            std::wstring n = f;
-            if (n.find(L"debug.txt") != std::wstring::npos) return Real_CreateFileW(DebugLogPathW().c_str(), a, s, sa, c, fl, h);
-        }
-        return Real_CreateFileW(f, a, s, sa, c, fl, h);
-    }
-
-    static DWORD WINAPI Hook_GetFileAttributesA(LPCSTR f) {
-        return Real_GetFileAttributesA(f);
-    }
-
-    static DWORD WINAPI Hook_GetFileAttributesW(LPCWSTR f) {
-        return Real_GetFileAttributesW(f);
-    }
-
-    // Typedefs for the "old school" IO
-    using lopen_t = HFILE(WINAPI*)(LPCSTR, int);
-    static lopen_t Real_lopen = nullptr;
-
-    using lcreat_t = HFILE(WINAPI*)(LPCSTR, int);
-    static lcreat_t Real_lcreat = nullptr;
-
-    // This catches fopen and older CRT file calls
-    HFILE WINAPI Hook_lopen(LPCSTR lpPathName, int iReadWrite) {
-        if (lpPathName) {
-            if (strstr(lpPathName, "debug.txt")) return Real_lopen(DebugLogPathA().c_str(), iReadWrite);
-        }
-        return Real_lopen(lpPathName, iReadWrite);
-    }
-
-    // This catches the creation of files via older APIs
-    HFILE WINAPI Hook_lcreat(LPCSTR lpPathName, int iAttribute) {
-        if (lpPathName && strstr(lpPathName, "debug.txt")) return Real_lcreat(DebugLogPathA().c_str(), iAttribute);
-        return Real_lcreat(lpPathName, iAttribute);
-    }
 
     using CoCreateInstance_t = HRESULT(WINAPI*)(REFCLSID, LPUNKNOWN, DWORD, REFIID, LPVOID*);
     static CoCreateInstance_t Real_CoCreateInstance = nullptr;
@@ -496,13 +427,6 @@ namespace DirectShowHook {
     bool Install() {
         MH_Initialize();
         MH_CreateHookApi(L"ole32.dll", "CoCreateInstance", (LPVOID)Hook_CoCreateInstance, (LPVOID*)&Real_CoCreateInstance);
-        MH_CreateHookApi(L"kernel32.dll", "CreateFileA", (LPVOID)Hook_CreateFileA, (LPVOID*)&Real_CreateFileA);
-        MH_CreateHookApi(L"kernel32.dll", "CreateFileW", (LPVOID)Hook_CreateFileW, (LPVOID*)&Real_CreateFileW);
-        MH_CreateHookApi(L"kernel32.dll", "GetFileAttributesA", (LPVOID)Hook_GetFileAttributesA, (LPVOID*)&Real_GetFileAttributesA);
-        MH_CreateHookApi(L"kernel32.dll", "GetFileAttributesW", (LPVOID)Hook_GetFileAttributesW, (LPVOID*)&Real_GetFileAttributesW);
-        // In your Install() function:
-        MH_CreateHookApi(L"kernel32.dll", "_lopen", (LPVOID)Hook_lopen, (LPVOID*)&Real_lopen);
-        MH_CreateHookApi(L"kernel32.dll", "_lcreat", (LPVOID)Hook_lcreat, (LPVOID*)&Real_lcreat);
         MH_EnableHook(MH_ALL_HOOKS);
         return true;
     }

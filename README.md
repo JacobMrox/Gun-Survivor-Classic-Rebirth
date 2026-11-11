@@ -230,7 +230,7 @@ Current development version: **1.2**
 
 - Replace DirectShow movie playback with FFmpeg — implemented; a few movies still need investigation (Jacob).
 - ~~Skip FMV/video movies with Enter~~ (Jacob).
-- Remove original game log printing (`debug.txt`) — in progress.
+- ~~Remove original game log printing (`debug.txt`)~~ — the game's own trace file is folded into `debug.log`, so no `debug.txt` is created any more (delete a leftover one from the game folder).
 - ~~Remove the manual `GBIO.CFG` requirement~~ — the DLL creates it next to the executable if missing.
 - ~~Fix zombie footstep sounds~~ (Trigger).
 - ~~Fix NPC/enemy lighting and shaders~~ (Jacob).

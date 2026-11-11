@@ -27,6 +27,35 @@ static bool IsRootPathW(LPCWSTR p)
     return p && p[0] && p[1] == L':' && (p[2] == 0 || p[2] == L'\\' || p[2] == L'/');
 }
 
+// ===================== Game log redirect =====================
+// gun_bio.exe opens its own debug.txt through the statically linked CRT
+// (_sopen -> CreateFileA) while it starts up, long before the wrapper's later
+// hooks exist, so the redirect has to live in this always-early hook. The
+// wrapper keeps one debug.log next to d3d8.dll instead of a second trace file.
+static bool IsGameLogPathA(LPCSTR name)
+{
+    if (!name) return false;
+    const char* base = name;
+    for (const char* p = name; *p; ++p)
+        if (*p == '\\' || *p == '/') base = p + 1;
+    return _stricmp(base, "debug.txt") == 0;
+}
+
+static const char* GameLogRedirectPathA()
+{
+    static char path[MAX_PATH] = {};
+    if (!path[0])
+    {
+        GetModuleFileNameA(GetModuleHandleA("d3d8.dll"), path, MAX_PATH);
+        char* slash = strrchr(path, '\\');
+        if (slash)
+            strcpy_s(slash + 1, MAX_PATH - (slash + 1 - path), "debug.log");
+        else
+            strcpy_s(path, "debug.log");
+    }
+    return path;
+}
+
 // ===================== Originals =====================
 static UINT(WINAPI* Real_GetDriveTypeA)(LPCSTR) = nullptr;
 static UINT(WINAPI* Real_GetDriveTypeW)(LPCWSTR) = nullptr;
@@ -174,6 +203,11 @@ static HANDLE WINAPI Hook_CreateFileA(
 {
     if (name)
     {
+        // The game's own trace file: fold it into debug.log and skip the mod/
+        // file-event notifiers, which never need to see it.
+        if (Real_CreateFileA && IsGameLogPathA(name))
+            return Real_CreateFileA(GameLogRedirectPathA(), access, share, sa, creation, flags, templateFile);
+
 		// Report every resource open, not only the special CD executable
 		// redirection below. Texture fixes rely on the actual asset identity.
 		NotifyFileOpenA(name);
