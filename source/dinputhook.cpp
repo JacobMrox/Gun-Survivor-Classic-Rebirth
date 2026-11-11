@@ -206,7 +206,7 @@ static void DispatchPadActions(uint32_t actions)
 // decides what is written.
 static void OverlayDeviceState(LPDIRECTINPUTDEVICEA This, DWORD cbData, void* lpvData)
 {
-    if (!lpvData || !SurvivorPc_XInputEnabled() || !IsOurWindowFocused())
+    if (!lpvData || !IsOurWindowFocused())
     {
         g_padActionsHeld = 0;
         return;
@@ -216,7 +216,9 @@ static void OverlayDeviceState(LPDIRECTINPUTDEVICEA This, DWORD cbData, void* lp
         // DIMOUSESTATE is 16 bytes, DIMOUSESTATE2 20: three LONG axes, then one byte per button.
         if (cbData != 16 && cbData != 20) return;
         sf::pad::PadState pad;
-        if (!PollPad(&pad)) return;
+        bool havePad = sf::features::Ds4PadState(&pad);
+        if (!havePad && SurvivorPc_XInputEnabled()) havePad = PollPad(&pad);
+        if (!havePad) return;
         auto* buttons = static_cast<uint8_t*>(lpvData) + 12;
         if (sf::pad::OverlayMouseButtons(pad, SurvivorPc_PadBindings(), sf::pad::kSourceCount,
                                          SurvivorPc_XInputDeadZone(), buttons, cbData - 12))
@@ -232,7 +234,11 @@ static void OverlayDeviceState(LPDIRECTINPUTDEVICEA This, DWORD cbData, void* lp
     }
     if (This != gKeyboardDevice) return;
     sf::pad::PadState pad;
-    if (!PollPad(&pad))
+    // A DualShock 4 read straight from HID wins over XInput: when DS4Windows or Steam also maps the
+    // same pad to a virtual XInput controller, reading both would double the stick travel.
+    bool havePad = sf::features::Ds4PadState(&pad);
+    if (!havePad && SurvivorPc_XInputEnabled()) havePad = PollPad(&pad);
+    if (!havePad)
     {
         g_padActionsHeld = 0;
         return;

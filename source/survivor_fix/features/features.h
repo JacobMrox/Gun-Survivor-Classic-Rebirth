@@ -7,6 +7,7 @@
 #include "../ps1/nav_logic.h"
 #include "../ps1/wall_logic.h"
 #include "../ps1/zombie_voice_logic.h"
+#include "../xinput_logic.h"
 
 namespace sf::features {
 
@@ -159,6 +160,9 @@ bool InstallScreenFx();
 bool InstallDs4();
 void Ds4Tick();
 void Ds4OnPlayerShot();
+// The newest DualShock 4 input report, for the pad overlay in dinputhook.cpp. The DS4 is a
+// DirectInput pad, so the game never sees it without this.
+bool Ds4PadState(sf::pad::PadState* out);
 // The player is in PS1 state 3 (8008369C, Ps1PlayerDeath): no jolt or view rotation.
 bool PlayerDying();
 
