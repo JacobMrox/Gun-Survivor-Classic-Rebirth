@@ -164,7 +164,8 @@ add_test(NAME zombie_voice_adapter COMMAND zombie_voice_adapter_test)
 # Exercise the production Win32 profile reader, including configurations without new keys.
 if(WIN32)
   add_executable(config_defaults_test config_defaults_test.cpp
-    ../source/survivor_fix/config.cpp)
+    ../source/survivor_fix/config.cpp
+    ../source/survivor_fix/xinput_logic.cpp)
   target_compile_features(config_defaults_test PRIVATE cxx_std_17)
   add_test(NAME config_defaults COMMAND config_defaults_test)
 endif()

@@ -15,6 +15,8 @@
 #include "debug_utility.h"
 #include "../../aim_shared.h"
 #include "../survivor_pc.h"
+#include "../config.h"
+#include "../xinput_logic.h"
 
 namespace sf { extern std::wstring g_dir; }
 extern int ForceWidth, ForceHeight;
@@ -50,7 +52,7 @@ bool g_f10Down = false;
 bool g_debugOpen = false;
 bool g_debugUtility = false;
 UtilityAction g_utilityPending = UtilityAction::None;
-std::atomic<bool> g_infiniteAmmo{false}, g_infiniteHealth{false};
+std::atomic<bool> g_infiniteAmmo{false}, g_infiniteHealth{false}, g_invincible{false};
 bool g_ammoAvailable = false, g_healthAvailable = false;
 using AmmoCountFn = int(__fastcall*)(void*, void*);
 using AmmoUseFn = void(__fastcall*)(void*, void*);
@@ -74,7 +76,9 @@ void __fastcall AmmoUseDetour(void* stats, void* edx) {
   if (playerStats) ScreenFxOnPlayerShot();
 }
 void __fastcall DamageDetour(void* stats, void* edx, int damage) {
-  if (!UtilitySuppressDamage(g_infiniteHealth.load(), IsPlayerStats(stats), damage)) g_damage(stats, edx, damage);
+  // Infinite health refills HP after the room tick; invincibility never lets the damage land.
+  const bool blocked = g_infiniteHealth.load() || g_invincible.load();
+  if (!UtilitySuppressDamage(blocked, IsPlayerStats(stats), damage)) g_damage(stats, edx, damage);
 }
 void __fastcall InventoryDrawDetour(void* menu, void* edx, int item, int amount,
                                     int variant, int row, int y, int x) {
@@ -543,6 +547,70 @@ void ToggleFullscreen() {
   Log("QuickSave: F8 switched to %s", bBorderlessFullscreen ? "borderless fullscreen" : "windowed mode");
 }
 
+// One press of a menu input. The keyboard poll and the pad both feed these bits, so the row
+// changes and the confirm handling exist once instead of twice.
+enum MenuPress : unsigned {
+  kMenuUp = 1u << 0,
+  kMenuDown = 1u << 1,
+  kMenuLeft = 1u << 2,
+  kMenuRight = 1u << 3,
+  kMenuConfirm = 1u << 4,
+  kMenuBack = 1u << 5,
+};
+
+void DebugMenuHandlePresses(unsigned presses) {
+  if (presses & kMenuBack) {
+    if (g_debugUtility) { g_debugUtility = false; g_debugRow = 1; }
+    else { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
+  }
+  const int lastRow = 8;
+  if (presses & kMenuUp) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : lastRow;
+  if (presses & kMenuDown) g_debugRow = (g_debugRow < lastRow) ? g_debugRow + 1 : 0;
+  if (!g_debugUtility && g_debugRow == 0 && (presses & kMenuLeft))
+    g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
+  if (!g_debugUtility && g_debugRow == 0 && (presses & kMenuRight))
+    g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
+  if (!(presses & kMenuConfirm)) return;
+  if (g_debugUtility) {
+    const UtilityAction action = UtilityActionForRow(g_debugRow);
+    if (g_debugRow == 4 && g_ammoAvailable) {
+      const bool enabled = !g_infiniteAmmo.load();
+      g_infiniteAmmo.store(enabled);
+      Notify(enabled ? "INFINITE AMMO ON" : "INFINITE AMMO OFF");
+    } else if (g_debugRow == 5 && g_healthAvailable) {
+      const bool enabled = !g_infiniteHealth.load();
+      g_infiniteHealth.store(enabled);
+      Notify(enabled ? "INFINITE HEALTH ON" : "INFINITE HEALTH OFF");
+    } else if (g_debugRow == 6) {
+      const bool enabled = !SurvivorPc_DynamicModelShadows();
+      SurvivorPc_SetDynamicModelShadows(enabled);
+      Notify(enabled ? "DYNAMIC SHADOWS ON" : "DYNAMIC SHADOWS OFF");
+      Log("DebugMenu: dynamic model shadows %s", enabled ? "on" : "off");
+    } else if (g_debugRow == 7) {
+      const bool enabled = !SurvivorPc_ShootFlash();
+      SurvivorPc_SetShootFlash(enabled);
+      Notify(enabled ? "SHOOTING FLASH ON" : "SHOOTING FLASH OFF");
+      Log("DebugMenu: shooting flash %s", enabled ? "on" : "off");
+    } else if (g_debugRow == 8 && g_healthAvailable) {
+      const bool enabled = !g_invincible.load();
+      g_invincible.store(enabled);
+      Notify(enabled ? "INVINCIBLE ON" : "INVINCIBLE OFF");
+      Log("DebugMenu: invincibility %s", enabled ? "on" : "off");
+    } else if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
+    else { g_utilityPending = action; g_debugOpen = false; }
+  } else if (g_debugRow == 1) {
+    g_debugUtility = true;
+    g_debugRow = 0;
+  } else if (g_debugRow != 0) {
+    Notify("UNIMPLEMENTED");
+    Log("DebugMenu: row %d unimplemented", g_debugRow);
+  } else {
+    const int target = g_debugSel;
+    g_debugOpen = false;
+    DebugQueueJump(target);
+  }
+}
+
 void ToggleDebugMenuInternal() {
   g_debugOpen = !g_debugOpen;
   if (!g_debugOpen) {
@@ -626,7 +694,9 @@ void QuickSavePollWindowToggle() {
   const bool fg = Foreground();
   const bool f2 = fg && (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
   const bool f10 = fg && (GetAsyncKeyState(VK_F10) & 0x8000) != 0;
-  if ((f2 || f10) && !g_f2Down && !g_f10Down) ToggleDebugMenuInternal();
+  // The menu is opt-in ([SurvivorFix] DebugEnable): without it F2 and F10 keep doing nothing,
+  // exactly as before the menu existed.
+  if (sf::g_config.debugEnable && (f2 || f10) && !g_f2Down && !g_f10Down) ToggleDebugMenuInternal();
   g_f2Down = f2;
   g_f10Down = f10;
   if (g_debugOpen && fg) {
@@ -636,51 +706,20 @@ void QuickSavePollWindowToggle() {
     const bool right = (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
     const bool enter = (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
     const bool esc = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
-    if (esc && !g_debugEscDown) {
-      if (g_debugUtility) { g_debugUtility = false; g_debugRow = 1; }
-      else { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
-    }
+    unsigned presses = 0;
+    if (esc && !g_debugEscDown) presses |= kMenuBack;
+    if (up && !g_debugUpDown) presses |= kMenuUp;
+    if (down && !g_debugDownDown) presses |= kMenuDown;
+    if (left && !g_debugLeftDown) presses |= kMenuLeft;
+    if (right && !g_debugRightDown) presses |= kMenuRight;
+    if (enter && !g_debugEnterDown) presses |= kMenuConfirm;
     g_debugEscDown = esc;
-    const int lastRow = 6;
-    if (up && !g_debugUpDown) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : lastRow;
     g_debugUpDown = up;
-    if (down && !g_debugDownDown) g_debugRow = (g_debugRow < lastRow) ? g_debugRow + 1 : 0;
     g_debugDownDown = down;
-    if (!g_debugUtility && g_debugRow == 0 && left && !g_debugLeftDown) g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
     g_debugLeftDown = left;
-    if (!g_debugUtility && g_debugRow == 0 && right && !g_debugRightDown) g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
     g_debugRightDown = right;
-    if (enter && !g_debugEnterDown) {
-      if (g_debugUtility) {
-        const UtilityAction action = UtilityActionForRow(g_debugRow);
-        if (g_debugRow == 4 && g_ammoAvailable) {
-          const bool enabled = !g_infiniteAmmo.load();
-          g_infiniteAmmo.store(enabled);
-          Notify(enabled ? "INFINITE AMMO ON" : "INFINITE AMMO OFF");
-        } else if (g_debugRow == 5 && g_healthAvailable) {
-          const bool enabled = !g_infiniteHealth.load();
-          g_infiniteHealth.store(enabled);
-          Notify(enabled ? "INFINITE HEALTH ON" : "INFINITE HEALTH OFF");
-        } else if (g_debugRow == 6) {
-          const bool enabled = !SurvivorPc_DynamicModelShadows();
-          SurvivorPc_SetDynamicModelShadows(enabled);
-          Notify(enabled ? "DYNAMIC SHADOWS ON" : "DYNAMIC SHADOWS OFF");
-          Log("DebugMenu: dynamic model shadows %s", enabled ? "on" : "off");
-        } else if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
-        else { g_utilityPending = action; g_debugOpen = false; }
-      } else if (g_debugRow == 1) {
-        g_debugUtility = true;
-        g_debugRow = 0;
-      } else if (g_debugRow != 0) {
-        Notify("UNIMPLEMENTED");
-        Log("DebugMenu: row %d unimplemented", g_debugRow);
-      } else {
-        const int target = g_debugSel;
-        g_debugOpen = false;
-        DebugQueueJump(target);
-      }
-    }
     g_debugEnterDown = enter;
+    if (presses) DebugMenuHandlePresses(presses);
   }
 }
 
@@ -717,7 +756,8 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
   }
   if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) return false;
   const bool repeated = (static_cast<uintptr_t>(lparam) & (uintptr_t{1} << 30)) != 0;
-  if (repeated) return wparam == VK_F5 || wparam == VK_F6 || wparam == VK_F8 || wparam == VK_F10 || wparam == VK_F2;
+  if (repeated) return wparam == VK_F5 || wparam == VK_F6 || wparam == VK_F8 ||
+                        (sf::g_config.debugEnable && (wparam == VK_F10 || wparam == VK_F2));
   switch (wparam) {
     case VK_F1:
       Notify("F1  OPTIONS");
@@ -739,7 +779,9 @@ bool QuickSaveHandleWindowMessage(unsigned message, uintptr_t wparam, intptr_t l
       return false;  // The native quit path must still receive F9.
     case VK_F2:
     case VK_F10:
-      return true;  // Toggle is handled by the EndScene poll (DirectInput).
+      // The toggle itself is handled by the EndScene poll (DirectInput). When the menu is off
+      // the key stays the game's own.
+      return sf::g_config.debugEnable;
     default:
       return false;
   }
@@ -768,8 +810,26 @@ bool QuickSaveReloadPending() {
 }
 
 void ToggleDebugMenu() {
-  if (!Foreground()) return;
+  if (!Foreground() || !sf::g_config.debugEnable) return;
   ToggleDebugMenuInternal();
+}
+
+// The pad is polled by the DirectInput hook, which never touches Win32 key state, so the menu
+// cannot see pad keys through its GetAsyncKeyState poll. The hook hands the pad state here
+// instead and only a fresh press acts, so a held d-pad does not run down the list.
+void DebugMenuPadNav(uint32_t nav) {
+  static uint32_t held = 0;
+  const uint32_t pressed = nav & ~held;
+  held = nav;
+  if (!pressed || !g_debugOpen || !Foreground()) return;
+  unsigned presses = 0;
+  if (pressed & sf::pad::menunav::Up) presses |= kMenuUp;
+  if (pressed & sf::pad::menunav::Down) presses |= kMenuDown;
+  if (pressed & sf::pad::menunav::Left) presses |= kMenuLeft;
+  if (pressed & sf::pad::menunav::Right) presses |= kMenuRight;
+  if (pressed & sf::pad::menunav::Confirm) presses |= kMenuConfirm;
+  if (pressed & sf::pad::menunav::Back) presses |= kMenuBack;
+  if (presses) DebugMenuHandlePresses(presses);
 }
 
 void QuickSaveHotkey(bool save) {
@@ -786,11 +846,21 @@ void ToggleFullscreenWindow() {
 bool DebugMenuVisible() { return g_debugOpen; }
 bool DebugMenuUtilityVisible() { return g_debugUtility; }
 bool DebugUtilityCheatAvailable(int row) {
-  if (row == 6) return true;  // dynamic shadows can always be switched
+  switch (row) {
+    case 6: return true;               // dynamic shadows can always be switched
+    case 7: return true;               // the shooting flash can always be switched
+    case 8: return g_healthAvailable;  // invincibility rides on the damage hook
+    default: break;
+  }
   return row == 4 ? g_ammoAvailable : row == 5 && g_healthAvailable;
 }
 bool DebugUtilityCheatEnabled(int row) {
-  if (row == 6) return SurvivorPc_DynamicModelShadows();
+  switch (row) {
+    case 6: return SurvivorPc_DynamicModelShadows();
+    case 7: return SurvivorPc_ShootFlash();
+    case 8: return g_invincible.load();
+    default: break;
+  }
   return row == 4 ? g_infiniteAmmo.load() : row == 5 && g_infiniteHealth.load();
 }
 bool DebugMenuSuppressPad(uint32_t pad) {

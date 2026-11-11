@@ -181,6 +181,25 @@ int main() {
   CHECK(half > 9.9f && half < 10.1f);
   CHECK(sf::pad::StickAimDelta(0.5f, 0.25f, 20.0f) > sf::pad::StickAimDelta(0.3f, 0.25f, 20.0f));
 
+  // ---- debug menu navigation ---------------------------------------------------------------
+  CHECK(sf::pad::MenuNavMask(sf::pad::PadState{}, 0.5f) == 0);
+  sf::pad::PadState navPad;
+  navPad.buttons = sf::pad::padbutton::DpadUp | sf::pad::padbutton::DpadLeft;
+  uint32_t nav = sf::pad::MenuNavMask(navPad, 0.5f);
+  CHECK(nav == (sf::pad::menunav::Up | sf::pad::menunav::Left));
+  navPad.buttons = sf::pad::padbutton::A;
+  CHECK(sf::pad::MenuNavMask(navPad, 0.5f) == sf::pad::menunav::Confirm);
+  navPad.buttons = sf::pad::padbutton::B;
+  CHECK(sf::pad::MenuNavMask(navPad, 0.5f) == sf::pad::menunav::Back);
+  // The left stick moves the menu too, and a resting stick never does, even with no dead zone.
+  sf::pad::PadState navStick;
+  navStick.leftY = 0.9f;
+  CHECK(sf::pad::MenuNavMask(navStick, 0.0f) == sf::pad::menunav::Up);
+  navStick.leftY = -0.9f;
+  CHECK(sf::pad::MenuNavMask(navStick, 0.0f) == sf::pad::menunav::Down);
+  navStick.leftY = 0.1f;
+  CHECK(sf::pad::MenuNavMask(navStick, 0.0f) == 0);
+
   if (fails == 0) std::printf("xinput_map: ok\n");
   return fails ? 1 : 0;
 }

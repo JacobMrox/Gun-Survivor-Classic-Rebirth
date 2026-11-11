@@ -214,6 +214,9 @@ static HRESULT STDMETHODCALLTYPE Hook_GetDeviceState(LPDIRECTINPUTDEVICEA This, 
     sf::pad::OverlayBoundKeys(pad, bindings, sf::pad::kSourceCount, deadZone,
                               static_cast<uint8_t*>(lpvData), cbData);
     ApplyPadAim(pad, deadZone);
+    // The debug menu polls Win32 key state, which the pad never touches (it only writes the
+    // game's DirectInput buffer), so feed the pad to the menu directly while it is open.
+    sf::features::DebugMenuPadNav(sf::pad::MenuNavMask(pad, deadZone));
     DispatchPadActions(sf::pad::ActionMask(pad, bindings, sf::pad::kSourceCount, deadZone));
     return hr;
 }

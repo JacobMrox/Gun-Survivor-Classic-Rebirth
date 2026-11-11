@@ -170,6 +170,19 @@ static void RestoreMissingGBIOConfig()
     }
 }
 
+// config.ini is read from the wrapper's own folder. A missing file used to leave every option
+// at its built-in default with no list of keys to edit, so the shipped template (the
+// maintainer's configuration) is written once, next to d3d8.dll, never over an existing file.
+static void RestoreMissingConfigIfMissing()
+{
+    char path[MAX_PATH]{};
+    if (!GetModuleFileNameA(g_hWrapperModule, path, MAX_PATH)) return;
+    char* slash = strrchr(path, '\\');
+    if (!slash) return;
+    strcpy(slash, "\\config.ini");
+    WriteEmbeddedResourceIfMissing(path, IDR_CONFIG_INI);
+}
+
 // Use the D3D9 texture type from d3d9.h
 IDirect3DTexture9* g_MovieTex = nullptr;
 
@@ -1816,6 +1829,7 @@ bool WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
         InstallCDBypass();
         InstallDInputHook();
         RestoreMissingGBIOConfig();
+        RestoreMissingConfigIfMissing();
 
         // --- Config Reading ---
         char path[MAX_PATH]{};

@@ -169,8 +169,8 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const int cur = sf::features::DebugMenuCurrentScene();
     if (utility) {
         const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO", "INFINITE HEALTH",
-                                 "DYNAMIC SHADOWS"};
-        for (int i = 0; i < 7; ++i) {
+                                 "DYNAMIC SHADOWS", "SHOOT FLASH", "INVINCIBLE"};
+        for (int i = 0; i < 9; ++i) {
             const char* status = "";
             if (i >= 4) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
                 sf::features::DebugUtilityCheatEnabled(i) ? " ON" : " OFF";
@@ -191,13 +191,13 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
         snprintf(line, sizeof(line), "CUR %02X %02X/%02X %-10s", cur, stage, room, roomName(cur));
     else
         snprintf(line, sizeof(line), "CUR %02X %-16s", cur, roomName(cur));
-    text(line, boxX + marginX, boxY + marginY + glyphH * 10, white);
+    text(line, boxX + marginX, boxY + marginY + glyphH * 12, white);
     static DWORD t0 = GetTickCount();
     const DWORD el = GetTickCount() - t0;
     snprintf(line, sizeof(line), "%02lu:%02lu:%02lu", (el / 3600000) % 24, (el / 60000) % 60, (el / 1000) % 60);
     text(line, boxX + boxW - glyphW * 10, boxY + boxH - glyphH * 2, D3DCOLOR_ARGB(255, 255, 0, 255));
     snprintf(line, sizeof(line), "UP DOWN LEFT RIGHT ENTER ESC F2");
-    text(line, boxX + marginX, boxY + marginY + glyphH * 11, white);
+    text(line, boxX + marginX, boxY + marginY + glyphH * 13, white);
     dev->ApplyStateBlock(state);
     dev->DeleteStateBlock(state);
 }

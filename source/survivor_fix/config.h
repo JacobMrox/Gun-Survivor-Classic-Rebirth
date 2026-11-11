@@ -121,6 +121,10 @@ struct Config {
   float padAimSpeed = 20.0f;
   bool padAimInvertY = false;
 
+  // Hidden switch, ini only: the configuration window never shows it. F2/F10 and the pad's
+  // DebugMenu button stay inert until this is 1 in config.ini [SurvivorFix].
+  bool debugEnable = false;
+
   // Crash fixes, always on.
   bool inputDeviceFix = true;
   bool exitCrashFix = true;

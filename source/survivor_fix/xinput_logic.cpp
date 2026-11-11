@@ -377,4 +377,18 @@ uint32_t ActionMask(const PadState& pad, const Binding* bindings, unsigned count
   return actions;
 }
 
+uint32_t MenuNavMask(const PadState& pad, float deadZone) {
+  // A resting stick must never scroll the list, so the menu gets a dead-zone floor even when
+  // the configured one is low.
+  const float dz = deadZone < 0.25f ? 0.25f : (deadZone > 0.95f ? 0.95f : deadZone);
+  uint32_t nav = 0;
+  if ((pad.buttons & padbutton::DpadUp) != 0 || pad.leftY >= dz) nav |= menunav::Up;
+  if ((pad.buttons & padbutton::DpadDown) != 0 || pad.leftY <= -dz) nav |= menunav::Down;
+  if ((pad.buttons & padbutton::DpadLeft) != 0 || pad.leftX <= -dz) nav |= menunav::Left;
+  if ((pad.buttons & padbutton::DpadRight) != 0 || pad.leftX >= dz) nav |= menunav::Right;
+  if ((pad.buttons & (padbutton::A | padbutton::Start)) != 0) nav |= menunav::Confirm;
+  if ((pad.buttons & (padbutton::B | padbutton::Back)) != 0) nav |= menunav::Back;
+  return nav;
+}
+
 }  // namespace sf::pad

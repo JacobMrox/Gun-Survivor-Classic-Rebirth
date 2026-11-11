@@ -117,6 +117,7 @@ void LoadConfig(const char* iniPath) {
     c.bloodColor = (uint32_t(bloodR) << 16) | (uint32_t(bloodG) << 8) | uint32_t(bloodB);
   }
   c.ps1Cadence = Read("Ps1FrameRate", true);
+  c.debugEnable = Read("DebugEnable", false);
 
   c.inputDeviceFix = Read("InputDeviceFix", true);
   c.exitCrashFix = Read("ExitCrashFix", true);

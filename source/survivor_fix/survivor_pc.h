@@ -87,6 +87,9 @@ bool SurvivorPc_DynamicModelShadows();
 // Debug menu: switches the same option the configuration window writes ([Fixes] DynamicModelShadows),
 // at once and persistently, so model shadows and the hidden 2D shadow quads follow live.
 void SurvivorPc_SetDynamicModelShadows(bool enabled);
+// Debug menu: the same [Fixes] Ps1ShootFlash switch the configuration window writes.
+bool SurvivorPc_ShootFlash();
+void SurvivorPc_SetShootFlash(bool enabled);
 void SurvivorPc_BeginDynamicShadow(float floorY);
 void SurvivorPc_EndDynamicShadow();
 bool SurvivorPc_IsDynamicShadow();

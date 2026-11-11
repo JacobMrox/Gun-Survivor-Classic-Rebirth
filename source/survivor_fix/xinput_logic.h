@@ -142,4 +142,19 @@ unsigned OverlayBoundKeys(const PadState& pad, const Binding* bindings, unsigned
 // Bit i set when source i is held and bound to Action i (bit index = Action value).
 uint32_t ActionMask(const PadState& pad, const Binding* bindings, unsigned count, float deadZone);
 
+// The debug menu is a wrapper overlay, not a game action, so the pad drives it directly
+// instead of going through a key binding: d-pad or left stick move, A or Start confirm,
+// B or Back go back.
+namespace menunav {
+constexpr uint32_t Up = 1u << 0;
+constexpr uint32_t Down = 1u << 1;
+constexpr uint32_t Left = 1u << 2;
+constexpr uint32_t Right = 1u << 3;
+constexpr uint32_t Confirm = 1u << 4;
+constexpr uint32_t Back = 1u << 5;
+}  // namespace menunav
+
+// Which menu directions/buttons the pad holds now.
+uint32_t MenuNavMask(const PadState& pad, float deadZone);
+
 }  // namespace sf::pad

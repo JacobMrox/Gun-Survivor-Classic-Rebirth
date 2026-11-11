@@ -401,6 +401,13 @@ void SurvivorPc_SetDynamicModelShadows(bool enabled) {
   const std::wstring ini = sf::g_dir + L"config.ini";
   WritePrivateProfileStringW(L"Fixes", L"DynamicModelShadows", enabled ? L"1" : L"0", ini.c_str());
 }
+bool SurvivorPc_ShootFlash() { return sf::g_config.ps1ShootFlash; }
+void SurvivorPc_SetShootFlash(bool enabled) {
+  sf::g_config.ps1ShootFlash = enabled;
+  if (sf::g_dir.empty()) return;
+  const std::wstring ini = sf::g_dir + L"config.ini";
+  WritePrivateProfileStringW(L"Fixes", L"Ps1ShootFlash", enabled ? L"1" : L"0", ini.c_str());
+}
 void SurvivorPc_BeginDynamicShadow(float floorY) {
   gDynamicShadowFloorY = floorY;
   InterlockedIncrement(&gDynamicShadowDepth);

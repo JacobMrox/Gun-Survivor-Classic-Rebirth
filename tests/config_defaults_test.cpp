@@ -5,6 +5,9 @@
 #include <string>
 #include "../source/survivor_fix/config.h"
 
+// config.cpp reports an unknown [Gamepad] binding through debug.h; the test never logs.
+bool gEnableLogging = false;
+
 namespace {
 int failures=0;
 struct Option {const char* key;bool sf::Config::* field;const char* group;};
@@ -34,6 +37,7 @@ void enabled(const sf::Config& config,const char* context){
        config.ps1PlayerWalls&&config.ps1DoorFade&&config.ps1Cadence,"existing prerequisite fixes stay enabled");
  check(!config.ps1ZombieBackFall,"unsupported backward-fall trigger stays disabled");
  check(!config.ps1ShootFlash,"shooting flash is opt-in");
+ check(!config.debugEnable,"debug menu is opt-in");
 }
 }
 int main(){
@@ -66,6 +70,8 @@ int main(){
   check(!sf::g_config.ps1ShootFlash && sf::g_config.ps1ShootFlashFrames==3,"Fixes overrides legacy flash values");
   ini.load("[Fixes]\nPs1ShootFlashFrames=99\n");
   check(sf::g_config.ps1ShootFlashFrames==5,"flash duration stays within its upper bound");
+  ini.load("[SurvivorFix]\nDebugEnable=1\n");
+  check(sf::g_config.debugEnable,"explicit debug menu opt-in");
  if(failures)return 1;
  std::puts("PASS: production INI defaults, existing configurations and diagnostic overrides");
 }

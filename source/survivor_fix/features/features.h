@@ -62,6 +62,9 @@ bool DebugMenuUtilityVisible();
 bool DebugUtilityCheatAvailable(int row);
 bool DebugUtilityCheatEnabled(int row);
 bool DebugMenuSuppressPad(uint32_t pad);
+// Pad menu input from the DirectInput hook (sf::pad::MenuNavMask bits); a fresh press moves,
+// confirms or goes back while the menu is open.
+void DebugMenuPadNav(uint32_t nav);
 int DebugMenuSelected();
 int DebugMenuRow();
 int DebugMenuCurrentScene();
