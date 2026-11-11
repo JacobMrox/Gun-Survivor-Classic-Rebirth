@@ -202,6 +202,8 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 * Corrected render target and texture usage flags.
 * Fixed graphics initialization crashes related to protected memory writes.
 * Improved compatibility with the updated Direct3D wrapper.
+* Fixed the pitch-black library corridor (scene 0x2D) with its light switch off: the room is now dim but visible, matching the PS1 original.
+* Removed the forced ambient, lighting and material overrides that washed that room out once the switch was pressed, so the lit state keeps the game's own shading.
 
 ### Movies & Stability ([Trigger](https://github.com/Trigger117))
 * Fixed DirectShow initialization issues affecting the opening movies.

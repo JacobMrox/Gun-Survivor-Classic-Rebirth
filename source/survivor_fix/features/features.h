@@ -96,6 +96,8 @@ const std::vector<ps1::Wall>& CurrentRoomWalls();
 const std::vector<ps1::DoorEvent>& CurrentRoomDoors();
 const std::vector<ps1::Wall>& CurrentEnemyOnlyWalls();
 bool IsCurrentRoom(int stage, int room);
+// Physical stage/room of the loaded room (false until the first room path).
+bool CurrentRoomId(int* stage, int* room);
 bool CurrentRoomGeometryReady();
 const std::vector<ps1::VoiceProfile>& CurrentRoomVoiceProfiles();
 const std::vector<ps1::Placement>& CurrentRoomPlacements();

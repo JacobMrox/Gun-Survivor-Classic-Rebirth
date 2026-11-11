@@ -882,20 +882,6 @@ HRESULT m_IDirect3DDevice8::SetClipStatus(CONST D3DCLIPSTATUS8 *pClipStatus)
 
 HRESULT m_IDirect3DDevice8::SetRenderState(D3DRENDERSTATETYPE State, DWORD Value)
 {
-	if (SurvivorPc_IsSurvivorExe() && *reinterpret_cast<int*>(0x005F3DAC) == 0x2D)
-	{
-		static DWORD lastState = 0, lastValue = 0;
-		if (lastState != State || lastValue != Value)
-		{
-			sf::Log("SetRenderState 2D: %d=%lu", State, Value);
-			lastState = State;
-			lastValue = Value;
-		}
-		if (State == D3DRS_LIGHTING)
-			Value = 1;
-		if (State == D3DRS_AMBIENT)
-			Value = 0x00FFFFFF;
-	}
 	SurvivorPc_OnSetRenderState(_ReturnAddress(), State, Value);
 	if (SurvivorPc_SmoothModelLighting())
 	{
@@ -1035,7 +1021,7 @@ HRESULT m_IDirect3DDevice8::LightEnable(DWORD LightIndex, BOOL bEnable)
 
 HRESULT m_IDirect3DDevice8::SetLight(DWORD Index, CONST D3DLIGHT8 *pLight)
 {
-	if (pLight && SurvivorPc_IsSurvivorExe() && pLight->Type == D3DLIGHT_SPOT &&
+	if (pLight && SurvivorPc_SmoothModelLighting() && pLight->Type == D3DLIGHT_SPOT &&
 		pLight->Theta <= 0.0001f && pLight->Phi <= 0.0001f)
 	{
 		// gun_bio.exe 00467230 creates its sole scene light as an overhead spot
@@ -1053,17 +1039,6 @@ HRESULT m_IDirect3DDevice8::SetLight(DWORD Index, CONST D3DLIGHT8 *pLight)
 
 HRESULT m_IDirect3DDevice8::SetMaterial(CONST D3DMATERIAL8 *pMaterial)
 {
-	if (pMaterial && SurvivorPc_IsSurvivorExe() && *reinterpret_cast<int*>(0x005F3DAC) == 0x2D)
-	{
-		D3DMATERIAL8 boosted = *pMaterial;
-		boosted.Ambient.r = boosted.Ambient.r < 0.13f ? 0.13f : boosted.Ambient.r;
-		boosted.Ambient.g = boosted.Ambient.g < 0.13f ? 0.13f : boosted.Ambient.g;
-		boosted.Ambient.b = boosted.Ambient.b < 0.13f ? 0.13f : boosted.Ambient.b;
-		sf::Log("SetMaterial 2D: ambient %.3f %.3f %.3f -> %.3f %.3f %.3f",
-			pMaterial->Ambient.r, pMaterial->Ambient.g, pMaterial->Ambient.b,
-			boosted.Ambient.r, boosted.Ambient.g, boosted.Ambient.b);
-		return ProxyInterface->SetMaterial(&boosted);
-	}
 	return ProxyInterface->SetMaterial(pMaterial);
 }
 
@@ -1261,10 +1236,6 @@ HRESULT m_IDirect3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT S
 HRESULT m_IDirect3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, CONST void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
 {
 	ApplySmoothModelLighting(ProxyInterface);
-	if (SurvivorPc_IsSurvivorExe() && *reinterpret_cast<int*>(0x005F3DAC) == 0x2D) {
-		ProxyInterface->SetRenderState(D3DRS_LIGHTING, TRUE);
-		ProxyInterface->SetRenderState(D3DRS_AMBIENT, 0x00323232);
-	}
 	if (SurvivorPc_IsDynamicShadow()) {
 		DynamicShadowState shadowState = {};
 		if (!BeginDynamicShadowDraw(ProxyInterface, shadowState)) return D3D_OK;
@@ -1385,18 +1356,6 @@ HRESULT m_IDirect3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pText
 
 HRESULT m_IDirect3DDevice8::SetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTATETYPE Type, DWORD Value)
 {
-	if (SurvivorPc_IsSurvivorExe() && *reinterpret_cast<int*>(0x005F3DAC) == 0x2D)
-	{
-		// Scene 0x2D is pitch black on PC because textures are modulated by black
-		// vertex diffuse. Force TFACTOR + TEXTURE so a constant bright level is
-		// added on top of every texture, matching PS1 brightness.
-		if (Stage == 0 && Type == D3DTSS_COLORARG1)
-			Value = D3DTA_TFACTOR;
-		if (Stage == 0 && Type == D3DTSS_COLORARG2)
-			Value = D3DTA_TEXTURE;
-		if (Stage == 0 && Type == D3DTSS_COLOROP)
-			Value = D3DTOP_ADD;
-	}
 	return ProxyInterface->SetTextureStageState(Stage, Type, Value);
 }
 
@@ -1457,12 +1416,6 @@ HRESULT m_IDirect3DDevice8::SetClipPlane(DWORD Index, CONST float *pPlane)
 
 HRESULT m_IDirect3DDevice8::Clear(DWORD Count, CONST D3DRECT *pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil)
 {
-	if (SurvivorPc_IsSurvivorExe() && *reinterpret_cast<int*>(0x005F3DAC) == 0x2D)
-	{
-		// Scene 0x2D clears to pure black on PC; force a dim background so the
-		// room is at least faintly visible without the light switch.
-		Color = D3DCOLOR_ARGB(0xFF, 0x10, 0x10, 0x10);
-	}
 	return ProxyInterface->Clear(Count, pRects, Flags, Color, Z, Stencil);
 }
 

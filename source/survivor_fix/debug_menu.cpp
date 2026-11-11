@@ -185,7 +185,11 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
             text(line, boxX + marginX, boxY + marginY + glyphH * (3 + i), ((row == i + 1) ? cyan : grey));
         }
     }
-    snprintf(line, sizeof(line), "CUR %02X %-16s", cur, roomName(cur));
+    int stage = -1, room = -1;
+    if (sf::features::CurrentRoomId(&stage, &room))
+        snprintf(line, sizeof(line), "CUR %02X %02X/%02X %-10s", cur, stage, room, roomName(cur));
+    else
+        snprintf(line, sizeof(line), "CUR %02X %-16s", cur, roomName(cur));
     text(line, boxX + marginX, boxY + marginY + glyphH * 10, white);
     static DWORD t0 = GetTickCount();
     const DWORD el = GetTickCount() - t0;
