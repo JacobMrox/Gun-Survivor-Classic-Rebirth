@@ -97,6 +97,7 @@ void LoadConfig(const char* iniPath) {
   c.padAimInvertY = GetPrivateProfileIntA("Gamepad", "AimInvertY", 0, iniPath) != 0;
   c.ds4 = Read("DualShock4", true);
   c.ds4Speaker = Read("Ds4Speaker", true);
+  c.ds4Rumble = Read("Ds4Rumble", true);
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
   char uncensored[16] = {};
   GetPrivateProfileStringA("Fixes", "UncensoredHeadshots", "", uncensored, sizeof(uncensored), iniPath);

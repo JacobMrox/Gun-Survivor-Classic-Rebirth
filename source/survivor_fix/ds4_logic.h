@@ -57,6 +57,40 @@ inline Rgb ScaledColor(const Pulse& pulse, float level) {
 constexpr Rgb kIdleColor{0, 48, 120};
 constexpr float kIdleLevel = 0.35f;
 
+// The d-pad is the LOW nibble of the buttons byte: 0..7 are directions, 8 is centred. Reading the
+// high nibble instead turns the centred value 0x08 into Up and every face button into a direction,
+// which is exactly how the first real-hardware build behaved.
+struct HatDirections {
+  bool up, right, down, left;
+};
+
+constexpr HatDirections HatDirection(uint8_t hat) {
+  switch (hat & 0x0F) {
+    case 0: return HatDirections{true, false, false, false};
+    case 1: return HatDirections{true, true, false, false};
+    case 2: return HatDirections{false, true, false, false};
+    case 3: return HatDirections{false, true, true, false};
+    case 4: return HatDirections{false, false, true, false};
+    case 5: return HatDirections{false, false, true, true};
+    case 6: return HatDirections{false, false, false, true};
+    case 7: return HatDirections{true, false, false, true};
+    default: return HatDirections{false, false, false, false};  // 8..15: centred
+  }
+}
+
+// The pad's two motors: weak is the small high-frequency one, strong the large one.
+struct Rumble {
+  uint8_t weak, strong;
+};
+
+// A burst decays linearly and is silent once its duration has passed, so a 25 Hz writer needs no
+// stop event: the next light report simply carries zero motors.
+constexpr uint8_t RumbleLevel(uint32_t elapsedMs, uint32_t durationMs, uint8_t peak) {
+  if (durationMs == 0 || elapsedMs >= durationMs) return 0;
+  const uint32_t left = durationMs - elapsedMs;
+  return static_cast<uint8_t>((static_cast<uint32_t>(peak) * left) / durationMs);
+}
+
 // ---- output reports --------------------------------------------------------------------------
 // DS4-USB: report 0x05, 32 bytes, RGB at 6/7/8. DS4-BT: report 0x11, 78 bytes, two extra header
 // bytes (hw control 0xC0 + audio control), RGB at 8/9/10 and a CRC32 in the last four.
@@ -81,20 +115,24 @@ inline uint32_t BluetoothChecksum(const uint8_t* report, size_t length) {
   return ~crc;
 }
 
-inline void BuildUsbLightReport(uint8_t* report, Rgb color) {
+inline void BuildUsbLightReport(uint8_t* report, Rgb color, Rumble rumble = Rumble{0, 0}) {
   for (size_t i = 0; i < kUsbReportSize; ++i) report[i] = 0;
   report[0] = 0x05;  // output report id
   report[1] = 0x07;  // rumble, lightbar and flash are valid
+  report[4] = rumble.weak;    // small motor
+  report[5] = rumble.strong;  // large motor
   report[6] = color.r;
   report[7] = color.g;
   report[8] = color.b;
 }
 
-inline void BuildBtLightReport(uint8_t* report, Rgb color) {
+inline void BuildBtLightReport(uint8_t* report, Rgb color, Rumble rumble = Rumble{0, 0}) {
   for (size_t i = 0; i < kBtReportSize; ++i) report[i] = 0;
   report[0] = 0x11;  // output report id
   report[1] = 0xC0;  // HID + CRC enable (the two top bits)
   report[3] = 0x07;  // valid flags, one byte later than in the USB layout
+  report[6] = rumble.weak;    // small motor, two bytes before the colour
+  report[7] = rumble.strong;  // large motor
   report[8] = color.r;
   report[9] = color.g;
   report[10] = color.b;

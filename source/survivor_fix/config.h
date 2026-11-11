@@ -125,6 +125,7 @@ struct Config {
   // controller speaker plays the gunshots. Separate switches, both on by default.
   bool ds4 = true;
   bool ds4Speaker = true;
+  bool ds4Rumble = true;
 
   // Hidden switch, ini only: the configuration window never shows it. F2/F10 and the pad's
   // DebugMenu button stay inert until this is 1 in config.ini [SurvivorFix].

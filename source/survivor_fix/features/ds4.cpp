@@ -56,6 +56,9 @@ uint16_t g_inputLength = 0;
 DWORD g_lightStart = 0;
 DWORD g_lastLight = 0;
 DWORD g_lastScan = 0;
+DWORD g_lastShotAt = 0;    // rumble bursts are timed from the game's own events
+DWORD g_lastDamageAt = 0;
+int g_lastHealth = -1;
 bool g_scanLogged = false;
 bool g_writeErrorLogged = false;
 bool g_readerStarted = false;
@@ -105,17 +108,11 @@ void ParseReport(const uint8_t* data, DWORD length) {
   if (shoulders & 0x80) pad.buttons |= sf::pad::padbutton::RightThumb;
   pad.leftTrigger = p[7];
   pad.rightTrigger = p[8];
-  switch ((face >> 4) & 0x0F) {  // hat, 8 = released
-    case 0: pad.buttons |= sf::pad::padbutton::DpadUp; break;
-    case 1: pad.buttons |= sf::pad::padbutton::DpadUp | sf::pad::padbutton::DpadRight; break;
-    case 2: pad.buttons |= sf::pad::padbutton::DpadRight; break;
-    case 3: pad.buttons |= sf::pad::padbutton::DpadRight | sf::pad::padbutton::DpadDown; break;
-    case 4: pad.buttons |= sf::pad::padbutton::DpadDown; break;
-    case 5: pad.buttons |= sf::pad::padbutton::DpadDown | sf::pad::padbutton::DpadLeft; break;
-    case 6: pad.buttons |= sf::pad::padbutton::DpadLeft; break;
-    case 7: pad.buttons |= sf::pad::padbutton::DpadLeft | sf::pad::padbutton::DpadUp; break;
-    default: break;
-  }
+  const ds4::HatDirections hat = ds4::HatDirection(face);
+  if (hat.up) pad.buttons |= sf::pad::padbutton::DpadUp;
+  if (hat.down) pad.buttons |= sf::pad::padbutton::DpadDown;
+  if (hat.left) pad.buttons |= sf::pad::padbutton::DpadLeft;
+  if (hat.right) pad.buttons |= sf::pad::padbutton::DpadRight;
   {
     std::lock_guard<std::mutex> lock(g_padLock);
     g_padState = pad;
@@ -334,7 +331,7 @@ bool WriteReport(const uint8_t* report, size_t length) {
   return false;
 }
 
-bool SendLight(Rgb color) {
+bool SendLight(Rgb color, ds4::Rumble rumble) {
   if (g_dualSense) return true;  // recognised, not driven: do not fail and rescan every frame
   if (g_bluetooth) {
     // Windows rejects a report shorter than the collection's output length with error 87, so the
@@ -342,7 +339,7 @@ bool SendLight(Rgb color) {
     uint8_t report[640] = {};
     const size_t length = g_outputLength > ds4::kBtReportSize ? g_outputLength : ds4::kBtReportSize;
     if (length > sizeof report) return false;
-    ds4::BuildBtLightReport(report, color);
+    ds4::BuildBtLightReport(report, color, rumble);
     const bool ok = WriteReport(report, length);
     if (ok) {
       static bool loggedOk = false;
@@ -359,7 +356,7 @@ bool SendLight(Rgb color) {
   uint8_t report[640] = {};
   const size_t length = g_outputLength > ds4::kUsbReportSize ? g_outputLength : ds4::kUsbReportSize;
   if (length > sizeof report) return false;
-  ds4::BuildUsbLightReport(report, color);
+  ds4::BuildUsbLightReport(report, color, rumble);
   const bool ok = WriteReport(report, length);
   if (ok) {
     static bool loggedOk = false;
@@ -549,7 +546,9 @@ bool Ds4PadState(sf::pad::PadState* out) {
 }
 
 void Ds4OnPlayerShot() {
-  if (!g_installed || !sf::g_config.ds4Speaker) return;
+  if (!g_installed) return;
+  g_lastShotAt = GetTickCount();
+  if (!sf::g_config.ds4Speaker) return;
   g_shotRequested.store(true);
 }
 
@@ -571,6 +570,8 @@ void Ds4Tick() {
   if (g_write != INVALID_HANDLE_VALUE && now - g_lastLight >= kLightIntervalMs) {
     g_lastLight = now;
     const int health = PlayerHealth();
+    if (health >= 0 && g_lastHealth >= 0 && health < g_lastHealth) g_lastDamageAt = now;
+    g_lastHealth = health;
     Rgb color;
     if (health < 0) {
       const ds4::Pulse idle{ds4::kIdleColor.r, ds4::kIdleColor.g, ds4::kIdleColor.b, 2000,
@@ -580,7 +581,17 @@ void Ds4Tick() {
       const ds4::Pulse pulse = ds4::HealthPulse(health);
       color = ds4::ScaledColor(pulse, ds4::BreathLevel(pulse, now - g_lightStart));
     }
-    if (!SendLight(color)) {
+    ds4::Rumble rumble{0, 0};
+    if (sf::g_config.ds4Rumble) {
+      // A shot is a short sharp burst; taking damage is a longer, stronger one. Both decay
+      // to zero, so the next 25 Hz report simply stops the motors.
+      const uint8_t shotWeak = ds4::RumbleLevel(now - g_lastShotAt, 120, 140);
+      const uint8_t shotStrong = ds4::RumbleLevel(now - g_lastShotAt, 120, 90);
+      const uint8_t hit = ds4::RumbleLevel(now - g_lastDamageAt, 300, 210);
+      rumble.weak = shotWeak > hit / 3 ? shotWeak : static_cast<uint8_t>(hit / 3);
+      rumble.strong = shotStrong > hit ? shotStrong : hit;
+    }
+    if (!SendLight(color, rumble)) {
       // Keep the input handle: only the lightbar needs the output path, and a pad held by another
       // program can often still be read.
       static DWORD lastFailureLog = 0;

@@ -85,5 +85,33 @@ int main() {
   assert(std::memcmp(other, bt, kBtReportSize) != 0);
   assert(*reinterpret_cast<uint32_t*>(other + 74) != *reinterpret_cast<uint32_t*>(bt + 74));
 
+  // ---- d-pad hat -------------------------------------------------------------------------------
+  // 8 is centred; reading the high nibble made the centred value look like Up and every face
+  // button look like a direction, which is what the first hardware run showed.
+  assert(!HatDirection(8).up && !HatDirection(8).down && !HatDirection(8).left && !HatDirection(8).right);
+  assert(HatDirection(0).up && !HatDirection(0).right);
+  assert(HatDirection(2).right && !HatDirection(2).up);
+  assert(HatDirection(4).down && !HatDirection(4).right);
+  assert(HatDirection(6).left && !HatDirection(6).down);
+  assert(HatDirection(3).right && HatDirection(3).down && !HatDirection(3).up);
+  assert(!HatDirection(15).up);
+
+  // ---- rumble ----------------------------------------------------------------------------------
+  assert(RumbleLevel(0, 120, 255) == 255);
+  assert(RumbleLevel(60, 120, 200) == 100);
+  assert(RumbleLevel(120, 120, 255) == 0);
+  assert(RumbleLevel(999, 120, 255) == 0);
+  assert(RumbleLevel(0, 0, 255) == 0);
+  uint8_t usbRumble[kUsbReportSize];
+  BuildUsbLightReport(usbRumble, red, Rumble{40, 200});
+  assert(usbRumble[4] == 40 && usbRumble[5] == 200);
+  assert(usbRumble[6] == 255 && usbRumble[7] == 0 && usbRumble[8] == 0);
+  uint8_t btRumble[kBtReportSize];
+  BuildBtLightReport(btRumble, Rgb{0, 255, 64}, Rumble{10, 220});
+  assert(btRumble[6] == 10 && btRumble[7] == 220);
+  assert(btRumble[8] == 0 && btRumble[9] == 255 && btRumble[10] == 64);
+  // The Bluetooth checksum covers the motors too.
+  assert(BluetoothChecksum(btRumble, kBtReportSize - 4) != BluetoothChecksum(bt, kBtReportSize - 4));
+
   return 0;
 }
