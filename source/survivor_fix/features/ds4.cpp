@@ -59,6 +59,7 @@ DWORD g_lastScan = 0;
 bool g_scanLogged = false;
 bool g_writeErrorLogged = false;
 bool g_readerStarted = false;
+int g_candidatesLogged = 0;  // a handful of lines per process, never one per scan
 
 // ---- input ------------------------------------------------------------------------------------
 // The reader thread blocks on ReadFile and publishes the newest PadState; the DirectInput hook
@@ -83,8 +84,8 @@ void ParseReport(const uint8_t* data, DWORD length) {
   } else {
     return;
   }
-  const uint8_t* p = data + offset;
   if (static_cast<size_t>(length) < offset + 9) return;
+  const uint8_t* p = data + offset;
   sf::pad::PadState pad;
   pad.leftX = Axis(p[0]);
   pad.leftY = -Axis(p[1]);  // the report's Y grows downwards, XInput's grows upwards
@@ -144,8 +145,6 @@ void ReaderLoop() {
         Log("DS4: controller stopped answering; looking for it again");
         CloseHandle(g_read);
         g_read = INVALID_HANDLE_VALUE;
-        if (g_write != INVALID_HANDLE_VALUE) CloseHandle(g_write);
-        g_write = INVALID_HANDLE_VALUE;
       }
       Sleep(50);
       continue;
@@ -158,6 +157,7 @@ void ReaderLoop() {
 // ---- device discovery -------------------------------------------------------------------------
 struct Candidate {
   bool found = false;
+  int score = -1;
   USHORT pid = 0;
   uint16_t inputLength = 0;
   uint16_t outputLength = 0;
@@ -167,104 +167,133 @@ struct Candidate {
   wchar_t product[128] = {};
 };
 
-// The DS4 exposes more than one HID collection; only the gamepad one carries the 32/78-byte output
-// report the lightbar needs. The caps decide, not the enumeration order: taking the first writable
-// interface is what made every lightbar write fail on a real 09CC.
-bool InspectInterface(HDEVINFO set, SP_DEVICE_INTERFACE_DATA* iface, Candidate* out) {
-  DWORD needed = 0;
-  SetupDiGetDeviceInterfaceDetailA(set, iface, nullptr, 0, &needed, nullptr);
-  if (!needed || needed > sizeof out->path) return false;
-  alignas(SP_DEVICE_INTERFACE_DETAIL_DATA_A) char buffer[sizeof(Candidate::path) + 64] = {};
-  auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_A*>(buffer);
-  detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
-  if (!SetupDiGetDeviceInterfaceDetailA(set, iface, detail, sizeof buffer, &needed, nullptr)) return false;
-  HANDLE handle = CreateFileA(detail->DevicePath, GENERIC_READ | GENERIC_WRITE,
-                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-  if (handle == INVALID_HANDLE_VALUE) return false;
-  bool matched = false;
-  HIDD_ATTRIBUTES attributes = {};
-  attributes.Size = sizeof attributes;
-  if (HidD_GetAttributes(handle, &attributes)) {
-    wchar_t product[128] = {};
-    HidD_GetProductString(handle, product, sizeof product);
-    const bool sony = attributes.VendorID == kSonyVendor &&
-                      (attributes.ProductID == kDs4V1 || attributes.ProductID == kDs4V2 ||
-                       attributes.ProductID == kDs4Adapter || attributes.ProductID == kDualSense);
-    // Clones often report another vendor but keep the retail product string.
-    const bool named = std::wcsstr(product, L"Wireless Controller") != nullptr;
-    if (sony || named) {
-      PHIDP_PREPARSED_DATA preparsed = nullptr;
-      HIDP_CAPS caps = {};
-      if (HidD_GetPreparsedData(handle, &preparsed) && preparsed) {
-        if (HidP_GetCaps(preparsed, &caps) == HIDP_STATUS_SUCCESS) {
-          out->inputLength = caps.InputReportByteLength;
-          out->outputLength = caps.OutputReportByteLength;
-        }
-        HidD_FreePreparsedData(preparsed);
-      }
-      out->found = true;
-      out->pid = attributes.ProductID;
-      out->dualSense = attributes.ProductID == kDualSense;
-      out->bluetooth = out->outputLength == ds4::kBtReportSize;
-      std::memcpy(out->product, product, sizeof out->product);
-      std::strncpy(out->path, detail->DevicePath, sizeof out->path - 1);
-      matched = true;
-    }
-  }
-  CloseHandle(handle);
-  return matched;
+// A DualShock 4 exposes several HID collections under the same product name. The gamepad one has a
+// 64-byte input report and a 32-byte output report over USB (78/78 over Bluetooth); a config
+// collection reports 547 bytes either way. Real hardware showed the first build picking the config
+// collection, where every 32-byte lightbar write is rejected with error 87 (the report is shorter
+// than that collection's output length), so the caps are scored instead of trusting the enumeration
+// order.
+int ScoreCaps(uint16_t inputLength, uint16_t outputLength) {
+  const bool gamepadOutput = outputLength == ds4::kUsbReportSize || outputLength == ds4::kBtReportSize;
+  const bool gamepadInput = inputLength == 64 || inputLength == ds4::kBtReportSize;
+  if (gamepadOutput && gamepadInput) return 3;
+  if (gamepadOutput) return 2;
+  if (gamepadInput) return 1;
+  return 0;
+}
+
+// The device path names the USB IDs even when the interface cannot be opened.
+bool IsSonyPath(const char* path) {
+  return std::strstr(path, "vid_054c") || std::strstr(path, "VID_054C");
+}
+
+const char* PathTail(const char* path) {
+  const char* tail = std::strrchr(path, '\\');
+  return tail ? tail + 1 : path;
 }
 
 bool OpenController() {
   GUID hid = {};
   HidD_GetHidGuid(&hid);
-  HDEVINFO set = SetupDiGetClassDevsA(&hid, nullptr, nullptr,
-                                  DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+  HDEVINFO set = SetupDiGetClassDevsA(&hid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
   if (set == INVALID_HANDLE_VALUE) return false;
   Candidate best;
-  Candidate fallback;
   for (DWORD index = 0;; ++index) {
     SP_DEVICE_INTERFACE_DATA iface = {};
     iface.cbSize = sizeof iface;
     if (!SetupDiEnumDeviceInterfaces(set, nullptr, &hid, index, &iface)) break;
-    Candidate candidate;
-    if (!InspectInterface(set, &iface, &candidate)) continue;
-    // The gamepad collection is the one with a usable output report; anything else only serves as a
-    // last resort for a clone with unusual caps.
-    if (candidate.outputLength == ds4::kUsbReportSize || candidate.outputLength == ds4::kBtReportSize) {
-      best = candidate;
-      break;
+    DWORD needed = 0;
+    SetupDiGetDeviceInterfaceDetailA(set, &iface, nullptr, 0, &needed, nullptr);
+    if (!needed || needed > sizeof best.path) continue;
+    alignas(SP_DEVICE_INTERFACE_DETAIL_DATA_A) char buffer[1300] = {};
+    auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_A*>(buffer);
+    detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
+    if (!SetupDiGetDeviceInterfaceDetailA(set, &iface, detail, sizeof buffer, &needed, nullptr)) continue;
+    HANDLE handle = CreateFileA(detail->DevicePath, GENERIC_READ | GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+      if (IsSonyPath(detail->DevicePath) && g_candidatesLogged < 8) {
+        ++g_candidatesLogged;
+        Log("DS4: candidate %s would not open (%lu); something else holds it",
+            PathTail(detail->DevicePath), GetLastError());
+      }
+      continue;
     }
-    if (!fallback.found) fallback = candidate;
+    Candidate candidate;
+    bool matched = false;
+    HIDD_ATTRIBUTES attributes = {};
+    attributes.Size = sizeof attributes;
+    if (HidD_GetAttributes(handle, &attributes)) {
+      wchar_t product[128] = {};
+      HidD_GetProductString(handle, product, sizeof product);
+      const bool sony = attributes.VendorID == kSonyVendor &&
+                        (attributes.ProductID == kDs4V1 || attributes.ProductID == kDs4V2 ||
+                         attributes.ProductID == kDs4Adapter || attributes.ProductID == kDualSense);
+      // Clones often report another vendor but keep the retail product string.
+      const bool named = sony || std::wcsstr(product, L"Wireless Controller") != nullptr;
+      if (named) {
+        PHIDP_PREPARSED_DATA preparsed = nullptr;
+        HIDP_CAPS caps = {};
+        if (HidD_GetPreparsedData(handle, &preparsed) && preparsed) {
+          if (HidP_GetCaps(preparsed, &caps) == HIDP_STATUS_SUCCESS) {
+            candidate.inputLength = caps.InputReportByteLength;
+            candidate.outputLength = caps.OutputReportByteLength;
+          }
+          HidD_FreePreparsedData(preparsed);
+        }
+        candidate.found = true;
+        candidate.pid = attributes.ProductID;
+        candidate.dualSense = attributes.ProductID == kDualSense;
+        candidate.bluetooth = candidate.outputLength == ds4::kBtReportSize;
+        candidate.score = ScoreCaps(candidate.inputLength, candidate.outputLength);
+        std::memcpy(candidate.product, product, sizeof candidate.product);
+        std::strncpy(candidate.path, detail->DevicePath, sizeof candidate.path - 1);
+        matched = true;
+      }
+    }
+    CloseHandle(handle);
+    if (!matched) continue;
+    if (g_candidatesLogged < 8) {
+      ++g_candidatesLogged;
+      Log("DS4: candidate %s %04X:%04X out %u in %u (%s)", PathTail(candidate.path), kSonyVendor,
+          candidate.pid, candidate.outputLength, candidate.inputLength,
+          candidate.score == 3 ? "gamepad" : "other collection, not driven");
+    }
+    if (candidate.score > best.score) best = candidate;
   }
   SetupDiDestroyDeviceInfoList(set);
-  const Candidate& chosen = best.found ? best : fallback;
-  if (!chosen.found) return false;
-
-  g_write = CreateFileA(chosen.path, GENERIC_READ | GENERIC_WRITE,
-                        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+  if (!best.found) return false;
+  if (best.score < 2 && g_candidatesLogged < 8) {
+    ++g_candidatesLogged;
+    Log("DS4: only a non-gamepad collection is free; close DS4Windows or Steam Input so the wrapper "
+        "can read the pad and drive the lightbar");
+  }
   if (g_write == INVALID_HANDLE_VALUE) {
-    Log("DS4: the controller interface would not open for output (%lu)", GetLastError());
-    return false;
+    g_write = CreateFileA(best.path, GENERIC_READ | GENERIC_WRITE,
+                          FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (g_write == INVALID_HANDLE_VALUE) {
+      Log("DS4: the controller interface would not open for output (%lu)", GetLastError());
+    }
   }
-  if (chosen.dualSense) {
-    // A DualSense has a different lightbar report; it is recognised but not driven yet.
-    g_dualSense = true;
-    Log("DS4: DualSense (054C:%04X) found; its lightbar report is not implemented, input only", chosen.pid);
-  }
-  g_read = CreateFileA(chosen.path, GENERIC_READ | GENERIC_WRITE,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
   if (g_read == INVALID_HANDLE_VALUE) {
-    Log("DS4: the controller interface would not open for input (%lu); lightbar only", GetLastError());
+    g_read = CreateFileA(best.path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                         OPEN_EXISTING, 0, nullptr);
+    if (g_read == INVALID_HANDLE_VALUE) {
+      Log("DS4: the controller interface would not open for input (%lu)", GetLastError());
+    }
   }
-  g_bluetooth = chosen.bluetooth;
-  g_outputLength = chosen.outputLength;
-  g_inputLength = chosen.inputLength;
+  g_bluetooth = best.bluetooth;
+  g_outputLength = best.outputLength;
+  g_inputLength = best.inputLength;
   g_writeErrorLogged = false;
+  g_dualSense = best.dualSense;
   char product[128] = {};
-  WideCharToMultiByte(CP_ACP, 0, chosen.product, -1, product, sizeof product, nullptr, nullptr);
-  Log("DS4: '%s' 054C:%04X on %s (out %u, in %u)", product[0] ? product : "controller", chosen.pid,
+  WideCharToMultiByte(CP_ACP, 0, best.product, -1, product, sizeof product, nullptr, nullptr);
+  Log("DS4: '%s' 054C:%04X on %s (out %u, in %u)", product[0] ? product : "controller", best.pid,
       g_bluetooth ? "Bluetooth" : "USB", g_outputLength, g_inputLength);
+  if (best.dualSense) {
+    Log("DS4: DualSense (054C:%04X); its lightbar report is not implemented, input only", best.pid);
+  }
   return true;
 }
 
@@ -290,16 +319,15 @@ bool SendLight(Rgb color) {
     uint8_t report[ds4::kBtReportSize];
     ds4::BuildBtLightReport(report, color);
     const bool ok = WriteReport(report, sizeof report);
-    if (!ok && !g_writeErrorLogged) {
-      g_writeErrorLogged = true;
-      Log("DS4: Bluetooth output report failed (%lu); output %u bytes", GetLastError(), g_outputLength);
-    }
     if (ok) {
       static bool loggedOk = false;
       if (!loggedOk) {
         loggedOk = true;
         Log("DS4: lightbar reports accepted over Bluetooth");
       }
+    } else if (!g_writeErrorLogged) {
+      g_writeErrorLogged = true;
+      Log("DS4: Bluetooth output report failed (%lu); output %u bytes", GetLastError(), g_outputLength);
     }
     return ok;
   }
@@ -501,21 +529,19 @@ void Ds4OnPlayerShot() {
 void Ds4Tick() {
   if (!g_installed) return;
   const DWORD now = GetTickCount();
-  if (g_write == INVALID_HANDLE_VALUE) {
-    if (now - g_lastScan < kScanIntervalMs) return;
+  if (g_write == INVALID_HANDLE_VALUE && now - g_lastScan >= kScanIntervalMs) {
     g_lastScan = now;
-    if (!OpenController()) {
-      if (!g_scanLogged) {
-        g_scanLogged = true;
-        Log("DS4: no controller found yet; it is picked up as soon as it is connected");
-      }
-      return;
+    const bool opened = OpenController();
+    if (opened) {
+      g_lightStart = now;
+      g_lastLight = 0;
+      g_scanLogged = false;
+    } else if (!g_scanLogged) {
+      g_scanLogged = true;
+      Log("DS4: no controller found yet; it is picked up as soon as it is connected");
     }
-    g_lightStart = now;
-    g_lastLight = 0;
-    g_scanLogged = false;
   }
-  if (now - g_lastLight >= kLightIntervalMs) {
+  if (g_write != INVALID_HANDLE_VALUE && now - g_lastLight >= kLightIntervalMs) {
     g_lastLight = now;
     const int health = PlayerHealth();
     Rgb color;
@@ -528,13 +554,16 @@ void Ds4Tick() {
       color = ds4::ScaledColor(pulse, ds4::BreathLevel(pulse, now - g_lightStart));
     }
     if (!SendLight(color)) {
-      Log("DS4: lightbar write failed; looking for the controller again");
-      if (g_read != INVALID_HANDLE_VALUE) CloseHandle(g_read);
-      g_read = INVALID_HANDLE_VALUE;
+      // Keep the input handle: only the lightbar needs the output path, and a pad held by another
+      // program can often still be read.
+      static DWORD lastFailureLog = 0;
+      if (now - lastFailureLog >= 30000) {
+        lastFailureLog = now;
+        Log("DS4: lightbar write failed; retrying the output path");
+      }
       CloseHandle(g_write);
       g_write = INVALID_HANDLE_VALUE;
-      g_scanLogged = false;
-      return;
+      g_lastScan = now;
     }
   }
   AudioTick();
