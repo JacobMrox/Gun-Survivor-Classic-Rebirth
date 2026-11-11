@@ -83,6 +83,25 @@ inline constexpr uint8_t kBuildRoomEnemiesRetBytes[]={0xC2,0x0C,0x00};
 constexpr uintptr_t kSkipRoomEnemyBuild=0x005F2C14;
 constexpr uintptr_t kBuildRoomEnemyGate=0x00430FB2;
 inline constexpr uint8_t kBuildRoomEnemyGateBytes[]={0x38,0x1D,0x14,0x2C,0x5F,0x00};
+// 00434850: one room entity from a table entry of 00430F90. __cdecl (plain RET), ten arguments:
+// (type 0..0x25, reserved, reserved, x, y, z, yaw, uint32_t* killed flag, byte, float). It builds the
+// transform, runs the type's setup (00436060) and registers the actor in the enemy manager
+// [005F2C18] through 0043C600, so a spawn through it is an ordinary native enemy.
+constexpr uintptr_t kSpawnEntity = 0x00434850;
+inline constexpr uint8_t kSpawnEntityBytes[] = {0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, 0x53, 0x55,
+                                                0x8B, 0x0D, 0xC4, 0xD0, 0x5F, 0x00};
+// Enemy manager context the room build stores; zero outside a room.
+constexpr uintptr_t kEnemyManager = 0x005F2C18;
+// 0046C110: __cdecl(scene, roomArgument), plain RET: what the dispatcher runs once a room function
+// has returned and cleaned its room up. Scene 0 is the NEW GAME entry.
+constexpr uintptr_t kRoomSceneEntry = 0x0046C110;
+inline constexpr uint8_t kRoomSceneEntryBytes[] = {0x56, 0x8B, 0x74, 0x24, 0x0C, 0x85, 0xF6};
+// Main state 0 (0046A076) is the boot state: it sets the title up (0058AC40) and enters state 2.
+// +351D/+351E are its first-frame flags, and it runs only while +351D is clear.
+constexpr int kMainStateBoot = 0;
+constexpr size_t kMainStateFirstFrame = 0x351D;
+constexpr size_t kMainStateFrameFlag = 0x351E;
+
 constexpr uintptr_t kUpdateGateCall = 0x0043A8D3;  // call 0046D500
 inline constexpr uint8_t kUpdateGateCallBytes[] = {0xE8, 0x28, 0x2C, 0x03, 0x00, 0x83, 0xF8, 0x04};
 constexpr size_t kEnemyActive = 0x68;  // S+68 byte
@@ -398,6 +417,8 @@ constexpr size_t kTarget = 0x14;   // int, index of the designated T
 // Object O (same layout for T).
 namespace O {
 constexpr size_t kPos = 0x08;  // float x, y, z
+// float x, y, z: the body sphere of 00461000 (collision), the point the physics keeps on the floor.
+constexpr size_t kSphereCentre = 0xB8;
 // Pivot of the rotations of 0045E110 (float x, y, z).
 constexpr size_t kPivot = 0x14;
 // float: scale of the attack ranges. In 0043A8A0 it is read only for requests 8 (d <= O+38 * 4.5) and 9

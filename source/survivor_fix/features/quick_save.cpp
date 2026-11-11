@@ -89,6 +89,7 @@ DebugMenuInputGate g_debugInputGate;
 bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
 int g_debugSel = 1;
 int g_debugRow = 0;  // 0 JUMP, 1..6 dummy rows (RE2 layout)
+int g_spawnChoice = 0;  // utility row 9: index into kDebugSpawnChoices
 RECT g_windowedRect = {};
 bool g_haveWindowedRect = false;
 std::array<char, 64> g_notice = {};
@@ -563,13 +564,15 @@ void DebugMenuHandlePresses(unsigned presses) {
     if (g_debugUtility) { g_debugUtility = false; g_debugRow = 1; }
     else { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
   }
-  const int lastRow = 8;
+  const int lastRow = 11;
   if (presses & kMenuUp) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : lastRow;
   if (presses & kMenuDown) g_debugRow = (g_debugRow < lastRow) ? g_debugRow + 1 : 0;
   if (!g_debugUtility && g_debugRow == 0 && (presses & kMenuLeft))
     g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
   if (!g_debugUtility && g_debugRow == 0 && (presses & kMenuRight))
     g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
+  if (g_debugUtility && g_debugRow == 9 && (presses & kMenuLeft)) DebugSpawnChoiceCycle(-1);
+  if (g_debugUtility && g_debugRow == 9 && (presses & kMenuRight)) DebugSpawnChoiceCycle(1);
   if (!(presses & kMenuConfirm)) return;
   if (g_debugUtility) {
     const UtilityAction action = UtilityActionForRow(g_debugRow);
@@ -596,6 +599,16 @@ void DebugMenuHandlePresses(unsigned presses) {
       g_invincible.store(enabled);
       Notify(enabled ? "INVINCIBLE ON" : "INVINCIBLE OFF");
       Log("DebugMenu: invincibility %s", enabled ? "on" : "off");
+    } else if (g_debugRow == 9) {
+      const char* name = kDebugSpawnChoices[g_spawnChoice].name;
+      char notice[48] = {};
+      _snprintf_s(notice, _TRUNCATE, DebugSpawnChosen() ? "SPAWNED %s" : "SPAWN %s FAILED", name);
+      Notify(notice);
+      Log("DebugMenu: spawn row chose %s", name);
+    } else if (g_debugRow == 10) {
+      DebugReturnToTitle();
+    } else if (g_debugRow == 11) {
+      DebugQuitGame();
     } else if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
     else { g_utilityPending = action; g_debugOpen = false; }
   } else if (g_debugRow == 1) {
@@ -609,6 +622,36 @@ void DebugMenuHandlePresses(unsigned presses) {
     g_debugOpen = false;
     DebugQueueJump(target);
   }
+}
+
+// ---- quit to title -----------------------------------------------------------------------------
+// A room can only be left by its own exit: the room function then serializes and destroys the room
+// and the dispatcher runs the scene entry 0046C110 afterwards. For the title the wrapper takes that
+// entry over, because scene 0 is the NEW GAME entry: main state 0 (0046A076) is the boot state, and
+// it sets the title up (0058AC40) and enters state 2 by itself.
+bool g_returnToTitle = false;
+DWORD g_returnToTitleTick = 0;
+using RoomSceneEntryFn = void(__cdecl*)(int scene, int roomArgument);
+RoomSceneEntryFn g_roomSceneEntry = nullptr;
+
+void __cdecl RoomSceneEntryDetour(int scene, int roomArgument) {
+  const bool requested = g_returnToTitle && GetTickCount() - g_returnToTitleTick < 3000;
+  if (!requested || scene != 0) {
+    if (g_returnToTitle && !requested) g_returnToTitle = false;  // stale request: native entry
+    g_roomSceneEntry(scene, roomArgument);
+    return;
+  }
+  g_returnToTitle = false;
+  void* game = *reinterpret_cast<void**>(game::kGameState);
+  if (game) {
+    *reinterpret_cast<int*>(game::kSceneId) = 0;
+    *reinterpret_cast<int*>(kRoomArgument) = 0;
+    *game::Field<uint8_t>(game, game::kMainState) = static_cast<uint8_t>(game::kMainStateBoot);
+    *game::Field<uint8_t>(game, game::kMainStateFirstFrame) = 0;
+    *game::Field<uint8_t>(game, game::kMainStateFrameFlag) = 0;
+  }
+  Log("DebugMenu: room closed for the title; native boot state queued (scene entry %d/%d)",
+      scene, roomArgument);
 }
 
 void ToggleDebugMenuInternal() {
@@ -814,6 +857,53 @@ void ToggleDebugMenu() {
   ToggleDebugMenuInternal();
 }
 
+void DebugQuitGame() {
+  if (!g_hFocusWindow || !IsWindow(g_hFocusWindow)) {
+    Notify("QUIT GAME UNAVAILABLE");
+    Log("DebugMenu: quit ignored because the game window is unavailable");
+    return;
+  }
+  Notify("QUIT GAME");
+  Log("DebugMenu: quit requested; the game's own window shutdown runs");
+  PostMessageW(g_hFocusWindow, WM_CLOSE, 0, 0);
+}
+
+void DebugReturnToTitle() {
+  void* game = *reinterpret_cast<void**>(game::kGameState);
+  if (!g_roomSceneEntry || !game || game::Read<uint8_t>(game, game::kMainState) != 6) {
+    Notify("QUIT TO TITLE NEEDS A ROOM");
+    Log("DebugMenu: quit to title ignored (scene entry %s, game object %s)",
+        g_roomSceneEntry ? "ready" : "unavailable", game ? "present" : "missing");
+    return;
+  }
+  g_returnToTitle = true;
+  g_returnToTitleTick = GetTickCount();
+  g_debugOpen = false;
+  Notify("RETURNING TO TITLE");
+  Log("DebugMenu: requested the title from scene %02X", *reinterpret_cast<int*>(game::kSceneId));
+}
+
+int DebugSpawnChoice() { return g_spawnChoice; }
+
+void DebugSpawnChoiceCycle(int delta) {
+  g_spawnChoice = DebugSpawnChoiceWrap(g_spawnChoice + delta);
+  char notice[48] = {};
+  _snprintf_s(notice, _TRUNCATE, "SPAWN: %s", kDebugSpawnChoices[g_spawnChoice].name);
+  Notify(notice);
+}
+
+bool DebugSpawnChosen() {
+  const SpawnChoice& choice = kDebugSpawnChoices[g_spawnChoice];
+  return choice.item ? DebugSpawnItemInFront() : DebugSpawnEntity(choice.type);
+}
+
+bool DebugReturnToTitleRequested() {
+  if (!g_returnToTitle) return false;
+  if (GetTickCount() - g_returnToTitleTick <= 3000) return true;
+  g_returnToTitle = false;  // the room never reached its exit: drop the request
+  return false;
+}
+
 // The pad is polled by the DirectInput hook, which never touches Win32 key state, so the menu
 // cannot see pad keys through its GetAsyncKeyState poll. The hook hands the pad state here
 // instead and only a fresh press acts, so a held d-pad does not run down the list.
@@ -909,7 +999,16 @@ void QuickSaveStartReloadFade() {
 }
 
 bool QuickSaveApplyPendingReload(void* gameObject, int* scene) {
-  if (!QuickSaveReloadPending() || !gameObject || !scene) return false;
+  if (!gameObject || !scene) return false;
+  if (g_returnToTitle) {
+    if (GetTickCount() - g_returnToTitleTick <= 3000) {
+      *scene = 0;  // the room's own exit; RoomSceneEntryDetour turns it into the title
+      Log("DebugMenu: room exit requested for the title");
+      return true;
+    }
+    g_returnToTitle = false;
+  }
+  if (!QuickSaveReloadPending()) return false;
   // Only request the native room exit here. The room function still has to
   // serialize and destroy the current room after RoomTick returns. Restoring
   // gameplay state before that cleanup lets the cleanup overwrite the save.
@@ -1106,6 +1205,17 @@ bool InstallQuickSave() {
       !Hook("TitleMenuTick", game::kTitleMenuTick, reinterpret_cast<void*>(&TitleMenuTickDetour),
             reinterpret_cast<void**>(&g_titleMenuTick))) {
     Log("QuickSave: title menu tick hook unavailable; in-game Load menu back-out keeps native behaviour");
+  }
+  // Quit to title: the scene entry runs after the room has cleaned itself up, which is exactly the
+  // boundary the title needs.
+  if (game::CheckBytes({game::kRoomSceneEntry, game::kRoomSceneEntryBytes,
+                        sizeof(game::kRoomSceneEntryBytes)}) &&
+      Hook("RoomSceneEntry", game::kRoomSceneEntry,
+           reinterpret_cast<void*>(&RoomSceneEntryDetour),
+           reinterpret_cast<void**>(&g_roomSceneEntry))) {
+    Log("DebugMenu: quit to title ready (scene entry 0046C110 hooked)");
+  } else {
+    Log("DebugMenu: scene entry 0046C110 unavailable; quit to title disabled");
   }
   Log("QuickSave: F5/F6 open native Save/Load menus; mouse wheel/click enabled; Shift+F5/F6 keep immediate quick actions");
   return true;

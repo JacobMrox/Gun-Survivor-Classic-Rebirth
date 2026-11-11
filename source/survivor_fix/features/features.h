@@ -65,6 +65,23 @@ bool DebugMenuSuppressPad(uint32_t pad);
 // Pad menu input from the DirectInput hook (sf::pad::MenuNavMask bits); a fresh press moves,
 // confirms or goes back while the menu is open.
 void DebugMenuPadNav(uint32_t nav);
+// Debug spawn (player.cpp): the actor appears kDebugSpawnDistance in front of the player through the
+// native room-table spawn 00434850; the item duplicates a pickup the current room already registered,
+// so its id and orientation are known valid here.
+bool DebugSpawnEntity(int type);
+bool DebugSpawnItemInFront();
+// The single spawn row of the utility menu: which entry LEFT/RIGHT selected and placing it.
+int DebugSpawnChoice();
+void DebugSpawnChoiceCycle(int delta);
+bool DebugSpawnChosen();
+// The player's world position and horizontal forward, or false outside gameplay.
+bool CurrentPlayerPose(float position[3], float forward[2]);
+// Debug menu quit actions (quick_save.cpp): WM_CLOSE is the game's own shutdown, and the title
+// entry leaves the room and lets the native boot state open the title.
+void DebugQuitGame();
+void DebugReturnToTitle();
+// True once for the frame in which the room must exit for the title (false after 3 s).
+bool DebugReturnToTitleRequested();
 int DebugMenuSelected();
 int DebugMenuRow();
 int DebugMenuCurrentScene();

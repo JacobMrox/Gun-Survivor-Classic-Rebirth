@@ -85,6 +85,7 @@ static uint32_t g_padActionsHeld = 0;  // actions held by the previous poll, for
 static constexpr int VTI_DID_GetDeviceState = 9;  // DI7A: Acquire=7, Unacquire=8, GetDeviceState=9
 using DID_GetDeviceState_t = HRESULT(STDMETHODCALLTYPE*)(LPDIRECTINPUTDEVICEA, DWORD, LPVOID);
 static DID_GetDeviceState_t Real_GetDeviceState = nullptr;
+static DID_GetDeviceState_t Real_MouseGetDeviceState = nullptr;
 
 // XINPUT_STATE / XINPUT_GAMEPAD, declared locally so the wrapper needs no XInput headers.
 #pragma pack(push, 1)
@@ -218,6 +219,33 @@ static HRESULT STDMETHODCALLTYPE Hook_GetDeviceState(LPDIRECTINPUTDEVICEA This, 
     // game's DirectInput buffer), so feed the pad to the menu directly while it is open.
     sf::features::DebugMenuPadNav(sf::pad::MenuNavMask(pad, deadZone));
     DispatchPadActions(sf::pad::ActionMask(pad, bindings, sf::pad::kSourceCount, deadZone));
+    return hr;
+}
+
+static void LogPadMouseOnce()
+{
+    static bool logged = false;
+    if (logged) return;
+    logged = true;
+    LogLine("[PAD] Pad is sending a mouse button through the DirectInput mouse state");
+}
+
+// The keyboard overlay cannot reach the mouse: the game reads the mouse through its own device
+// state, so a binding such as RB=LeftClick is written here, into DIMOUSESTATE's button bytes.
+static HRESULT STDMETHODCALLTYPE Hook_MouseGetDeviceState(LPDIRECTINPUTDEVICEA This, DWORD cbData, LPVOID lpvData)
+{
+    HRESULT hr = Real_MouseGetDeviceState(This, cbData, lpvData);
+    if (FAILED(hr) || This != gMouseDevice || !lpvData) return hr;
+    // DIMOUSESTATE is 16 bytes, DIMOUSESTATE2 20: three LONG axes, then one byte per button.
+    if (cbData != 16 && cbData != 20) return hr;
+    if (!SurvivorPc_XInputEnabled() || !IsOurWindowFocused()) return hr;
+    sf::pad::PadState pad;
+    if (!PollPad(&pad)) return hr;
+    auto* buttons = static_cast<uint8_t*>(lpvData) + 12;
+    const unsigned written = sf::pad::OverlayMouseButtons(
+        pad, SurvivorPc_PadBindings(), sf::pad::kSourceCount, SurvivorPc_XInputDeadZone(),
+        buttons, cbData - 12);
+    if (written) LogPadMouseOnce();
     return hr;
 }
 
@@ -359,6 +387,17 @@ static void HookMouseDevice(LPDIRECTINPUTDEVICEA dev)
     if (!vtbl) return;
 
     gMouseDevice = dev;
+    if (!Real_MouseGetDeviceState)
+    {
+        void* pMouseState = vtbl[VTI_DID_GetDeviceState];
+        void* pKeyboardState = gKeyboardDevice ? (*(void***)gKeyboardDevice)[VTI_DID_GetDeviceState] : nullptr;
+        if (pMouseState && pMouseState != pKeyboardState &&
+            MH_CreateHook(pMouseState, Hook_MouseGetDeviceState, (void**)&Real_MouseGetDeviceState) == MH_OK &&
+            MH_EnableHook(pMouseState) == MH_OK)
+            LogLine("[PAD] Hooked mouse GetDeviceState (pad can send mouse buttons)");
+        else
+            LogLine("[PAD] Mouse GetDeviceState not hooked; mouse bindings stay inactive");
+    }
     if (!Real_SetProperty && SurvivorPc_MouseBufferSize())
     {
         void* pSetProperty = vtbl[VTI_DID_SetProperty];

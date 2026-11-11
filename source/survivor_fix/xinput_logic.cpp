@@ -159,6 +159,26 @@ void SetKey(Binding* out, uint8_t key) { out->key = key; out->action = 0; }
 
 void SetAction(Binding* out, Action action) { out->key = 0; out->action = static_cast<uint8_t>(action); }
 
+void SetMouse(Binding* out, Mouse button) { out->key = 0; out->action = 0; out->mouse = static_cast<uint8_t>(button); }
+
+// Names the [Gamepad] entries use for the mouse buttons. Mouse1/2/3 is the DirectInput numbering.
+constexpr NamedCode kMouseNames[] = {
+    {"LeftClick", 1},   {"LeftMouseClick", 1}, {"LeftMouse", 1},    {"MouseLeft", 1},  {"Mouse1", 1},
+    {"RightClick", 2},  {"RightMouseClick", 2}, {"RightMouse", 2},  {"MouseRight", 2}, {"Mouse2", 2},
+    {"MiddleClick", 3}, {"MiddleMouseClick", 3}, {"MiddleMouse", 3}, {"MouseMiddle", 3}, {"Mouse3", 3},
+};
+
+bool MouseFromName(const char* name, uint8_t* out) {
+  if (!name || !out) return false;
+  for (const NamedCode& entry : kMouseNames) {
+    if (EqualsIgnoreCase(name, entry.name)) {
+      *out = entry.code;
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 float StickAimDelta(float axis, float deadZone, float speed) {
@@ -303,7 +323,9 @@ Binding DefaultBinding(Source source) {
     case Source::X: SetKey(&binding, dik::Space); break;
     case Source::Y: SetKey(&binding, dik::Tab); break;
     case Source::LeftShoulder: SetKey(&binding, dik::LeftShift); break;
-    case Source::RightShoulder: SetKey(&binding, dik::LeftControl); break;
+    // The right shoulder is the fire button: a mouse click, not a key, because the game's own
+    // action key is also its confirm key.
+    case Source::RightShoulder: SetMouse(&binding, Mouse::Left); break;
     case Source::LeftTrigger: SetKey(&binding, dik::LeftAlt); break;
     case Source::RightTrigger: SetKey(&binding, dik::RightControl); break;
     // Spare buttons: the wrapper's own additions. Nothing here duplicates a game key.
@@ -341,6 +363,11 @@ bool ParseBinding(const char* text, Binding* out) {
     if (action != Action::None) SetAction(out, action);
     return true;
   }
+  uint8_t mouse = 0;
+  if (MouseFromName(name, &mouse)) {
+    SetMouse(out, static_cast<Mouse>(mouse));
+    return true;
+  }
   uint8_t key;
   if (DikFromName(name, &key) && key != 0) {
     SetKey(out, key);
@@ -362,6 +389,34 @@ unsigned OverlayBoundKeys(const PadState& pad, const Binding* bindings, unsigned
     ++written;
   }
   return written;
+}
+
+unsigned OverlayMouseButtons(const PadState& pad, const Binding* bindings, unsigned count, float deadZone,
+                             uint8_t* buttons, unsigned buttonCount) {
+  if (!bindings || !buttons) return 0;
+  const uint32_t mask = SourceMask(pad, deadZone);
+  unsigned written = 0;
+  for (unsigned i = 0; i < count && i < kSourceCount; ++i) {
+    if ((mask & (1u << i)) == 0) continue;
+    const uint8_t button = bindings[i].mouse;
+    if (button == 0 || button > buttonCount) continue;
+    buttons[button - 1] = 0x80;
+    ++written;
+  }
+  return written;
+}
+
+uint32_t MouseButtonMask(const PadState& pad, const Binding* bindings, unsigned count, float deadZone) {
+  if (!bindings) return 0;
+  const uint32_t mask = SourceMask(pad, deadZone);
+  uint32_t buttons = 0;
+  for (unsigned i = 0; i < count && i < kSourceCount; ++i) {
+    if ((mask & (1u << i)) == 0) continue;
+    const uint8_t button = bindings[i].mouse;
+    if (button == 0 || button > 3) continue;
+    buttons |= 1u << (button - 1);
+  }
+  return buttons;
 }
 
 uint32_t ActionMask(const PadState& pad, const Binding* bindings, unsigned count, float deadZone) {

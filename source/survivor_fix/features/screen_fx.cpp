@@ -294,6 +294,13 @@ int __fastcall RoomTickDetour(void* game, void* edx, uint32_t* pad, uint32_t* pr
   }
   g_roomTicked = true;
   const int result = g_roomTick(game, edx, pad, prev, turns, p5, scene, p7, p8);
+  // Quit to title needs the room's own exit, exactly like a door: returning here lets the room
+  // function serialize and destroy its room before the dispatcher's scene entry runs.
+  if (sf::features::DebugReturnToTitleRequested() && scene) {
+    *scene = 0;
+    Log("DebugMenu: room exit requested for the title");
+    return 0;
+  }
   if (QuickSaveReloadPending()) {
     if (g_config.ps1DoorFade && !QuickSaveReloadFadeStarted()) {
       ps1::FadeOut(g_fade, 0x10);

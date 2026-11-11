@@ -19,6 +19,7 @@
 #include "../ps1/wake_view_logic.h"
 #include "../ps1/wall_logic.h"
 #include "features.h"
+#include "debug_utility.h"
 
 #define SF_RETURN_ADDRESS() reinterpret_cast<uintptr_t>(_ReturnAddress())
 
@@ -37,6 +38,12 @@ PhysicsFn g_physics = nullptr;
 TransformFn g_transform = nullptr;
 ItemEffectAddFn g_itemEffectAdd = nullptr;
 ItemCommitFn g_itemCommit = nullptr;
+// 00434850: the single-entity spawn of the room tables (ABI in game.h), __cdecl with ten arguments.
+using SpawnEntityFn = int(__cdecl*)(int type, int reserved1, int reserved2, float x, float y,
+                                    float z, float yaw, uint32_t* killedFlag, int asleep,
+                                    float scale);
+const auto g_spawnEntity = reinterpret_cast<SpawnEntityFn>(game::kSpawnEntity);
+bool g_spawnReady = false;
 
 int g_turnRequest = 0;  // -1/+1: direction asked by the command handler in this frame
 ps1::PlayerTurn g_turn;
@@ -51,6 +58,8 @@ struct LiveItem {
   bool taken = false;
   bool hasPosition = false;
   float position[3] = {};
+  bool hasOrientation = false;
+  float orientation[3] = {};
   void* effect = nullptr;
 };
 
@@ -88,6 +97,12 @@ int __fastcall ItemEffectAddDetour(void* manager, void* edx, int itemId,
       std::isfinite(position[2])) {
     std::memcpy(item.position, position, sizeof item.position);
     item.hasPosition = true;
+  }
+  // Kept so the debug spawn can re-add the pickup with the orientation the room itself used.
+  if (orientation && std::isfinite(orientation[0]) && std::isfinite(orientation[1]) &&
+      std::isfinite(orientation[2])) {
+    std::memcpy(item.orientation, orientation, sizeof item.orientation);
+    item.hasOrientation = true;
   }
   return slot;
 }
@@ -1120,6 +1135,78 @@ int PlayerEyeBob() { return g_config.ps1HeadBob ? g_bobOffset : 0; }
 
 bool ItemApproachPromptVisible() { return g_config.itemApproachPrompt && g_itemApproachPrompt; }
 
+bool CurrentPlayerPose(float position[3], float forward[2]) {
+  if (!g_livePlayer || !position || !forward) return false;
+  const float* p = reinterpret_cast<const float*>(g_livePlayer + game::O::kPos);
+  const float* centre = reinterpret_cast<const float*>(g_livePlayer + game::O::kSphereCentre);
+  const float* f = reinterpret_cast<const float*>(g_livePlayer + game::O::kForward);
+  if (!std::isfinite(p[0]) || !std::isfinite(p[1]) || !std::isfinite(p[2]) ||
+      !std::isfinite(centre[1]) || !std::isfinite(f[0]) || !std::isfinite(f[2])) {
+    return false;
+  }
+  std::memcpy(position, p, 3 * sizeof(float));
+  // The object origin is the player's view, roughly a body above the floor: spawning there left
+  // the actors hanging in the air. 00461000 collides around O+B8, the body sphere, which sits at
+  // the height the room placements put an actor's origin on, so the spawn uses that height.
+  position[1] = centre[1];
+  // The player's front is the local -Z, exactly like 0043A8A0 reads it for the enemies.
+  forward[0] = -f[0];
+  forward[1] = -f[2];
+  return true;
+}
+
+bool DebugSpawnEntity(int type) {
+  if (!g_spawnReady || !*reinterpret_cast<void**>(game::kEnemyManager)) {
+    Log("DebugSpawn: no room enemy manager (type %d not spawned)", type);
+    return false;
+  }
+  if (type < 0 || type > 0x25) return false;
+  float position[3], forward[2];
+  if (!CurrentPlayerPose(position, forward)) {
+    Log("DebugSpawn: the player object is unavailable (type %d not spawned)", type);
+    return false;
+  }
+  SpawnPoint point;
+  if (!DebugSpawnPoint(position, forward, kDebugSpawnDistance, &point)) return false;
+  // The room tables pass the placement's killed-flag word, which lives in the persistent room
+  // state; a scratch word keeps the wrapper out of the room's enemy-presence bits.
+  static uint32_t scratchFlag = 0;
+  scratchFlag = 0;
+  g_spawnEntity(type, 0, 0, point.x, point.y, point.z, 0.0f, &scratchFlag, 0, -1.0f);
+  Log("DebugSpawn: type %02X at %.0f %.0f %.0f", type, point.x, point.y, point.z);
+  return true;
+}
+
+bool DebugSpawnItemInFront() {
+  void* manager = *reinterpret_cast<void**>(game::kItemEffectManager);
+  if (!g_itemEffectAdd || !manager) {
+    Log("DebugSpawn: the item effect manager is unavailable");
+    return false;
+  }
+  float position[3], forward[2];
+  if (!CurrentPlayerPose(position, forward)) return false;
+  SpawnPoint point;
+  if (!DebugSpawnPoint(position, forward, kDebugSpawnDistance, &point)) return false;
+  // Only an id the room itself registered is reused: its item data is loaded and its orientation
+  // is the one the room handed the manager, so the duplicate is a real pickup of this room.
+  int id = -1;
+  float orientation[3] = {0.0f, 0.0f, 0.0f};
+  for (const auto& item : g_liveItems) {
+    if (item.slot < 0 || item.id < 0 || item.taken || !item.hasPosition) continue;
+    id = item.id;
+    if (item.hasOrientation) std::memcpy(orientation, item.orientation, sizeof orientation);
+    break;
+  }
+  if (id < 0) {
+    Log("DebugSpawn: this room has no registered pickup to duplicate");
+    return false;
+  }
+  const float at[3] = {point.x, point.y, point.z};
+  const int slot = g_itemEffectAdd(manager, nullptr, id, at, orientation, -1);
+  Log("DebugSpawn: item %d at %.0f %.0f %.0f (slot %d)", id, at[0], at[1], at[2], slot);
+  return slot >= 0;
+}
+
 bool CapturePlayerQuickState(PlayerQuickState* state) {
   if (!state || !g_livePlayer) return false;
   const float* position = game::Field<float>(g_livePlayer, game::O::kPos);
@@ -1141,7 +1228,9 @@ void QueuePlayerQuickStateRestore(const PlayerQuickState& state) {
 }
 
 bool InstallPlayer() {
-  if (g_config.itemApproachPrompt) {
+  {
+    // The debug spawn re-adds a live pickup, so the manager hooks are installed even when the
+    // approach prompt is off: they only record what the game already does.
     const game::ByteSignature itemAdd = {game::kItemEffectAdd, game::kItemEffectAddBytes,
                                          sizeof(game::kItemEffectAddBytes)};
     const game::ByteSignature itemCommit = {game::kItemCommit, game::kItemCommitBytes,
@@ -1155,6 +1244,9 @@ bool InstallPlayer() {
       g_config.itemApproachPrompt = false;
     }
   }
+  g_spawnReady = game::CheckBytes({game::kSpawnEntity, game::kSpawnEntityBytes,
+                                   sizeof(game::kSpawnEntityBytes)});
+  Log("DebugSpawn: native room-table spawn 00434850 %s", g_spawnReady ? "ready" : "unavailable");
   const game::ByteSignature physics = {game::kPhysics, game::kPhysicsPrologue,
                                        sizeof(game::kPhysicsPrologue)};
   const game::ByteSignature transform = {game::kTransform, game::kTransformPrologue,

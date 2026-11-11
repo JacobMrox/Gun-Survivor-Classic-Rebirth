@@ -9,6 +9,7 @@
 #include "d3dx8tex.h"
 #include "debug_menu.h"
 #include "features/features.h"
+#include "features/debug_utility.h"
 
 extern HMODULE g_hWrapperModule;
 
@@ -95,7 +96,11 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const float xComp = BackBufferXCompensation(backDesc.Width, backDesc.Height);
     const float glyphH = 14.0f * scale, glyphW = glyphH * xComp;
     const float marginY = 18.0f * scale, marginX = marginY * xComp;
-    const float boxW = 430.0f * scale, boxH = 300.0f * scale;
+    const bool utility = sf::features::DebugMenuUtilityVisible();
+    const float boxW = 430.0f * scale;
+    // The utility list has twelve rows; the box follows the row count so the current-room and
+    // hint lines stay below the last entry.
+    const float boxH = utility ? marginY * 2.0f + glyphH * 16.0f : 300.0f * scale;
     const float boxX = (static_cast<float>(backDesc.Width) - boxW) * 0.5f;
     const float boxY = (static_cast<float>(backDesc.Height) - boxH) * 0.32f;
 
@@ -122,7 +127,6 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const DWORD cyan = D3DCOLOR_ARGB(255, 0, 255, 255);
     const DWORD grey = D3DCOLOR_ARGB(255, 90, 90, 90);
     const DWORD white = D3DCOLOR_ARGB(255, 255, 255, 255);
-    const bool utility = sf::features::DebugMenuUtilityVisible();
     text(utility ? "- UTILITY MENU -" : "- DEBUG MENU -", boxX + marginX, boxY + marginY, cyan);
     char line[48] = {};
     auto roomName = [](int sc) -> const char* {
@@ -168,13 +172,20 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const int row = sf::features::DebugMenuRow();
     const int cur = sf::features::DebugMenuCurrentScene();
     if (utility) {
-        const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO", "INFINITE HEALTH",
-                                 "DYNAMIC SHADOWS", "SHOOT FLASH", "INVINCIBLE"};
-        for (int i = 0; i < 9; ++i) {
+        const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO",
+                                 "INFINITE HEALTH", "DYNAMIC SHADOWS", "SHOOT FLASH", "INVINCIBLE",
+                                 "SPAWN", "QUIT TO TITLE", "QUIT GAME"};
+        for (int i = 0; i < 12; ++i) {
             const char* status = "";
-            if (i >= 4) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
+            if (i >= 4 && i <= 8) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
                 sf::features::DebugUtilityCheatEnabled(i) ? " ON" : " OFF";
-            snprintf(line, sizeof(line), "%c %s%s", row == i ? '-' : ' ', options[i], status);
+            if (i == 9) {
+                // LEFT/RIGHT scroll this line, confirm spawns the shown entry.
+                snprintf(line, sizeof(line), "%c SPAWN < %s >", row == i ? '-' : ' ',
+                         sf::features::kDebugSpawnChoices[sf::features::DebugSpawnChoice()].name);
+            } else {
+                snprintf(line, sizeof(line), "%c %s%s", row == i ? '-' : ' ', options[i], status);
+            }
             text(line, boxX + marginX, boxY + marginY + glyphH * (2 + i), row == i ? cyan : grey);
         }
     } else {
@@ -191,13 +202,13 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
         snprintf(line, sizeof(line), "CUR %02X %02X/%02X %-10s", cur, stage, room, roomName(cur));
     else
         snprintf(line, sizeof(line), "CUR %02X %-16s", cur, roomName(cur));
-    text(line, boxX + marginX, boxY + marginY + glyphH * 12, white);
+    text(line, boxX + marginX, boxY + marginY + glyphH * (utility ? 14.0f : 12.0f), white);
     static DWORD t0 = GetTickCount();
     const DWORD el = GetTickCount() - t0;
     snprintf(line, sizeof(line), "%02lu:%02lu:%02lu", (el / 3600000) % 24, (el / 60000) % 60, (el / 1000) % 60);
     text(line, boxX + boxW - glyphW * 10, boxY + boxH - glyphH * 2, D3DCOLOR_ARGB(255, 255, 0, 255));
     snprintf(line, sizeof(line), "UP DOWN LEFT RIGHT ENTER ESC F2");
-    text(line, boxX + marginX, boxY + marginY + glyphH * 13, white);
+    text(line, boxX + marginX, boxY + marginY + glyphH * (utility ? 15.0f : 13.0f), white);
     dev->ApplyStateBlock(state);
     dev->DeleteStateBlock(state);
 }

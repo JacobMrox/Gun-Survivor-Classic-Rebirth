@@ -86,10 +86,16 @@ enum class Action : unsigned {
 
 inline constexpr unsigned kActionCount = static_cast<unsigned>(Action::Count);
 
-// A binding is a key, an action, or nothing. Both fields are 0 when the source is unbound.
+// Mouse buttons a binding can send. The game reads its mouse through DirectInput, so the pad
+// writes the button into that state exactly like a keyboard key: the fire button, the native
+// Save/Load menu click and the wrapper's own menus all see a real click.
+enum class Mouse : uint8_t { None = 0, Left, Right, Middle };
+
+// A binding is a key, a mouse button, an action, or nothing. The unused fields are 0.
 struct Binding {
   uint8_t key = 0;     // DirectInput scancode; 0 = this source sends no key
   uint8_t action = 0;  // Action; 0 = this source runs no wrapper action
+  uint8_t mouse = 0;   // Mouse; 0 = this source sends no mouse button
 };
 
 struct PadState {
@@ -130,7 +136,8 @@ const char* DikName(uint8_t code);  // nullptr for an unknown scancode
 Binding DefaultBinding(Source source);
 void DefaultBindings(Binding* out, unsigned count);
 
-// "Return", "0x39", "57", "DebugMenu", "None"/"-"/empty (unbound). False for an unknown name.
+// "Return", "0x39", "57", "DebugMenu", "LeftClick"/"LeftMouseClick"/"Mouse1", "None"/"-"/empty
+// (unbound). False for an unknown name.
 bool ParseBinding(const char* text, Binding* out);
 
 // Write the keys of the held sources into a DirectInput keyboard state buffer.
@@ -138,6 +145,14 @@ bool ParseBinding(const char* text, Binding* out);
 // pad is not sending are never cleared, so the keyboard keeps working while a pad is plugged in.
 unsigned OverlayBoundKeys(const PadState& pad, const Binding* bindings, unsigned count, float deadZone,
                           uint8_t* keyboardState, unsigned stateSize);
+
+// Write the mouse buttons of the held sources into a DirectInput mouse state's button bytes
+// (DIMOUSESTATE: 12 bytes of axes, then one byte per button). Returns how many were set.
+unsigned OverlayMouseButtons(const PadState& pad, const Binding* bindings, unsigned count, float deadZone,
+                             uint8_t* buttons, unsigned buttonCount);
+
+// Bit (mouse - 1) set for every held source bound to that mouse button.
+uint32_t MouseButtonMask(const PadState& pad, const Binding* bindings, unsigned count, float deadZone);
 
 // Bit i set when source i is held and bound to Action i (bit index = Action value).
 uint32_t ActionMask(const PadState& pad, const Binding* bindings, unsigned count, float deadZone);

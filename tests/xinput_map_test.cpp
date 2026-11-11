@@ -77,6 +77,12 @@ int main() {
         static_cast<uint8_t>(sf::pad::Action::DebugMenu));
   CHECK(defaults[static_cast<unsigned>(sf::pad::Source::RightThumb)].action ==
         static_cast<uint8_t>(sf::pad::Action::QuickSave));
+  // The right shoulder is the fire button: the game's own action key doubles as confirm, so fire
+  // has to be a mouse click rather than a key.
+  CHECK(defaults[static_cast<unsigned>(sf::pad::Source::RightShoulder)].mouse ==
+        static_cast<uint8_t>(sf::pad::Mouse::Left));
+  CHECK(defaults[static_cast<unsigned>(sf::pad::Source::RightShoulder)].key == 0);
+  CHECK(defaults[static_cast<unsigned>(sf::pad::Source::LeftShoulder)].mouse == 0);
   // Start and Back ship unbound: no second exit button, no duplicate confirm.
   CHECK(defaults[static_cast<unsigned>(sf::pad::Source::Start)].key == 0);
   CHECK(defaults[static_cast<unsigned>(sf::pad::Source::Start)].action == 0);
@@ -85,16 +91,21 @@ int main() {
 
   // No source carries both a key and an action, and no two face or shoulder buttons send the
   // same key. The d-pad and the left stick are the intended aliases of the movement keys.
-  for (unsigned i = 0; i < sf::pad::kSourceCount; ++i) CHECK(!(defaults[i].key && defaults[i].action));
+  for (unsigned i = 0; i < sf::pad::kSourceCount; ++i) {
+    CHECK(!(defaults[i].key && defaults[i].action));
+    CHECK(!(defaults[i].key && defaults[i].mouse));
+    CHECK(!(defaults[i].action && defaults[i].mouse));
+  }
   const sf::pad::Source distinct[] = {sf::pad::Source::A,        sf::pad::Source::B,
                                       sf::pad::Source::X,        sf::pad::Source::Y,
                                       sf::pad::Source::LeftShoulder, sf::pad::Source::RightShoulder,
                                       sf::pad::Source::LeftTrigger, sf::pad::Source::RightTrigger};
   for (unsigned i = 0; i < sizeof(distinct) / sizeof(distinct[0]); ++i) {
     const sf::pad::Binding& binding = defaults[static_cast<unsigned>(distinct[i])];
-    CHECK(binding.key != 0);
+    CHECK(binding.key != 0 || binding.mouse != 0);
     for (unsigned j = 0; j < i; ++j) {
-      CHECK(defaults[static_cast<unsigned>(distinct[j])].key != binding.key);
+      const sf::pad::Binding& other = defaults[static_cast<unsigned>(distinct[j])];
+      CHECK(other.key != binding.key || other.mouse != binding.mouse);
     }
   }
   CHECK(defaults[static_cast<unsigned>(sf::pad::Source::DpadUp)].key ==
@@ -116,6 +127,16 @@ int main() {
   CHECK(sf::pad::ParseBinding("F5", &binding) && binding.key == 0x3F);
   CHECK(sf::pad::ParseBinding("0x39", &binding) && binding.key == sf::pad::dik::Space);
   CHECK(sf::pad::ParseBinding("203", &binding) && binding.key == sf::pad::dik::Left);
+  CHECK(sf::pad::ParseBinding("LeftClick", &binding) && binding.key == 0 && binding.action == 0 &&
+        binding.mouse == static_cast<uint8_t>(sf::pad::Mouse::Left));
+  CHECK(sf::pad::ParseBinding("LeftMouseClick", &binding) &&
+        binding.mouse == static_cast<uint8_t>(sf::pad::Mouse::Left));
+  CHECK(sf::pad::ParseBinding(" mouse1 ", &binding) &&
+        binding.mouse == static_cast<uint8_t>(sf::pad::Mouse::Left));
+  CHECK(sf::pad::ParseBinding("RightClick", &binding) &&
+        binding.mouse == static_cast<uint8_t>(sf::pad::Mouse::Right));
+  CHECK(sf::pad::ParseBinding("MiddleMouse", &binding) &&
+        binding.mouse == static_cast<uint8_t>(sf::pad::Mouse::Middle));
   CHECK(sf::pad::ParseBinding("DebugMenu", &binding) &&
         binding.action == static_cast<uint8_t>(sf::pad::Action::DebugMenu) && binding.key == 0);
   CHECK(sf::pad::ParseBinding("none", &binding) && binding.key == 0 && binding.action == 0);
@@ -171,6 +192,29 @@ int main() {
   CHECK(sf::pad::OverlayBoundKeys(both, custom, sf::pad::kSourceCount, 0.5f, customKeys, sizeof(customKeys)) == 0);
   const uint32_t customActions = sf::pad::ActionMask(both, custom, sf::pad::kSourceCount, 0.5f);
   CHECK(customActions == ActionBit(sf::pad::Action::QuickLoad));
+
+  // ---- mouse buttons -------------------------------------------------------------------------
+  sf::pad::PadState mousePad;
+  mousePad.buttons = sf::pad::padbutton::RightShoulder;
+  CHECK(sf::pad::MouseButtonMask(mousePad, defaults, sf::pad::kSourceCount, 0.5f) == 1u);
+  CHECK(sf::pad::MouseButtonMask(sf::pad::PadState{}, defaults, sf::pad::kSourceCount, 0.5f) == 0);
+  uint8_t buttons[4] = {};
+  CHECK(sf::pad::OverlayMouseButtons(mousePad, defaults, sf::pad::kSourceCount, 0.5f, buttons, 4) == 1);
+  CHECK(buttons[0] == 0x80 && buttons[1] == 0 && buttons[2] == 0);
+  uint8_t noButton[4] = {};
+  CHECK(sf::pad::OverlayMouseButtons(sf::pad::PadState{}, defaults, sf::pad::kSourceCount, 0.5f, noButton, 4) == 0);
+  CHECK(noButton[0] == 0);
+  // A released pad never clears a real click, and a short or null buffer is safe.
+  CHECK(sf::pad::OverlayMouseButtons(mousePad, defaults, sf::pad::kSourceCount, 0.5f, nullptr, 0) == 0);
+  CHECK(sf::pad::OverlayMouseButtons(mousePad, defaults, sf::pad::kSourceCount, 0.5f, buttons, 0) == 0);
+  CHECK(sf::pad::OverlayMouseButtons(mousePad, nullptr, 0, 0.5f, buttons, 4) == 0);
+  sf::pad::Binding mouseCustom[sf::pad::kSourceCount];
+  sf::pad::DefaultBindings(mouseCustom, sf::pad::kSourceCount);
+  CHECK(sf::pad::ParseBinding("RightClick", &binding));
+  mouseCustom[static_cast<unsigned>(sf::pad::Source::X)] = binding;
+  sf::pad::PadState rightClickPad;
+  rightClickPad.buttons = sf::pad::padbutton::X;
+  CHECK(sf::pad::MouseButtonMask(rightClickPad, mouseCustom, sf::pad::kSourceCount, 0.5f) == 2u);
 
   // ---- crosshair aiming --------------------------------------------------------------------
   CHECK(sf::pad::StickAimDelta(0.0f, 0.25f, 20.0f) == 0.0f);
