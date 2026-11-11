@@ -543,6 +543,22 @@ void ToggleFullscreen() {
   Log("QuickSave: F8 switched to %s", bBorderlessFullscreen ? "borderless fullscreen" : "windowed mode");
 }
 
+void ToggleDebugMenuInternal() {
+  g_debugOpen = !g_debugOpen;
+  if (!g_debugOpen) {
+    Log("DebugMenu: closed");
+    Notify("DEBUG CLOSE");
+    return;
+  }
+  g_debugInputGate.Capture();
+  g_debugUtility = false;
+  const int current = *reinterpret_cast<int*>(game::kSceneId);
+  g_debugSel = (current > 0 && current <= 0x79) ? current : 1;
+  g_debugRow = 0;
+  Log("DebugMenu: opened, current scene %02X", current);
+  Notify("DEBUG OPEN");
+}
+
 }  // namespace
 
 int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
@@ -610,21 +626,7 @@ void QuickSavePollWindowToggle() {
   const bool fg = Foreground();
   const bool f2 = fg && (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
   const bool f10 = fg && (GetAsyncKeyState(VK_F10) & 0x8000) != 0;
-  if ((f2 || f10) && !g_f2Down && !g_f10Down) {
-    g_debugOpen = !g_debugOpen;
-    if (g_debugOpen) {
-      g_debugInputGate.Capture();
-      g_debugUtility = false;
-      int cur = *reinterpret_cast<int*>(game::kSceneId);
-      g_debugSel = (cur > 0 && cur <= 0x79) ? cur : 1;
-      g_debugRow = 0;
-      Log("DebugMenu: open via poll, current scene %02X", cur);
-      Notify("F2/F10  DEBUG OPEN");
-    } else {
-      Log("DebugMenu: closed via poll");
-      Notify("F2/F10  DEBUG CLOSE");
-    }
-  }
+  if ((f2 || f10) && !g_f2Down && !g_f10Down) ToggleDebugMenuInternal();
   g_f2Down = f2;
   g_f10Down = f10;
   if (g_debugOpen && fg) {
@@ -639,7 +641,7 @@ void QuickSavePollWindowToggle() {
       else { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
     }
     g_debugEscDown = esc;
-    const int lastRow = g_debugUtility ? 5 : 6;
+    const int lastRow = 6;
     if (up && !g_debugUpDown) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : lastRow;
     g_debugUpDown = up;
     if (down && !g_debugDownDown) g_debugRow = (g_debugRow < lastRow) ? g_debugRow + 1 : 0;
@@ -659,6 +661,11 @@ void QuickSavePollWindowToggle() {
           const bool enabled = !g_infiniteHealth.load();
           g_infiniteHealth.store(enabled);
           Notify(enabled ? "INFINITE HEALTH ON" : "INFINITE HEALTH OFF");
+        } else if (g_debugRow == 6) {
+          const bool enabled = !SurvivorPc_DynamicModelShadows();
+          SurvivorPc_SetDynamicModelShadows(enabled);
+          Notify(enabled ? "DYNAMIC SHADOWS ON" : "DYNAMIC SHADOWS OFF");
+          Log("DebugMenu: dynamic model shadows %s", enabled ? "on" : "off");
         } else if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
         else { g_utilityPending = action; g_debugOpen = false; }
       } else if (g_debugRow == 1) {
@@ -760,10 +767,32 @@ bool QuickSaveReloadPending() {
   return g_reloadStage == ReloadStage::Requested || g_reloadStage == ReloadStage::Fading;
 }
 
+void ToggleDebugMenu() {
+  if (!Foreground()) return;
+  ToggleDebugMenuInternal();
+}
+
+void QuickSaveHotkey(bool save) {
+  if (!Foreground()) return;
+  if (save) HandleSaveHotkey();
+  else HandleLoadHotkey();
+}
+
+void ToggleFullscreenWindow() {
+  if (!Foreground()) return;
+  ToggleFullscreen();
+}
+
 bool DebugMenuVisible() { return g_debugOpen; }
 bool DebugMenuUtilityVisible() { return g_debugUtility; }
-bool DebugUtilityCheatAvailable(int row) { return row == 4 ? g_ammoAvailable : row == 5 && g_healthAvailable; }
-bool DebugUtilityCheatEnabled(int row) { return row == 4 ? g_infiniteAmmo.load() : row == 5 && g_infiniteHealth.load(); }
+bool DebugUtilityCheatAvailable(int row) {
+  if (row == 6) return true;  // dynamic shadows can always be switched
+  return row == 4 ? g_ammoAvailable : row == 5 && g_healthAvailable;
+}
+bool DebugUtilityCheatEnabled(int row) {
+  if (row == 6) return SurvivorPc_DynamicModelShadows();
+  return row == 4 ? g_infiniteAmmo.load() : row == 5 && g_infiniteHealth.load();
+}
 bool DebugMenuSuppressPad(uint32_t pad) {
   const int keys[] = {VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_ESCAPE, VK_F2, VK_F10};
   bool keyDown = false;

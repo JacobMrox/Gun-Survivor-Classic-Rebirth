@@ -9,6 +9,8 @@
 #include <string>
 #include <cstdint>
 
+#include "xinput_logic.h"
+
 namespace sf {
 
 struct Config {
@@ -105,6 +107,19 @@ struct Config {
   uint32_t bloodColor = 0x00FFFFFF;
   // The game runs at the PS1 rate: two NTSC vertical blanks per frame, about 29.91 logic updates/s (VSync(2)).
   bool ps1Cadence = true;
+
+  // XInput pad alongside DirectInput: the pad is polled with the keyboard and its keys are ORed into
+  // the keyboard state, so both stay usable and the game keeps its own input code. Sticks use
+  // xinputDeadZone (0..0.95).
+  bool xinputPad = true;
+  float xinputDeadZone = 0.5f;
+  // [Gamepad] key bindings: one entry per pad source (xinput_logic.h), either a DIK key name
+  // or one of the wrapper's own actions. Start and Back ship unbound, so no second button
+  // exits or confirms; the thumb clicks carry the debug menu and the quick save.
+  pad::Binding padBindings[pad::kSourceCount] = {};
+  // Crosshair pixels per poll at full right-stick travel (0 disables stick aiming).
+  float padAimSpeed = 20.0f;
+  bool padAimInvertY = false;
 
   // Crash fixes, always on.
   bool inputDeviceFix = true;

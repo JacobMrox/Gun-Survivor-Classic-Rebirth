@@ -37,12 +37,13 @@ CONTROL         "Lock Cursor", IDC_LOCK_CURSOR, "Button", BS_AUTOCHECKBOX | WS_T
 CONTROL         "Primary Monitor Only", IDC_PRIMARY_MON, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 100, 120, 100, 10
 CONTROL         "Keep Aspect Ratio", IDC_KEEP_ASPECT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 137, 100, 10
 
-GROUPBOX        "Fixes", IDC_STATIC, 7, 160, 198, 65
+GROUPBOX        "Fixes", IDC_STATIC, 7, 160, 198, 82
 CONTROL         "Skip FMV Movies", IDC_SKIP_MOVIES, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 177, 100, 10
 CONTROL         "Lethal Headshots", IDC_ZOMBIE_HEADSHOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 194, 95, 10
 CONTROL         "Uncensored Headshots", IDC_DETACHED_HEADS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 210, 95, 10
 CONTROL         "Item Approach Prompt", IDC_ITEM_APPROACH_PROMPT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 110, 210, 90, 10
 PUSHBUTTON      "Blood Color...", IDC_BLOOD_COLOR, 120, 192, 70, 14
+CONTROL         "PS1 Shooting Flash", IDC_SHOOT_FLASH, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 225, 110, 10
 
 GROUPBOX        "Crosshair", IDC_STATIC, 212, 7, 201, 148
 LTEXT           "Type:", IDC_STATIC, 220, 22, 20, 8
@@ -69,10 +70,10 @@ GROUPBOX        "Lighting && Shadows", IDC_STATIC, 212, 217, 201, 63
 CONTROL         "Smooth Model Lighting", IDC_SMOOTH_MODEL_LIGHTING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 220, 233, 110, 10
 CONTROL         "Dynamic Model Shadows", IDC_DYNAMIC_MODEL_SHADOWS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 220, 249, 180, 10
 
-GROUPBOX        "In-Game Hotkeys", IDC_STATIC, 7, 230, 198, 34
-CTEXT           "F1 Options  F5 Save  F6 Load  F8 Display  F9 Quit  F2 Debug", IDC_STATIC, 15, 244, 182, 10
+GROUPBOX        "In-Game Hotkeys", IDC_STATIC, 7, 247, 198, 30
+CTEXT           "F1 Options  F5 Save  F6 Load  F8 Display  F9 Quit  F2 Debug", IDC_STATIC, 15, 259, 182, 10
 
-CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.2 © Jacob Qarooni @Mehrqarox\nGiuseppe Marsiglia @Trigger117", IDC_STATIC, 7, 286, 406, 20, WS_DISABLED
+CTEXT           "Resident Evil: Survivor - Classic Rebirth 1.2 © Jacob Qarooni @Mehrqarox, Giuseppe Marsiglia @Trigger117\nD3D8 to D3D9 wrapper and Survivor work by the above - wrapper base: d3d8to9 by Elisha Riedlinger", IDC_STATIC, 7, 284, 406, 22, WS_DISABLED
 
 DEFPUSHBUTTON   "Start Game", IDOK, 145, 320, 65, 16
 PUSHBUTTON      "Cancel", IDCANCEL, 218, 320, 55, 16

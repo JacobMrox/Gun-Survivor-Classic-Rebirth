@@ -9,6 +9,8 @@
 #include "aim_shared.h"
 #include "debug.h"
 #include "survivor_fix/survivor_pc.h"
+#include "survivor_fix/xinput_logic.h"
+#include "survivor_fix/features/features.h"
 
 // ---- shared globals we already use in EndScene ----
 extern HWND  g_hFocusWindow;
@@ -66,6 +68,174 @@ bool SurvivorPc_ConsumeMouseLeftPress() {
     return InterlockedExchange(&gMouseLeftPressed, 0) != 0;
 }
 
+
+// -------------------- XInput pad --------------------
+// A pad is read once per keyboard poll and ORed into the keyboard state the game already
+// reads, so pad and keyboard stay usable together and the game keeps its own input code.
+// XInput is loaded dynamically: the game must not gain a hard dependency on it, and the
+// feature stays idle when no pad is connected.
+using XInputGetState_t = DWORD(WINAPI*)(DWORD, void*);
+static XInputGetState_t g_xinputGetState = nullptr;
+static bool g_xinputLookedUp = false;
+static DWORD g_padIndex = 0;
+static unsigned g_padRescanFrames = 0;
+static LPDIRECTINPUTDEVICEA gKeyboardDevice = nullptr;
+static uint32_t g_padActionsHeld = 0;  // actions held by the previous poll, for edge detection
+
+static constexpr int VTI_DID_GetDeviceState = 9;  // DI7A: Acquire=7, Unacquire=8, GetDeviceState=9
+using DID_GetDeviceState_t = HRESULT(STDMETHODCALLTYPE*)(LPDIRECTINPUTDEVICEA, DWORD, LPVOID);
+static DID_GetDeviceState_t Real_GetDeviceState = nullptr;
+
+// XINPUT_STATE / XINPUT_GAMEPAD, declared locally so the wrapper needs no XInput headers.
+#pragma pack(push, 1)
+struct PadGamepad
+{
+    WORD wButtons;
+    BYTE bLeftTrigger;
+    BYTE bRightTrigger;
+    SHORT sThumbLX;
+    SHORT sThumbLY;
+    SHORT sThumbRX;
+    SHORT sThumbRY;
+};
+struct PadStateRaw
+{
+    DWORD dwPacketNumber;
+    PadGamepad Gamepad;
+};
+#pragma pack(pop)
+static_assert(sizeof(PadGamepad) == 12, "XINPUT_GAMEPAD layout");
+static_assert(sizeof(PadStateRaw) == 16, "XINPUT_STATE layout");
+
+static XInputGetState_t LoadXInput()
+{
+    if (g_xinputLookedUp) return g_xinputGetState;
+    g_xinputLookedUp = true;
+    const char* candidates[] = {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"};
+    for (const char* name : candidates)
+    {
+        HMODULE mod = LoadLibraryA(name);
+        if (!mod) continue;
+        g_xinputGetState = reinterpret_cast<XInputGetState_t>(GetProcAddress(mod, "XInputGetState"));
+        if (g_xinputGetState)
+        {
+            LogLine("[PAD] XInputGetState from %s", name);
+            break;
+        }
+    }
+    if (!g_xinputGetState) LogLine("[PAD] XInput not available; pad support idle");
+    return g_xinputGetState;
+}
+
+static float PadAxis(SHORT value)
+{
+    const float scaled = static_cast<float>(value) / 32767.0f;
+    return scaled < -1.0f ? -1.0f : (scaled > 1.0f ? 1.0f : scaled);
+}
+
+// Reads the first connected pad. A pad that drops out is looked for again, but only
+// every 30 polls, so an empty socket costs nothing per frame.
+static bool PollPad(sf::pad::PadState* out)
+{
+    XInputGetState_t get = LoadXInput();
+    if (!get || !out) return false;
+    PadStateRaw raw = {};
+    if (get(g_padIndex, &raw) != ERROR_SUCCESS)
+    {
+        if (g_padRescanFrames++ < 30) return false;
+        g_padRescanFrames = 0;
+        bool found = false;
+        for (DWORD i = 0; i < 4; ++i)
+        {
+            if (i == g_padIndex) continue;
+            PadStateRaw candidate = {};
+            if (get(i, &candidate) == ERROR_SUCCESS)
+            {
+                g_padIndex = i;
+                raw = candidate;
+                found = true;
+                LogLine("[PAD] Using controller %lu", i);
+                break;
+            }
+        }
+        if (!found) return false;
+    }
+    out->buttons = raw.Gamepad.wButtons;
+    out->leftX = PadAxis(raw.Gamepad.sThumbLX);
+    out->leftY = PadAxis(raw.Gamepad.sThumbLY);
+    out->rightX = PadAxis(raw.Gamepad.sThumbRX);
+    out->rightY = PadAxis(raw.Gamepad.sThumbRY);
+    out->leftTrigger = raw.Gamepad.bLeftTrigger;
+    out->rightTrigger = raw.Gamepad.bRightTrigger;
+    return true;
+}
+
+// The right stick moves the overlay crosshair, which the game's aim follows (EndScene syncs it).
+static void ApplyPadAim(const sf::pad::PadState& pad, float deadZone)
+{
+    const float speed = SurvivorPc_PadAimSpeed();
+    if (speed <= 0.0f) return;
+    gAimX += sf::pad::StickAimDelta(pad.rightX, deadZone, speed);
+    // XInput reports up as positive and the crosshair's y grows downwards.
+    const float vertical = sf::pad::StickAimDelta(pad.rightY, deadZone, speed);
+    gAimY += SurvivorPc_PadAimInvertY() ? vertical : -vertical;
+}
+
+// Bindings with no game key run the wrapper's own features. Only a fresh press counts, so
+// holding a button does not toggle the debug menu on every poll.
+static void DispatchPadActions(uint32_t actions)
+{
+    const uint32_t pressed = actions & ~g_padActionsHeld;
+    g_padActionsHeld = actions;
+    if (!pressed) return;
+    if (pressed & (1u << static_cast<unsigned>(sf::pad::Action::DebugMenu))) sf::features::ToggleDebugMenu();
+    if (pressed & (1u << static_cast<unsigned>(sf::pad::Action::QuickSave))) sf::features::QuickSaveHotkey(true);
+    if (pressed & (1u << static_cast<unsigned>(sf::pad::Action::QuickLoad))) sf::features::QuickSaveHotkey(false);
+    if (pressed & (1u << static_cast<unsigned>(sf::pad::Action::Fullscreen))) sf::features::ToggleFullscreenWindow();
+}
+
+static HRESULT STDMETHODCALLTYPE Hook_GetDeviceState(LPDIRECTINPUTDEVICEA This, DWORD cbData, LPVOID lpvData)
+{
+    HRESULT hr = Real_GetDeviceState(This, cbData, lpvData);
+    if (FAILED(hr) || This != gKeyboardDevice || !lpvData) return hr;
+    if (!SurvivorPc_XInputEnabled() || !IsOurWindowFocused())
+    {
+        g_padActionsHeld = 0;
+        return hr;
+    }
+    sf::pad::PadState pad;
+    if (!PollPad(&pad))
+    {
+        g_padActionsHeld = 0;
+        return hr;
+    }
+    const float deadZone = SurvivorPc_XInputDeadZone();
+    const sf::pad::Binding* bindings = SurvivorPc_PadBindings();
+    sf::pad::OverlayBoundKeys(pad, bindings, sf::pad::kSourceCount, deadZone,
+                              static_cast<uint8_t*>(lpvData), cbData);
+    ApplyPadAim(pad, deadZone);
+    DispatchPadActions(sf::pad::ActionMask(pad, bindings, sf::pad::kSourceCount, deadZone));
+    return hr;
+}
+
+static void HookKeyboardDevice(LPDIRECTINPUTDEVICEA dev)
+{
+    if (!dev || Real_GetDeviceState) return;
+    void** vtbl = *(void***)dev;
+    if (!vtbl) return;
+    gKeyboardDevice = dev;
+    void* pGetDeviceState = vtbl[VTI_DID_GetDeviceState];
+    if (MH_CreateHook(pGetDeviceState, Hook_GetDeviceState, (void**)&Real_GetDeviceState) == MH_OK &&
+        MH_EnableHook(pGetDeviceState) == MH_OK)
+    {
+        LogLine("[PAD] Hooked IDirectInputDeviceA::GetDeviceState (pad overlays the keyboard)");
+    }
+    else
+    {
+        LogLine("[PAD] Failed to hook GetDeviceState (idx=%d)", VTI_DID_GetDeviceState);
+        gKeyboardDevice = nullptr;
+    }
+}
 
 static HRESULT STDMETHODCALLTYPE Hook_SetProperty(LPDIRECTINPUTDEVICEA This, REFGUID rguidProp, LPCDIPROPHEADER pdiph)
 {
@@ -223,6 +393,11 @@ static HRESULT STDMETHODCALLTYPE Hook_DI_CreateDevice(
         {
             LogLine("[DI] CreateDevice(SysMouse) -> hooking mouse device");
             HookMouseDevice(*lplpDirectInputDevice);
+        }
+        else if (IsEqualGUID(rguid, GUID_SysKeyboard))
+        {
+            LogLine("[DI] CreateDevice(SysKeyboard) -> hooking keyboard device");
+            HookKeyboardDevice(*lplpDirectInputDevice);
         }
     }
     return hr;

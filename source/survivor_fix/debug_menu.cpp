@@ -168,8 +168,9 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const int row = sf::features::DebugMenuRow();
     const int cur = sf::features::DebugMenuCurrentScene();
     if (utility) {
-        const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO", "INFINITE HEALTH"};
-        for (int i = 0; i < 6; ++i) {
+        const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO", "INFINITE HEALTH",
+                                 "DYNAMIC SHADOWS"};
+        for (int i = 0; i < 7; ++i) {
             const char* status = "";
             if (i >= 4) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
                 sf::features::DebugUtilityCheatEnabled(i) ? " ON" : " OFF";

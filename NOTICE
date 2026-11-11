@@ -4,8 +4,9 @@ Copyright (C) Jacob Qarooni (JacobMrox), Giuseppe Marsiglia (Trigger117),
 and contributors. Original Classic Rebirth work copyright Gemini-Loboto3
 (classicrebirth.com). Survivor Fix zombie/player code copyright Trigger117
 (github.com/Trigger117). RESPeCt decomp references copyright MachinaAeon
-(github.com/MachinaAeon/RESPeCt). Portions of the wrapper originate from
-the d3d8to9 lineage (Elisha Riedlinger, Jacob Qarooni).
+(github.com/MachinaAeon/RESPeCt). The Direct3D 8 wrapper base is d3d8to9 by
+Elisha Riedlinger (MIT); the Direct3D 9 conversion, the Survivor Fix work and
+everything else in this project belong to the authors named above.
 
 This program is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the

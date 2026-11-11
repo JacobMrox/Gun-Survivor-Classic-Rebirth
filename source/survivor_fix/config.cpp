@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include "../debug.h"
+
 namespace sf {
 
 Config g_config;
@@ -70,6 +72,29 @@ void LoadConfig(const char* iniPath) {
   if (c.ps1ShootFlashFrames < 1) c.ps1ShootFlashFrames = 1;
   if (c.ps1ShootFlashFrames > 5) c.ps1ShootFlashFrames = 5;
   c.itemApproachPrompt = GetPrivateProfileIntA("Fixes", "ItemApproachPrompt", 1, iniPath) != 0;
+  // XInput pad: XInputDeadZone is a percentage of stick travel (0-95).
+  c.xinputPad = Read("XInput", true);
+  c.xinputDeadZone = static_cast<float>(GetPrivateProfileIntA("SurvivorFix", "XInputDeadZone", 50, iniPath)) / 100.0f;
+  if (c.xinputDeadZone < 0.0f) c.xinputDeadZone = 0.0f;
+  if (c.xinputDeadZone > 0.95f) c.xinputDeadZone = 0.95f;
+  // [Gamepad] bindings: a missing entry keeps the shipped default, an empty one unbinds
+  // it, and an unknown name is ignored so a typo cannot silently remove a working button.
+  pad::DefaultBindings(c.padBindings, pad::kSourceCount);
+  for (unsigned i = 0; i < pad::kSourceCount; ++i) {
+    const char* source = pad::SourceName(static_cast<pad::Source>(i));
+    char value[64] = {};
+    GetPrivateProfileStringA("Gamepad", source, "", value, sizeof(value), iniPath);
+    if (!value[0]) continue;
+    pad::Binding binding;
+    if (pad::ParseBinding(value, &binding)) {
+      c.padBindings[i] = binding;
+    } else {
+      LogLine("[PAD] Unknown binding '%s' for %s; keeping the default", value, source);
+    }
+  }
+  const int aimSpeed = GetPrivateProfileIntA("Gamepad", "AimSpeed", 20, iniPath);
+  c.padAimSpeed = static_cast<float>(aimSpeed < 0 ? 0 : (aimSpeed > 200 ? 200 : aimSpeed));
+  c.padAimInvertY = GetPrivateProfileIntA("Gamepad", "AimInvertY", 0, iniPath) != 0;
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
   char uncensored[16] = {};
   GetPrivateProfileStringA("Fixes", "UncensoredHeadshots", "", uncensored, sizeof(uncensored), iniPath);

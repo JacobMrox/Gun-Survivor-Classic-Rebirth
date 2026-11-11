@@ -34,6 +34,7 @@
 //                     that draw gets src*a + dst*(1-a) with a = texture alpha * 0x80 and colour = texture *
 //                     0x40 (TEXTUREFACTOR 0x80404040). The alpha test keeps the colour-keyed edge.
 #include "survivor_pc.h"
+#include "config.h"
 #include "ps1/title_fade_logic.h"
 
 #include "../d3d8types.hpp"  // D3DSURFACE_DESC8, as in dllmain.cpp
@@ -42,6 +43,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <string>
 
 #include "MinHook.h"
 
@@ -263,6 +265,11 @@ void SurvivorPc_SyncGameAim(float x, float y) {
 float SurvivorPc_MouseMulX() { return gSensitivity; }
 float SurvivorPc_MouseMulY() { return gSensitivity * gAxisScaleY; }
 unsigned long SurvivorPc_MouseBufferSize() { return gMouseBufferSize; }
+bool SurvivorPc_XInputEnabled() { return sf::g_config.xinputPad; }
+float SurvivorPc_XInputDeadZone() { return sf::g_config.xinputDeadZone; }
+const sf::pad::Binding* SurvivorPc_PadBindings() { return sf::g_config.padBindings; }
+float SurvivorPc_PadAimSpeed() { return sf::g_config.padAimSpeed; }
+bool SurvivorPc_PadAimInvertY() { return sf::g_config.padAimInvertY; }
 
 namespace {
 bool InGameplay() {
@@ -388,6 +395,12 @@ bool SurvivorPc_IsModelDraw() { return gModelDrawDepth > 0 && IsSurvivorExe(); }
 bool SurvivorPc_Hide2DShadows() { return gDynamicModelShadows && IsSurvivorExe(); }
 
 bool SurvivorPc_DynamicModelShadows() { return gDynamicModelShadows && IsSurvivorExe(); }
+void SurvivorPc_SetDynamicModelShadows(bool enabled) {
+  gDynamicModelShadows = enabled;
+  if (sf::g_dir.empty()) return;
+  const std::wstring ini = sf::g_dir + L"config.ini";
+  WritePrivateProfileStringW(L"Fixes", L"DynamicModelShadows", enabled ? L"1" : L"0", ini.c_str());
+}
 void SurvivorPc_BeginDynamicShadow(float floorY) {
   gDynamicShadowFloorY = floorY;
   InterlockedIncrement(&gDynamicShadowDepth);

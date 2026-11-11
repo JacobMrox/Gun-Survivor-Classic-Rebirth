@@ -3,6 +3,8 @@
 #pragma once
 #include <windows.h>
 
+#include "xinput_logic.h"
+
 // Reads [SurvivorFix] from config.ini. Call once from DllMain, before the other functions.
 void SurvivorPc_LoadConfig(const char* iniPath);
 
@@ -28,6 +30,17 @@ unsigned SurvivorPc_MouseMotionEvents();
 // Consume a buffered left-button press.  Unlike GetAsyncKeyState, this remains
 // pending until a low-frame-rate native menu has observed it.
 bool SurvivorPc_ConsumeMouseLeftPress();
+
+// XInput pad alongside DirectInput. The pad is polled when the game polls the keyboard and its keys
+// are ORed into the keyboard state, so both devices stay usable. Off in [SurvivorFix] XInput=0;
+// the dead zone is 0..0.95 from XInputDeadZone (a percentage of stick travel).
+bool SurvivorPc_XInputEnabled();
+float SurvivorPc_XInputDeadZone();
+// Bindings and stick aiming from [Gamepad]: one Binding per sf::pad::Source, the crosshair
+// speed in pixels per poll, and the right-stick Y inversion.
+const sf::pad::Binding* SurvivorPc_PadBindings();
+float SurvivorPc_PadAimSpeed();
+bool SurvivorPc_PadAimInvertY();
 
 // From EndScene, before the overlay crosshair is clamped and drawn. MenuWindowsCursor: in menus the crosshair
 // position (and so the game's aim) comes from the Windows pointer, in back buffer space. Returns false when the
@@ -71,6 +84,9 @@ bool SurvivorPc_Hide2DShadows();
 // genuine model silhouette, but projects onto the object's horizontal floor
 // plane rather than onto arbitrary stage geometry.
 bool SurvivorPc_DynamicModelShadows();
+// Debug menu: switches the same option the configuration window writes ([Fixes] DynamicModelShadows),
+// at once and persistently, so model shadows and the hidden 2D shadow quads follow live.
+void SurvivorPc_SetDynamicModelShadows(bool enabled);
 void SurvivorPc_BeginDynamicShadow(float floorY);
 void SurvivorPc_EndDynamicShadow();
 bool SurvivorPc_IsDynamicShadow();

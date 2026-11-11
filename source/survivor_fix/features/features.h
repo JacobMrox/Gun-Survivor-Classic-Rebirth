@@ -66,6 +66,11 @@ int DebugMenuSelected();
 int DebugMenuRow();
 int DebugMenuCurrentScene();
 void DebugQueueJump(int scene);
+// Pad bindings for the wrapper's own additions: the gamepad layer calls these on a fresh
+// press of a button that is bound to one of these actions instead of a key.
+void ToggleDebugMenu();
+void QuickSaveHotkey(bool save);
+void ToggleFullscreenWindow();
 bool QuickSaveReloadFadeStarted();
 void QuickSaveStartReloadFade();
 bool QuickSaveApplyPendingReload(void* gameObject, int* scene);

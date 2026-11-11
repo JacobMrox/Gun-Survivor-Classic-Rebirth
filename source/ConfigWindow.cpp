@@ -36,6 +36,7 @@ static int mouseSensitivityPercent = 100;
 static bool keepAspect = true;
 static bool smoothModelLighting = true;
 static bool dynamicModelShadows = false;
+static bool ps1ShootFlash = false;
 static bool lethalZombieHeadshots = false;
 static bool detachedZombieHeads = true;
 static bool itemApproachPrompt = true;
@@ -224,7 +225,7 @@ bool EnableFluentTheme(HWND h) {
     for (const int id : {
         IDC_RES_COMBO, IDC_FPS_COMBO, IDC_REFRESH, IDC_FPS_COUNTER, IDC_WINDOWED,
         IDC_BORDERLESS, IDC_CENTER, IDC_ALWAYS_ONTOP, IDC_LOCK_CURSOR, IDC_PRIMARY_MON,
-        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SMOOTH_MODEL_LIGHTING, IDC_DYNAMIC_MODEL_SHADOWS, IDC_ZOMBIE_HEADSHOTS, IDC_DETACHED_HEADS, IDC_ITEM_APPROACH_PROMPT, IDC_BLOOD_COLOR, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
+        IDC_KEEP_ASPECT, IDC_SKIP_MOVIES, IDC_SHOOT_FLASH, IDC_SMOOTH_MODEL_LIGHTING, IDC_DYNAMIC_MODEL_SHADOWS, IDC_ZOMBIE_HEADSHOTS, IDC_DETACHED_HEADS, IDC_ITEM_APPROACH_PROMPT, IDC_BLOOD_COLOR, IDC_MOUSE_SENSITIVITY, IDC_LASER_TRAIL, IDC_LASER_COLOR, IDC_ENABLE_LOG,
         IDC_SHOW_CONFIG, IDC_CROSS_COMBO, IDC_CROSS_BROWSE, IDC_CROSS_SCALE, IDOK, IDCANCEL
     }) {
         if (HWND control = GetDlgItem(h, id)) SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
@@ -374,6 +375,7 @@ void SyncConfig(bool save) {
         SetI("Window", "KeepAspectRatio", keepAspect);
         SetI("Fixes", "SmoothModelLighting", smoothModelLighting);
         SetI("Fixes", "DynamicModelShadows", dynamicModelShadows);
+        SetI("Fixes", "Ps1ShootFlash", ps1ShootFlash);
         SetI("Fixes", "LethalZombieHeadshots", lethalZombieHeadshots);
         SetI("Fixes", "UncensoredHeadshots", detachedZombieHeads);
         SetI("Fixes", "ItemApproachPrompt", itemApproachPrompt);
@@ -437,6 +439,7 @@ void SyncConfig(bool save) {
         keepAspect = MigratedI("Window", "KeepAspectRatio", "SurvivorFix", "KeepAspect", 1) != 0;
         smoothModelLighting = MigratedI("Fixes", "SmoothModelLighting", "SurvivorFix", "SmoothModelLighting", 1) != 0;
         dynamicModelShadows = GetI("Fixes", "DynamicModelShadows", 0) != 0;
+        ps1ShootFlash = MigratedI("Fixes", "Ps1ShootFlash", "SurvivorFix", "Ps1ShootFlash", 0) != 0;
         lethalZombieHeadshots = GetI("Fixes", "LethalZombieHeadshots", 0) != 0;
         detachedZombieHeads = Has("Fixes", "UncensoredHeadshots")
             ? GetI("Fixes", "UncensoredHeadshots", 1) != 0
@@ -512,6 +515,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         CheckDlgButton(h, IDC_SKIP_MOVIES, bSkipMovies);
         CheckDlgButton(h, IDC_SMOOTH_MODEL_LIGHTING, smoothModelLighting);
         CheckDlgButton(h, IDC_DYNAMIC_MODEL_SHADOWS, dynamicModelShadows);
+        CheckDlgButton(h, IDC_SHOOT_FLASH, ps1ShootFlash);
         CheckDlgButton(h, IDC_ZOMBIE_HEADSHOTS, lethalZombieHeadshots);
         CheckDlgButton(h, IDC_DETACHED_HEADS, detachedZombieHeads);
         CheckDlgButton(h, IDC_ITEM_APPROACH_PROMPT, itemApproachPrompt);
@@ -601,6 +605,7 @@ INT_PTR CALLBACK ConfigDlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             bSkipMovies = IsDlgButtonChecked(h, IDC_SKIP_MOVIES);
             smoothModelLighting = IsDlgButtonChecked(h, IDC_SMOOTH_MODEL_LIGHTING);
             dynamicModelShadows = IsDlgButtonChecked(h, IDC_DYNAMIC_MODEL_SHADOWS);
+            ps1ShootFlash = IsDlgButtonChecked(h, IDC_SHOOT_FLASH);
             lethalZombieHeadshots = IsDlgButtonChecked(h, IDC_ZOMBIE_HEADSHOTS);
             detachedZombieHeads = IsDlgButtonChecked(h, IDC_DETACHED_HEADS);
             itemApproachPrompt = IsDlgButtonChecked(h, IDC_ITEM_APPROACH_PROMPT);

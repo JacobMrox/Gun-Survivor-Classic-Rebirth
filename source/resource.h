@@ -34,6 +34,7 @@
 #define IDC_BLOOD_COLOR           1031
 #define IDC_ITEM_APPROACH_PROMPT  1032
 #define IDC_DYNAMIC_MODEL_SHADOWS 1034
+#define IDC_SHOOT_FLASH           1035
 #define IDR_CROSSHAIR_PC          2001
 #define IDR_CROSSHAIR_OLD         2002
 #define IDR_CROSSHAIR_PSX         2003

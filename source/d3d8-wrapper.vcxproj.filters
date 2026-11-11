@@ -151,6 +151,9 @@
     <ClCompile Include="survivor_fix\survivor_pc.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
+    <ClCompile Include="survivor_fix\xinput_logic.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
     <ClCompile Include="survivor_fix\debug_menu.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
@@ -344,6 +347,9 @@
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\mouse_drain_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\xinput_logic.h">
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\backfall_logic.h">

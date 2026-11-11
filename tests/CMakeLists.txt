@@ -11,6 +11,12 @@ add_executable(shoot_flash_test shoot_flash_test.cpp)
 target_compile_features(shoot_flash_test PRIVATE cxx_std_17)
 add_test(NAME shoot_flash COMMAND shoot_flash_test)
 
+# The XInput pad mapping core, shared with the wrapper's keyboard overlay.
+add_executable(xinput_map_test xinput_map_test.cpp
+  ../source/survivor_fix/xinput_logic.cpp)
+target_compile_features(xinput_map_test PRIVATE cxx_std_17)
+add_test(NAME xinput_map COMMAND xinput_map_test)
+
 # Exercise the production resource-path adapter without creating game files.
 set(misc_source "${CMAKE_CURRENT_SOURCE_DIR}/../source/dllmain.cpp")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${misc_source}")
