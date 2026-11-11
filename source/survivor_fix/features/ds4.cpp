@@ -120,6 +120,12 @@ void ParseReport(const uint8_t* data, DWORD length) {
     g_padState = pad;
     g_padReportAt = GetTickCount();
   }
+  static bool loggedArrival = false;
+  if (!loggedArrival) {
+    loggedArrival = true;
+    Log("DS4: input reports arriving (report 0x%02X, %lu bytes); the pad drives the bindings", id,
+        length);
+  }
 }
 
 void ReaderLoop() {
@@ -288,12 +294,25 @@ bool SendLight(Rgb color) {
       g_writeErrorLogged = true;
       Log("DS4: Bluetooth output report failed (%lu); output %u bytes", GetLastError(), g_outputLength);
     }
+    if (ok) {
+      static bool loggedOk = false;
+      if (!loggedOk) {
+        loggedOk = true;
+        Log("DS4: lightbar reports accepted over Bluetooth");
+      }
+    }
     return ok;
   }
   uint8_t report[ds4::kUsbReportSize];
   ds4::BuildUsbLightReport(report, color);
   const bool ok = WriteReport(report, sizeof report);
-  if (!ok && !g_writeErrorLogged) {
+  if (ok) {
+    static bool loggedOk = false;
+    if (!loggedOk) {
+      loggedOk = true;
+      Log("DS4: lightbar reports accepted over USB");
+    }
+  } else if (!g_writeErrorLogged) {
     g_writeErrorLogged = true;
     Log("DS4: USB output report failed (%lu); output %u bytes", GetLastError(), g_outputLength);
   }

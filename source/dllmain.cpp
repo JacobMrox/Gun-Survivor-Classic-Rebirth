@@ -604,7 +604,6 @@ char WinDir[MAX_PATH + 1];
             drawText(prompt, (std::max)(marginX, x), y, 1.0f);
         }
         DebugMenu_Draw(dev);
-        sf::features::Ds4Tick();
         dev->ApplyStateBlock(state);
         dev->DeleteStateBlock(state);
     }
@@ -979,6 +978,10 @@ HRESULT m_IDirect3DDevice8::EndScene()
 {
     sf::features::QuickSavePollWindowToggle();
     UpdateCursorClip();
+    // The lightbar, the HID input thread and the speaker tick once per presented frame. This used to
+    // sit in DrawHotkeyNotification, which only runs while a hotkey toast is on screen, so the pad was
+    // dead whenever no toast had been drawn.
+    sf::features::Ds4Tick();
 
     if (bDisplayFPSCounter)
         FrameLimiter::ShowFPS(ProxyInterface);
