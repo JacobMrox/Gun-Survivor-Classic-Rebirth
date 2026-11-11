@@ -130,7 +130,9 @@ void ParseReport(const uint8_t* data, DWORD length) {
 }
 
 void ReaderLoop() {
-  uint8_t buffer[128];
+  // The Bluetooth collection declares a 547-byte input report, so the buffer has to be that large
+  // even though the gamepad report that arrives is 78 bytes; a short buffer fails on every read.
+  uint8_t buffer[1024];
   int failures = 0;
   while (true) {
     if (g_read == INVALID_HANDLE_VALUE) {
@@ -139,8 +141,9 @@ void ReaderLoop() {
       continue;
     }
     DWORD read = 0;
-    if (!ReadFile(g_read, buffer, static_cast<DWORD>(g_inputLength ? g_inputLength : sizeof buffer),
-                  &read, nullptr)) {
+    DWORD want = static_cast<DWORD>(g_inputLength ? g_inputLength : sizeof buffer);
+    if (want > sizeof buffer) want = sizeof buffer;
+    if (!ReadFile(g_read, buffer, want, &read, nullptr)) {
       if (++failures == 20) {
         Log("DS4: controller stopped answering; looking for it again");
         CloseHandle(g_read);
@@ -173,7 +176,18 @@ struct Candidate {
 // collection, where every 32-byte lightbar write is rejected with error 87 (the report is shorter
 // than that collection's output length), so the caps are scored instead of trusting the enumeration
 // order.
-int ScoreCaps(uint16_t inputLength, uint16_t outputLength) {
+// A Bluetooth DualShock 4 is reached through the Bluetooth HID service, and that single collection
+// declares its 547-byte config feature report as the input and output size: the caps say 547/547 while
+// the real gamepad reports are the 78-byte 0x11 pair. Over USB the same pad exposes a small gamepad
+// collection (64 in / 32 out) plus a separate 547-byte config collection, so the device path has to be
+// part of the decision, not only the caps.
+bool IsBluetoothPath(const char* path) {
+  return std::strstr(path, "00001124-0000-1000-8000-00805f9b34fb") != nullptr ||
+         std::strstr(path, "BTHENUM") != nullptr;
+}
+
+int ScoreCaps(const char* path, uint16_t inputLength, uint16_t outputLength, bool sonyDs4) {
+  if (sonyDs4 && IsBluetoothPath(path)) return 3;
   const bool gamepadOutput = outputLength == ds4::kUsbReportSize || outputLength == ds4::kBtReportSize;
   const bool gamepadInput = inputLength == 64 || inputLength == ds4::kBtReportSize;
   if (gamepadOutput && gamepadInput) return 3;
@@ -245,7 +259,8 @@ bool OpenController() {
         candidate.pid = attributes.ProductID;
         candidate.dualSense = attributes.ProductID == kDualSense;
         candidate.bluetooth = candidate.outputLength == ds4::kBtReportSize;
-        candidate.score = ScoreCaps(candidate.inputLength, candidate.outputLength);
+        candidate.score = ScoreCaps(detail->DevicePath, candidate.inputLength,
+                                    candidate.outputLength, sony);
         std::memcpy(candidate.product, product, sizeof candidate.product);
         std::strncpy(candidate.path, detail->DevicePath, sizeof candidate.path - 1);
         matched = true;
@@ -282,15 +297,21 @@ bool OpenController() {
       Log("DS4: the controller interface would not open for input (%lu)", GetLastError());
     }
   }
-  g_bluetooth = best.bluetooth;
+  g_bluetooth = best.bluetooth || IsBluetoothPath(best.path);
   g_outputLength = best.outputLength;
   g_inputLength = best.inputLength;
   g_writeErrorLogged = false;
   g_dualSense = best.dualSense;
-  char product[128] = {};
-  WideCharToMultiByte(CP_ACP, 0, best.product, -1, product, sizeof product, nullptr, nullptr);
-  Log("DS4: '%s' 054C:%04X on %s (out %u, in %u)", product[0] ? product : "controller", best.pid,
-      g_bluetooth ? "Bluetooth" : "USB", g_outputLength, g_inputLength);
+  static uint16_t loggedOut = 0;
+  static uint16_t loggedIn = 0;
+  if (loggedOut != g_outputLength || loggedIn != g_inputLength) {
+    loggedOut = g_outputLength;
+    loggedIn = g_inputLength;
+    char product[128] = {};
+    WideCharToMultiByte(CP_ACP, 0, best.product, -1, product, sizeof product, nullptr, nullptr);
+    Log("DS4: '%s' 054C:%04X on %s (out %u, in %u)", product[0] ? product : "controller", best.pid,
+        g_bluetooth ? "Bluetooth" : "USB", g_outputLength, g_inputLength);
+  }
   if (best.dualSense) {
     Log("DS4: DualSense (054C:%04X); its lightbar report is not implemented, input only", best.pid);
   }
@@ -316,9 +337,13 @@ bool WriteReport(const uint8_t* report, size_t length) {
 bool SendLight(Rgb color) {
   if (g_dualSense) return true;  // recognised, not driven: do not fail and rescan every frame
   if (g_bluetooth) {
-    uint8_t report[ds4::kBtReportSize];
+    // Windows rejects a report shorter than the collection's output length with error 87, so the
+    // 78-byte 0x11 packet is padded up to whatever the collection declares (547 on Bluetooth).
+    uint8_t report[640] = {};
+    const size_t length = g_outputLength > ds4::kBtReportSize ? g_outputLength : ds4::kBtReportSize;
+    if (length > sizeof report) return false;
     ds4::BuildBtLightReport(report, color);
-    const bool ok = WriteReport(report, sizeof report);
+    const bool ok = WriteReport(report, length);
     if (ok) {
       static bool loggedOk = false;
       if (!loggedOk) {
@@ -331,9 +356,11 @@ bool SendLight(Rgb color) {
     }
     return ok;
   }
-  uint8_t report[ds4::kUsbReportSize];
+  uint8_t report[640] = {};
+  const size_t length = g_outputLength > ds4::kUsbReportSize ? g_outputLength : ds4::kUsbReportSize;
+  if (length > sizeof report) return false;
   ds4::BuildUsbLightReport(report, color);
-  const bool ok = WriteReport(report, sizeof report);
+  const bool ok = WriteReport(report, length);
   if (ok) {
     static bool loggedOk = false;
     if (!loggedOk) {
