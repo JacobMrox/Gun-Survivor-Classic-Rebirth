@@ -4,11 +4,14 @@
 namespace ps1 {
 
 // PC 00436E40 shared mapper; PS1 800A2234/800A3B80 -> 80105180/801047B4.
-// These are PC native model IDs, not raw PS1 resource IDs. 03/07 have no
+// These are PC native model IDs, not raw PS1 resource IDs. 03 has no
 // corresponding case in this PC mapper and must never be admitted by a range.
+// 07 originally had none either, but the mod gives that slot its own case (a copy of the type 01
+// block, so the same clip set) and a hand-made ENEM07 model, so it uses the type 01 zombie profile
+// and the shared PS1 brain; ValidModel still rejects a model with fewer than 38 sequences.
 constexpr bool IsPcZombie(int type) {
   switch (type) {
-    case 0: case 1: case 2: case 4: case 5: case 6: case 8: case 9: case 10:
+    case 0: case 1: case 2: case 4: case 5: case 6: case 7: case 8: case 9: case 10:
       return true;
   }
   return false;

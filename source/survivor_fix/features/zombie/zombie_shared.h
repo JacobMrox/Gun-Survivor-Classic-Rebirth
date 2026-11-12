@@ -33,7 +33,8 @@ namespace sf::features::zombie {
 
 // Survivor's ENEM0 through ENEM10 are all zombie models.  The narrower
 // ps1::IsPcZombie predicate is intentionally retained for animation/AI
-// replacement because model IDs 3 and 7 have no verified PS1 clip mapping.
+// replacement: model ID 3 has no verified PS1 clip mapping, while 7 is only
+// admitted because the mod gives it the type 01 case and a copy of that model.
 constexpr bool IsHeadshotZombie(int type) { return type >= 0 && type <= 10; }
 
 using MapAnimFn = int(__fastcall*)(void* s, void* edx, int request);
