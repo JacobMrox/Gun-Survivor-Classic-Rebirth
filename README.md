@@ -260,11 +260,11 @@ Current development version: **1.2**
 
 - New in-game configuration menu based on PS1 code.
 - HD textures.
-- Arabic, Farsi, Italian, Dutch, and Spanish language support.
+- Chinese (Default) + Japanese (Original), Arabic, Farsi, Italian, Dutch, and Spanish language support.
 - Ragdolls.
-- Third-person mode using RE2 source code/decompilation as a reference.
+- Third-person mode using Megan's "RE2 DualShock decompilation" as a reference.
 - Nemesis Mode: a difficulty where Nemesis stalks the player from the first item until the final stage.
-- Multiplayer.
+- Multiplayer (After Third-Person is implemented).
 
 # Progress Videos
 
