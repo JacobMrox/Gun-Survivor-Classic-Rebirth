@@ -1157,8 +1157,11 @@ bool CurrentPlayerPose(float position[3], float forward[2]) {
 
 // Type 07 is the extra zombie variant whose model exists but whose case never did: its slot falls
 // into the default block, which indexes the enemy manager with the -1 handle the spawner sets before
-// the dispatch. Pointing the slot at the zombie's case gives it that setup; the type argument is
-// still 07, so a model chosen from the argument stays the pad's own.
+// the dispatch. Pointing the slot at the zombie's case gives it the zombie setup, but the model came
+// out as ENEM01: each case block ends by pushing the actor type into the registration call, and that
+// type is what selects the NAB/NAC pair. CloneSpawnCase therefore copies the zombie block and changes
+// only that immediate, so type 07 keeps the zombie behaviour with its own model. AliasSpawnType stays
+// as the fallback when the block does not look like the one this build was written against.
 bool AliasSpawnType(int from, int to) {
   if (from < 0 || from > 0x25 || to < 0 || to > 0x25) return false;
   uint32_t* table = reinterpret_cast<uint32_t*>(game::kSpawnTypeTable);
@@ -1178,6 +1181,60 @@ bool AliasSpawnType(int from, int to) {
   table[from] = target;
   VirtualProtect(&table[from], sizeof(uint32_t), old, &old);
   Log("DebugSpawn: type %02X now runs the type %02X case (%08X)", from, to, target);
+  return true;
+}
+
+// The zombie-shaped case blocks share one layout: the first instruction, two calls (the actor setup
+// and the manager registration) and a final jmp to the spawner's common tail. Only the last "push
+// <type>" differs, so a copy with that byte changed is a seventh zombie with its own model.
+bool CloneSpawnCase(int from, int to) {
+  if (from < 0 || from > 0x25 || to < 0 || to > 0x25) return false;
+  uint32_t* table = reinterpret_cast<uint32_t*>(game::kSpawnTypeTable);
+  const uint32_t start = table[to];
+  const uint8_t* code = reinterpret_cast<const uint8_t*>(start);
+  uint32_t end = 0;
+  for (int i = 0; i <= 0x25; ++i) {
+    const uint32_t other = table[i];
+    if (other > start && (end == 0 || other < end)) end = other;
+  }
+  const size_t length = end > start ? static_cast<size_t>(end - start) : 0;
+  static const uint8_t kZombieHead[] = {0xD9, 0x5C, 0x24, 0x10};  // fst dword ptr [esp+10h]
+  constexpr size_t kSetupCall = 0x89;
+  constexpr size_t kRegisterCall = 0xC7;
+  constexpr size_t kTailJump = 0xCE;
+  constexpr size_t kTypePush = 0xB3;
+  if (length < kTailJump + 5 || std::memcmp(code, kZombieHead, sizeof kZombieHead) != 0 ||
+      code[kSetupCall] != 0xE8 || code[kRegisterCall] != 0xE8 ||
+      code[kTailJump] != 0xE9 || code[kTypePush] != 0x6A) {
+    Log("DebugSpawn: the type %02X case is not the expected zombie block; clone skipped", to);
+    return false;
+  }
+  auto* copy = static_cast<uint8_t*>(VirtualAlloc(nullptr, length, MEM_COMMIT | MEM_RESERVE,
+                                                  PAGE_EXECUTE_READWRITE));
+  if (!copy) {
+    Log("DebugSpawn: no memory for the type %02X case (%lu)", from, GetLastError());
+    return false;
+  }
+  std::memcpy(copy, code, length);
+  const size_t calls[] = {kSetupCall, kRegisterCall, kTailJump};
+  for (size_t offset : calls) {
+    int32_t relative = 0;
+    std::memcpy(&relative, copy + offset + 1, sizeof relative);
+    const uint8_t* target = code + offset + 5 + relative;
+    const int32_t moved = static_cast<int32_t>(target - (copy + offset + 5));
+    std::memcpy(copy + offset + 1, &moved, sizeof moved);
+  }
+  copy[kTypePush + 1] = static_cast<uint8_t>(from);  // the actor type, i.e. the model selector
+  FlushInstructionCache(GetCurrentProcess(), copy, static_cast<SIZE_T>(length));
+  DWORD old = 0;
+  if (!VirtualProtect(&table[from], sizeof(uint32_t), PAGE_READWRITE, &old)) {
+    Log("DebugSpawn: the spawn table is not writable (%lu)", GetLastError());
+    return false;
+  }
+  table[from] = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(copy));
+  VirtualProtect(&table[from], sizeof(uint32_t), old, &old);
+  Log("DebugSpawn: type %02X runs a copy of the type %02X case with its own model (%u bytes at %08X)",
+      from, to, static_cast<unsigned>(length), table[from]);
   return true;
 }
 
@@ -1273,7 +1330,10 @@ bool InstallPlayer() {
   g_spawnReady = game::CheckBytes({game::kSpawnEntity, game::kSpawnEntityBytes,
                                    sizeof(game::kSpawnEntityBytes)});
   Log("DebugSpawn: native room-table spawn 00434850 %s", g_spawnReady ? "ready" : "unavailable");
-  if (g_spawnReady) AliasSpawnType(kDebugSpawnZombieWip, kDebugSpawnZombie);
+  if (g_spawnReady && !CloneSpawnCase(kDebugSpawnZombieWip, kDebugSpawnZombie)) {
+    // Fallback: at least the zombie behaviour, even if the model has to be the zombie's.
+    AliasSpawnType(kDebugSpawnZombieWip, kDebugSpawnZombie);
+  }
   const game::ByteSignature physics = {game::kPhysics, game::kPhysicsPrologue,
                                        sizeof(game::kPhysicsPrologue)};
   const game::ByteSignature transform = {game::kTransform, game::kTransformPrologue,
