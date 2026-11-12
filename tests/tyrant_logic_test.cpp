@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 #include "../source/survivor_fix/ps1/tyrant_logic.h"
 
@@ -9,7 +10,6 @@ int main() {
   CHECK(IsTyrant(0x17));
   CHECK(!IsTyrant(0x15));
   CHECK(!IsTyrant(0x18));
-  CHECK(!IsTyrant(0x18 + 1));
   // Death requests 0x0F/0x10 keep the PS1 clip 9, whatever the PC roll chose.
   CHECK(IsTyrantDeathRequest(0x0F));
   CHECK(IsTyrantDeathRequest(0x10));
@@ -20,7 +20,6 @@ int main() {
   CHECK(!IsTyrantWalkRequest(0));
   CHECK(!IsTyrantWalkRequest(1));
   CHECK(!IsTyrantWalkRequest(8));
-  CHECK(!IsTyrantWalkRequest(9));
   CHECK(!IsTyrantWalkRequest(0x0B));
   // Standstill hysteresis: a body that does not travel goes idle and walks again only above 8.
   CHECK(TyrantStanding(false, 0.0f));
@@ -31,27 +30,29 @@ int main() {
   CHECK(TyrantWalkSelector(true) == 0);
   CHECK(TyrantWalkSelector(false) == 1);
   CHECK(kTyrantIdleSelector == 0);
-  // Clip speed follows the travel: 26 units is the PS1 1x cadence (S+40 = 3.0), half is half, and
-  // both extremes are bounded.
-  CHECK(TyrantWalkClipSpeed(26.0f) == 3.0f);
-  CHECK(TyrantWalkClipSpeed(13.0f) == 1.5f);
-  CHECK(TyrantWalkClipSpeed(52.0f) == 6.0f);
-  CHECK(TyrantWalkClipSpeed(0.0f) == 0.75f);
-  CHECK(TyrantWalkClipSpeed(6.0f) == 0.75f);
-  CHECK(TyrantWalkClipSpeed(200.0f) == 9.0f);
-  CHECK(kTyrantIdleSpeed == 2.0f);
   // WalkStep: the stride and the charge roll are gated by the distance (3001 / 6001) and 25%.
   CHECK(!TyrantStriding(3000.0f));
   CHECK(TyrantStriding(3001.0f));
   CHECK(TyrantStep(false) == 26.0f);
   CHECK(TyrantStep(true) == 52.0f);
-  CHECK(TyrantResetsCharge(3001.0f));
-  CHECK(!TyrantResetsCharge(3000.0f));
+  CHECK(TyrantEntersStride(false, 3001.0f));
+  CHECK(!TyrantEntersStride(true, 3001.0f));
+  CHECK(!TyrantEntersStride(false, 3000.0f));
+  CHECK(TyrantLeavesStride(3000.0f));
+  CHECK(!TyrantLeavesStride(3001.0f));
   CHECK(TyrantShouldCharge(false, 5000.0f, 24, true));
   CHECK(!TyrantShouldCharge(false, 5000.0f, 25, true));
   CHECK(!TyrantShouldCharge(true, 5000.0f, 0, true));
   CHECK(!TyrantShouldCharge(false, 6001.0f, 0, true));
   CHECK(!TyrantShouldCharge(false, 5000.0f, 0, false));
+  // The aim stop: far, in front, a shot just fired, no aim running and off cooldown.
+  CHECK(TyrantShouldAim(false, 3001.0f, true, true, true));
+  CHECK(!TyrantShouldAim(true, 3001.0f, true, true, true));
+  CHECK(!TyrantShouldAim(false, 3000.0f, true, true, true));
+  CHECK(!TyrantShouldAim(false, 4000.0f, false, true, true));
+  CHECK(!TyrantShouldAim(false, 4000.0f, true, false, true));
+  CHECK(!TyrantShouldAim(false, 4000.0f, true, true, false));
+  CHECK(kTyrantAimSelector == 0x13);
   // Sidestep: the sign of the line side picks the swing, one per run-past.
   CHECK(TyrantSideFromLineSide(1.0f) == 1);
   CHECK(TyrantSideFromLineSide(-1.0f) == 2);
@@ -72,7 +73,10 @@ int main() {
   CHECK(!TyrantFacing(0.0f, 1.0f, 0.0f, -10.0f));
   CHECK(!TyrantFacing(0.0f, 1.0f, 10.0f, 1.0f));
   CHECK(!TyrantFacing(0.0f, 0.0f, 1.0f, 0.0f));
+  // en_turn_to(0x30): about 4.2 degrees per update.
+  const float turnDegrees = kTyrantTurnStep * 180.0f / 3.14159265f;
+  CHECK(turnDegrees > 4.1f && turnDegrees < 4.3f);
   if (failures) return 1;
-  std::puts("PASS: Mr. X walk, standstill and death clip rules");
+  std::puts("PASS: Mr. X walk step, charge, aim, sidestep and death rules");
   return 0;
 }

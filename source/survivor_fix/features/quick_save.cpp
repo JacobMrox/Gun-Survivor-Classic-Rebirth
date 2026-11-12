@@ -73,7 +73,10 @@ void __fastcall AmmoUseDetour(void* stats, void* edx) {
   const bool playerStats = IsPlayerStats(stats);
   if (!UtilitySuppressAmmoUse(g_infiniteAmmo.load(), playerStats)) g_ammoUse(stats, edx);
   // Both PC callers (0042C83D and 0046A99D) have passed the native firing checks.
-  if (playerStats) ScreenFxOnPlayerShot();
+  if (playerStats) {
+    ScreenFxOnPlayerShot();
+    tyrant::OnPlayerShot();  // Mr. X's aim stop (PlayerFiring in WalkStep)
+  }
 }
 void __fastcall DamageDetour(void* stats, void* edx, int damage) {
   const bool player = IsPlayerStats(stats);

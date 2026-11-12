@@ -42,6 +42,7 @@ namespace tyrant {
 void BeginUpdate(void* s);
 void Finish(void* s);
 void Map(void* s, int request, int& result);
+void OnPlayerShot();
 void Reset();
 }  // namespace tyrant
 
