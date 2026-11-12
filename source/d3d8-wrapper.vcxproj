@@ -192,6 +192,7 @@
     <ClInclude Include="survivor_fix\ps1\shadow_logic.h" />
     <ClInclude Include="survivor_fix\ps1\speed_logic.h" />
     <ClInclude Include="survivor_fix\ps1\stumble_logic.h" />
+    <ClInclude Include="survivor_fix\ps1\tyrant_logic.h" />
     <ClInclude Include="survivor_fix\ps1\wake_view_logic.h" />
     <ClInclude Include="survivor_fix\ps1\wall_logic.h" />
     <ClInclude Include="survivor_fix\ps1\title_fade_logic.h" />
@@ -276,6 +277,7 @@
     <ClCompile Include="survivor_fix\features\zombie\zombie_audio.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_walk.cpp" />
     <ClCompile Include="survivor_fix\features\zombie\zombie_world_pc.cpp" />
+    <ClCompile Include="survivor_fix\features\tyrant.cpp" />
     <ClCompile Include="survivor_fix\features\zombie_life.cpp" />
       <ClCompile Include="survivor_fix\features\zombie_shadow.cpp" />
       <ClCompile Include="survivor_fix\features\item_glitter.cpp" />

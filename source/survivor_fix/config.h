@@ -51,6 +51,10 @@ struct Config {
   // Crows (ENEMPROG 52, crow.c): flying animation correction. Independent of
   // Ps1Zombies (different enemy slots), on by default when loading config.
   bool ps1Crows = true;
+  // Mr. X (types 22/23, tyrant.c 0x80105270): the walk clip follows the travel the native physics
+  // produced (idle when the body does not move, faster when it rushes) and the death clip is the PS1
+  // 9 instead of the PC's random 8. Nothing moves, hits or dies differently.
+  bool ps1Tyrant = true;
   // Monsters also bite from behind (the PC filtered out the hits from behind).
   bool biteFromBehind = true;
   // PS1 size of the zombie shadow (80073C5C). Follows Ps1ShadowBlend, the shadow blending setting.

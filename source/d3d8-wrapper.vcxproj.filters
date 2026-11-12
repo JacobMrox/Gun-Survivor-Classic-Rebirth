@@ -240,6 +240,9 @@
     <ClCompile Include="survivor_fix\features\zombie\zombie_world_pc.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
+    <ClCompile Include="survivor_fix\features\tyrant.cpp">
+      <Filter>Survivor Fixes</Filter>
+    </ClCompile>
     <ClCompile Include="survivor_fix\features\zombie_life.cpp">
       <Filter>Survivor Fixes</Filter>
     </ClCompile>
@@ -412,6 +415,9 @@
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\stumble_logic.h">
+      <Filter>Survivor Fixes</Filter>
+    </ClInclude>
+    <ClInclude Include="survivor_fix\ps1\tyrant_logic.h">
       <Filter>Survivor Fixes</Filter>
     </ClInclude>
     <ClInclude Include="survivor_fix\ps1\wake_view_logic.h">

@@ -261,6 +261,7 @@ void ResetZombieRoom() {
   ResetDeaths();
   ResetBloodRoom();
   ResetPoseRoom();
+  tyrant::Reset();
   // nativeSaved is not destroyed here: an in-flight native phase still owns its restoration.
 }
 

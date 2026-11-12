@@ -363,7 +363,7 @@ void CrowDeadFall(void* s) {
 
 int __fastcall MapAnimDetour(void* s, void* edx, int request) {
   if (nativeOnlyUpdate) {
-    const int native = g_mapAnim(s, edx, request);
+    int native = g_mapAnim(s, edx, request);
     // Also in the updates without enemy logic (messages, picking up an item) the body stays in the PS1 death clip:
     // the PC mapper would choose its own (07, standing) and the corpse would get up for a moment (picking
     // up the key in 08/01).
@@ -371,11 +371,13 @@ int __fastcall MapAnimDetour(void* s, void* edx, int request) {
     if (g_config.ps1ZombieDeath && held != g_entries.end() && held->second.phase == Phase::Death) {
       return SelectorOf(held->second);
     }
+    tyrant::Map(s, request, native);  // Mr. X: PS1 death clip, walk clip by travel
     return CrowAnimMap(s, request, CerberusDeathMap(s, request, CerberusSleepMap(s, request, native, false)));
   }
   request = HitMapRequest(s, request);  // hit without PC reaction: the request from before
   g_blendModel = nullptr;  // the PS1 blend applies only to the application of this request
-  const int native = ApplyPendingBlend(s, ApplyBiteClip(s, request, ApplyWalkHold(s, request, MapAnimInner(s, edx, request))));
+  int native = ApplyPendingBlend(s, ApplyBiteClip(s, request, ApplyWalkHold(s, request, MapAnimInner(s, edx, request))));
+  tyrant::Map(s, request, native);  // Mr. X: PS1 death clip, walk clip by travel
   return CrowAnimMap(s, request, CerberusDeathMap(s, request, CerberusSleepMap(s, request, native)));
 }
 
@@ -419,6 +421,10 @@ void HoldHeading(void* s, Entry& e) {
 
 int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   const auto caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
+  // Mr. X (types 22/23): one travel sample per gameplay update, before the enemy logic (the physics
+  // applied the previous update's movement). The suspend/resume calls of 0043D2F0/0043D340 are not
+  // ticks and would add a second, empty sample to the same frame.
+  if (caller == game::kWorldEnemyUpdateReturn) tyrant::BeginUpdate(s);
   // The blood on hit (0043AC86) is created inside 0043A8A0: zombie_blood reads S from here.
   struct BloodScope {
     BloodScope(void* s) { SetBloodSubject(s); }

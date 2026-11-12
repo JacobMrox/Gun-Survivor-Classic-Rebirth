@@ -36,6 +36,14 @@ void WorldBeforeQuery(void* c, int index);
 void WorldBridgeReady(bool ready);
 }  // namespace zombie
 
+// Mr. X (tyrant.cpp): PC types 22/23 get the PS1 walk/idle choice from the travel the native physics
+// produced, and the PS1 death clip 9 (ps1/tyrant_logic.h). No movement, collision or attack is replaced.
+namespace tyrant {
+void BeginUpdate(void* s);
+void Map(void* s, int request, int& result);
+void Reset();
+}  // namespace tyrant
+
 // Start of a zombie's life (zombie_life.cpp): the native initialisation of S (4361B0 -> 436B04).
 bool InstallZombieLife();
 
@@ -175,6 +183,7 @@ bool PlayerDying();
 bool PlayerInvincible();
 
 // PS1 zombies (zombie/): stumble, bite, hits, death, pose, blood, push, chase, walk.
+// Mr. X (tyrant.cpp) rides the same two hooks.
 bool InstallZombies();
 
 }  // namespace sf::features
