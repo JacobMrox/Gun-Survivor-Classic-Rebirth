@@ -51,6 +51,9 @@ bool __cdecl RunTitleFade(){
     frame=timeline.Advance(now.QuadPart-start.QuadPart,frequency.QuadPart);
     SurvivorPc_SetTitleTransition(frame.brightness,frame.flash);
     if(!SurvivorPc_PresentHeldFrame()){ok=false;break;}
+    // EndScene (and with it Ds4Tick) does not run inside this loop, so the pad is serviced here: the
+    // flash pulse ends normally instead of holding the last report until the fade is over.
+    Ds4Tick();
     ++presented;
   }
   SurvivorPc_EndTitleTransition();

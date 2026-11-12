@@ -640,9 +640,106 @@ void Ds4OnScreenFlash() {
   g_lastFlashAt = GetTickCount();
 }
 
-void Ds4Tick() {
-  if (!g_installed) return;
+// ---- XInput rumble ----------------------------------------------------------------------------
+// A GameSir (or any other pad the game sees as XInput) never reads the DS4's HID output report, so the
+// same mix is mirrored to its motors. Nothing here depends on a DualShock 4 being attached.
+using XInputGetStateFn = DWORD(WINAPI*)(DWORD, void*);
+using XInputSetStateFn = DWORD(WINAPI*)(DWORD, void*);
+struct XVibration {
+  WORD left;
+  WORD right;
+};
+struct XGamepad {
+  WORD buttons;
+  BYTE leftTrigger, rightTrigger;
+  SHORT thumbLX, thumbLY, thumbRX, thumbRY;
+};
+struct XState {
+  DWORD packet;
+  XGamepad pad;
+};
+XInputGetStateFn g_xiGetState = nullptr;
+XInputSetStateFn g_xiSetState = nullptr;
+bool g_xiLoaded = false;
+bool g_xiPad[4] = {};
+DWORD g_xiScanAt = 0;
+DWORD g_xiSentAt = 0;
+bool g_xiStopped = true;
+
+void LoadXInputRumble() {
+  if (g_xiLoaded) return;
+  g_xiLoaded = true;
+  static const wchar_t* const kNames[] = {L"xinput1_4.dll", L"xinput1_3.dll", L"xinput1_2.dll",
+                                          L"xinput9_1_0.dll"};
+  for (const wchar_t* name : kNames) {
+    HMODULE module = GetModuleHandleW(name);
+    if (!module) module = LoadLibraryW(name);
+    if (!module) continue;
+    g_xiSetState = reinterpret_cast<XInputSetStateFn>(GetProcAddress(module, "XInputSetState"));
+    g_xiGetState = reinterpret_cast<XInputGetStateFn>(GetProcAddress(module, "XInputGetState"));
+    if (!g_xiSetState) continue;
+    Log("XInput: rumble through %ls", name);
+    return;
+  }
+  Log("XInput: no vibration entry point found; only the DualShock 4 rumbles");
+}
+
+void XInputRumbleTick(const ds4::Rumble& rumble) {
+  LoadXInputRumble();
+  if (!g_xiSetState) return;
   const DWORD now = GetTickCount();
+  const ds4::MotorLevels motors = ds4::XInputMotors(rumble);
+  if (!motors.left && !motors.right) {
+    if (g_xiStopped) return;  // the motors are already off: one zero report is enough
+    g_xiStopped = true;
+  } else {
+    if (now - g_xiSentAt < 25) return;  // the bursts decay at the same 25 Hz the DS4 report runs at
+    g_xiStopped = false;
+  }
+  g_xiSentAt = now;
+  if (now - g_xiScanAt >= 1000) {
+    g_xiScanAt = now;
+    for (DWORD slot = 0; slot < 4; ++slot) {
+      if (!g_xiGetState) {
+        g_xiPad[slot] = true;  // no way to ask: the SetState call on an empty slot is harmless
+        continue;
+      }
+      XState state = {};
+      g_xiPad[slot] = g_xiGetState(slot, &state) == ERROR_SUCCESS;
+    }
+  }
+  XVibration vibration = {motors.left, motors.right};
+  for (DWORD slot = 0; slot < 4; ++slot) {
+    if (g_xiPad[slot]) g_xiSetState(slot, &vibration);
+  }
+}
+
+// The mix both pads receive; the DS4 output report and the XInput motors read it every tick.
+ds4::Rumble CurrentRumble(DWORD now) {
+  ds4::Rumble rumble{0, 0};
+  if (!sf::g_config.ds4 || !sf::g_config.ds4Rumble) return rumble;
+  // A shot is a short sharp burst; taking damage is a longer, stronger one. Both decay to zero, so the
+  // next report simply stops the motors.
+  const uint8_t shotWeak = ds4::RumbleLevel(now - g_lastShotAt, 120, 140);
+  const uint8_t shotStrong = ds4::RumbleLevel(now - g_lastShotAt, 120, 90);
+  const uint8_t hit = ds4::RumbleLevel(now - g_lastDamageAt, 300, 210);
+  // The title flash is one strong pulse, not a bed under the whole fade.
+  const uint8_t flashWeak = ds4::RumbleLevel(now - g_lastFlashAt, 180, 40);
+  const uint8_t flashStrong = ds4::RumbleLevel(now - g_lastFlashAt, 180, 190);
+  uint8_t weak = shotWeak > hit / 3 ? shotWeak : static_cast<uint8_t>(hit / 3);
+  if (flashWeak > weak) weak = flashWeak;
+  uint8_t strong = shotStrong > hit ? shotStrong : hit;
+  if (flashStrong > strong) strong = flashStrong;
+  rumble.weak = weak;
+  rumble.strong = strong;
+  return rumble;
+}
+
+void Ds4Tick() {
+  const DWORD now = GetTickCount();
+  // Before the DS4 check: an XInput pad rumbles even when no DualShock 4 is attached.
+  XInputRumbleTick(CurrentRumble(now));
+  if (!g_installed) return;
   if (g_write == INVALID_HANDLE_VALUE && now - g_lastScan >= kScanIntervalMs) {
     g_lastScan = now;
     const bool opened = OpenController();
@@ -674,24 +771,7 @@ void Ds4Tick() {
       const ds4::Pulse pulse = ds4::HealthPulse(health);
       color = ds4::ScaledColor(pulse, ds4::BreathLevel(pulse, now - g_lightStart));
     }
-    ds4::Rumble rumble{0, 0};
-    if (sf::g_config.ds4Rumble) {
-      // A shot is a short sharp burst; taking damage is a longer, stronger one. Both decay
-      // to zero, so the next 25 Hz report simply stops the motors.
-      const uint8_t shotWeak = ds4::RumbleLevel(now - g_lastShotAt, 120, 140);
-      const uint8_t shotStrong = ds4::RumbleLevel(now - g_lastShotAt, 120, 90);
-      const uint8_t hit = ds4::RumbleLevel(now - g_lastDamageAt, 300, 210);
-      // The title flash is a short, softer pulse than a hit.
-      const uint8_t flashWeak = ds4::RumbleLevel(now - g_lastFlashAt, 260, 70);
-      const uint8_t flashStrong = ds4::RumbleLevel(now - g_lastFlashAt, 260, 130);
-      uint8_t weak = shotWeak > hit / 3 ? shotWeak : static_cast<uint8_t>(hit / 3);
-      if (flashWeak > weak) weak = flashWeak;
-      uint8_t strong = shotStrong > hit ? shotStrong : hit;
-      if (flashStrong > strong) strong = flashStrong;
-      rumble.weak = weak;
-      rumble.strong = strong;
-    }
-    if (!SendLight(color, rumble)) {
+    if (!SendLight(color, CurrentRumble(now))) {
       // Keep the input handle: only the lightbar needs the output path, and a pad held by another
       // program can often still be read.
       static DWORD lastFailureLog = 0;

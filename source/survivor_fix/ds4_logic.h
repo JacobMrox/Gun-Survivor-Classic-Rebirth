@@ -83,6 +83,15 @@ struct Rumble {
   uint8_t weak, strong;
 };
 
+// XInput: the left motor is the low-frequency (strong) one and the right the high-frequency (weak) one.
+// 257 = 65535 / 255 carries the 0-255 levels into the 0-65535 motor range.
+struct MotorLevels {
+  uint16_t left, right;
+};
+constexpr MotorLevels XInputMotors(Rumble rumble) {
+  return {static_cast<uint16_t>(rumble.strong * 257u), static_cast<uint16_t>(rumble.weak * 257u)};
+}
+
 // A burst decays linearly and is silent once its duration has passed, so a 25 Hz writer needs no
 // stop event: the next light report simply carries zero motors.
 constexpr uint8_t RumbleLevel(uint32_t elapsedMs, uint32_t durationMs, uint8_t peak) {

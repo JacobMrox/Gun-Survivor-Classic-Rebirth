@@ -17,6 +17,14 @@ constexpr bool IsPcZombie(int type) {
   return false;
 }
 
+// PC 00436E40 switches on the actor type and has no case for 07, so every request left the previous
+// selector in place: the extra zombie kept its idle clip while the PS1 brain moved it (the slide), and
+// the bite clips never resolved. The mod's 07 spawn case is a copy of the type 01 block, so 07 carries
+// the type 01 clip set: its animation requests are mapped with 01, and the type is restored afterwards.
+constexpr int kZombieAliasSource = 7;
+constexpr int kZombieAliasTarget = 1;
+constexpr int MapAnimType(int type) { return type == kZombieAliasSource ? kZombieAliasTarget : type; }
+
 constexpr bool SpecialZombieWalk(int type) { return type == 9 || type == 10; }
 
 // The highest selector required by the shared phases is 0x25; the special walks end at 0x29.

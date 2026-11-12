@@ -153,7 +153,14 @@ bool RollBackFall(void* s, Entry& e) {
 }
 
 int MapAnimInner(void* s, void* edx, int request) {
+  // Map with the type the PC mapper knows: 07 has no case of its own, and the copy of the type 01 case
+  // it spawns through means its clips are the type 01 set.
+  int* type = game::Field<int>(s, game::S::kType);
+  const int original = type ? *type : -1;
+  const int mapped = ps1::MapAnimType(original);
+  if (type && mapped != original) *type = mapped;
   int result = g_mapAnim(s, edx, request);
+  if (type && mapped != original) *type = original;
   if (!g_config.ps1ZombieStumble && !g_config.ps1ZombieBackFall && !g_config.ps1ZombieNavigation &&
       !g_config.ps1ZombieBite && !g_config.ps1ZombieDeath) {
     return result;
