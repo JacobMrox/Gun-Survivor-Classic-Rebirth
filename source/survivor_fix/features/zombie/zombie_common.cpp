@@ -434,7 +434,9 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   // and world (restaurant 08/00: the zombies walked and bit during the window cut-scene).
   if (!NativeAiRuns(s)) {
     NativeOnly nativeOnly;
-    return g_updateEnemy(s, edx);
+    const int result = g_updateEnemy(s, edx);
+    tyrant::Finish(s);  // the Mr. X steer aim point must not outlive an inactive update
+    return result;
   }
   // 0043D2F0/0043D340 call this function for suspend/resume without a world tick.
   // Their native side effects are kept, but navigation, phases, cooldowns and the
@@ -504,6 +506,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   UpdateBiteSequence(s);
   SeparateZombie(s);
   ScaleWalk(s);
+  tyrant::Finish(s);  // Mr. X: the steer heading replaces the enemy logic's turn
   if (SurvivorPc_DynamicModelShadows() || ps1::IsPcZombie(game::Read<int>(s, game::S::kType)) ||
       (g_config.lethalZombieHeadshots && IsHeadshotZombie(game::Read<int>(s, game::S::kType)))) {
     static const Entry kNoEntry;

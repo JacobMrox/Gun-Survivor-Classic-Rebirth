@@ -40,6 +40,38 @@ int main() {
   CHECK(TyrantWalkClipSpeed(6.0f) == 0.75f);
   CHECK(TyrantWalkClipSpeed(200.0f) == 9.0f);
   CHECK(kTyrantIdleSpeed == 2.0f);
+  // WalkStep: the stride and the charge roll are gated by the distance (3001 / 6001) and 25%.
+  CHECK(!TyrantStriding(3000.0f));
+  CHECK(TyrantStriding(3001.0f));
+  CHECK(TyrantStep(false) == 26.0f);
+  CHECK(TyrantStep(true) == 52.0f);
+  CHECK(TyrantResetsCharge(3001.0f));
+  CHECK(!TyrantResetsCharge(3000.0f));
+  CHECK(TyrantShouldCharge(false, 5000.0f, 24, true));
+  CHECK(!TyrantShouldCharge(false, 5000.0f, 25, true));
+  CHECK(!TyrantShouldCharge(true, 5000.0f, 0, true));
+  CHECK(!TyrantShouldCharge(false, 6001.0f, 0, true));
+  CHECK(!TyrantShouldCharge(false, 5000.0f, 0, false));
+  // Sidestep: the sign of the line side picks the swing, one per run-past.
+  CHECK(TyrantSideFromLineSide(1.0f) == 1);
+  CHECK(TyrantSideFromLineSide(-1.0f) == 2);
+  CHECK(TyrantSideFromLineSide(0.0f) == 0);
+  CHECK(TyrantSideSelector(1) == 5);
+  CHECK(TyrantSideSelector(2) == 0x15);
+  CHECK(TyrantSideSelector(0) == 0);
+  CHECK(TyrantCanSidestep(false, 2000.0f, true, true, 1));
+  CHECK(TyrantCanSidestep(false, 2000.0f, true, true, 2));
+  CHECK(!TyrantCanSidestep(true, 2000.0f, true, true, 1));
+  CHECK(!TyrantCanSidestep(false, 3001.0f, true, true, 1));
+  CHECK(!TyrantCanSidestep(false, 2000.0f, false, true, 1));
+  CHECK(!TyrantCanSidestep(false, 2000.0f, true, false, 1));
+  CHECK(!TyrantCanSidestep(false, 2000.0f, true, true, 0));
+  // Facing gate: 60 degrees half angle.
+  CHECK(TyrantFacing(0.0f, 1.0f, 0.0f, 10.0f));
+  CHECK(TyrantFacing(0.0f, 1.0f, 5.0f, 10.0f));
+  CHECK(!TyrantFacing(0.0f, 1.0f, 0.0f, -10.0f));
+  CHECK(!TyrantFacing(0.0f, 1.0f, 10.0f, 1.0f));
+  CHECK(!TyrantFacing(0.0f, 0.0f, 1.0f, 0.0f));
   if (failures) return 1;
   std::puts("PASS: Mr. X walk, standstill and death clip rules");
   return 0;
