@@ -894,6 +894,9 @@ void DebugSpawnChoiceCycle(int delta) {
 
 bool DebugSpawnChosen() {
   const SpawnChoice& choice = kDebugSpawnChoices[g_spawnChoice];
+  if (!choice.item && !DebugSpawnTypeHasModel(choice.type)) {
+    Log("DebugSpawn: type %02X has no NAB model in this install; it may not draw", choice.type);
+  }
   return choice.item ? DebugSpawnItemInFront() : DebugSpawnEntity(choice.type);
 }
 

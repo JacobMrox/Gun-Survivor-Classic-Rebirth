@@ -63,12 +63,27 @@ int main() {
   assert(kDebugSpawnZombie >= 0 && kDebugSpawnZombieAlt >= 0);
   assert(kDebugSpawnCerberus == 11 && kDebugSpawnCrow == 12);
   // The utility menu has one spawn row: LEFT/RIGHT scrolls this table.
-  assert(kDebugSpawnChoiceCount == 4);
-  assert(std::strcmp(kDebugSpawnChoices[0].name, "ZOMBIE") == 0);
-  assert(kDebugSpawnChoices[0].type == kDebugSpawnZombie && !kDebugSpawnChoices[0].item);
-  assert(kDebugSpawnChoices[1].type == kDebugSpawnCerberus);
-  assert(kDebugSpawnChoices[2].type == kDebugSpawnCrow);
-  assert(kDebugSpawnChoices[3].item && kDebugSpawnChoices[3].type < 0);
+  // One entry per actor type 0..0x25, in id order, with the item last: the SPAWN row scrolls the
+  // same table the spawner uses, so a type is never silently unreachable.
+  assert(kDebugSpawnChoiceCount == kDebugSpawnMaxType + 2);
+  for (int type = 0; type <= kDebugSpawnMaxType; ++type) {
+    assert(kDebugSpawnChoices[type].type == type);
+    assert(!kDebugSpawnChoices[type].item);
+    assert(kDebugSpawnChoices[type].name && kDebugSpawnChoices[type].name[0] != '\0');
+  }
+  assert(kDebugSpawnChoices[kDebugSpawnMaxType + 1].item);
+  assert(kDebugSpawnChoices[kDebugSpawnMaxType + 1].type < 0);
+  assert(std::strcmp(kDebugSpawnChoices[kDebugSpawnZombie].name, "ZOMBIE") == 0);
+  assert(std::strcmp(kDebugSpawnChoices[kDebugSpawnCerberus].name, "DOG") == 0);
+  assert(std::strcmp(kDebugSpawnChoices[kDebugSpawnCrow].name, "CROW") == 0);
+  // The ids with no Nab model in this install are flagged, and only those.
+  for (int type = 0; type <= kDebugSpawnMaxType; ++type) {
+    const bool starred = std::strchr(kDebugSpawnChoices[type].name, '*') != nullptr;
+    assert(starred == !DebugSpawnTypeHasModel(type));
+  }
+  assert(!DebugSpawnTypeHasModel(3));
+  assert(!DebugSpawnTypeHasModel(21));
+  assert(DebugSpawnTypeHasModel(0) && DebugSpawnTypeHasModel(1) && DebugSpawnTypeHasModel(37));
   assert(DebugSpawnChoiceWrap(-1) == kDebugSpawnChoiceCount - 1);
   assert(DebugSpawnChoiceWrap(kDebugSpawnChoiceCount) == 0);
   assert(DebugSpawnChoiceWrap(2) == 2);

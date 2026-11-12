@@ -40,27 +40,77 @@ struct SpawnPoint {
   float x = 0.0f, y = 0.0f, z = 0.0f;
 };
 constexpr float kDebugSpawnDistance = 400.0f;
-// Types verified in the room tables: 0..10 are the zombie models (ENEM00..ENEM10), 11 is Cerberus
-// (the type-11 branch of 0043A8A0) and 12 the crow (ps1::crow::kCrowType).
+// The room spawner 00434850 accepts actor types 0..0x25. The game's nab folder ships one model per
+// type (ENEM00..ENEM37); 03, 21, 24, 25, 27 and 29 have no NAB file in this install, so those
+// entries carry a star and the menu logs a warning for them. Whether those ids are the human/NPC
+// actors that would use an HMD model instead is not verified: the Resource folder only holds the
+// DEBUGHxx.HMD debug humans, so they are offered by id rather than guessed at.
 constexpr int kDebugSpawnZombie = 1;
 constexpr int kDebugSpawnZombieAlt = 5;
 constexpr int kDebugSpawnCerberus = 11;
 constexpr int kDebugSpawnCrow = 12;
-// The utility menu has one spawn row: LEFT/RIGHT scrolls this table and confirm places the entry,
-// so the menu keeps one line instead of one line per actor (the tables and the tests share it).
+constexpr int kDebugSpawnMaxType = 0x25;
+
 struct SpawnChoice {
   const char* name;
   int type;   // actor type for 00434850; ignored when item
   bool item;
 };
+
 inline constexpr SpawnChoice kDebugSpawnChoices[] = {
-    {"ZOMBIE", kDebugSpawnZombie, false},
-    {"DOG", kDebugSpawnCerberus, false},
-    {"CROW", kDebugSpawnCrow, false},
+    {"ENEM00", 0, false},
+    {"ZOMBIE", 1, false},
+    {"ENEM02", 2, false},
+    {"ENEM03*", 3, false},
+    {"ENEM04", 4, false},
+    {"ENEM05", 5, false},
+    {"ENEM06", 6, false},
+    {"ENEM07", 7, false},
+    {"ENEM08", 8, false},
+    {"ENEM09", 9, false},
+    {"ENEM10", 10, false},
+    {"DOG", 11, false},
+    {"CROW", 12, false},
+    {"ENEM13", 13, false},
+    {"ENEM14", 14, false},
+    {"ENEM15", 15, false},
+    {"ENEM16", 16, false},
+    {"ENEM17", 17, false},
+    {"ENEM18", 18, false},
+    {"ENEM19", 19, false},
+    {"ENEM20", 20, false},
+    {"ENEM21*", 21, false},
+    {"ENEM22", 22, false},
+    {"ENEM23", 23, false},
+    {"ENEM24*", 24, false},
+    {"ENEM25*", 25, false},
+    {"ENEM26", 26, false},
+    {"ENEM27*", 27, false},
+    {"ENEM28", 28, false},
+    {"ENEM29*", 29, false},
+    {"ENEM30", 30, false},
+    {"ENEM31", 31, false},
+    {"ENEM32", 32, false},
+    {"ENEM33", 33, false},
+    {"ENEM34", 34, false},
+    {"ENEM35", 35, false},
+    {"ENEM36", 36, false},
+    {"ENEM37", 37, false},
     {"ITEM", -1, true},
 };
+
 inline constexpr int kDebugSpawnChoiceCount =
     static_cast<int>(sizeof(kDebugSpawnChoices) / sizeof(kDebugSpawnChoices[0]));
+
+// Actor ids whose model file is absent from nab in this install.
+inline constexpr int kDebugSpawnNoModelTypes[] = {3, 21, 24, 25, 27, 29};
+
+constexpr bool DebugSpawnTypeHasModel(int type) {
+  for (int missing : kDebugSpawnNoModelTypes) {
+    if (missing == type) return false;
+  }
+  return true;
+}
 constexpr int DebugSpawnChoiceWrap(int index) {
   if (index < 0) return kDebugSpawnChoiceCount - 1;
   return index >= kDebugSpawnChoiceCount ? 0 : index;

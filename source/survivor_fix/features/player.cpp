@@ -1160,7 +1160,7 @@ bool DebugSpawnEntity(int type) {
     Log("DebugSpawn: no room enemy manager (type %d not spawned)", type);
     return false;
   }
-  if (type < 0 || type > 0x25) return false;
+  if (type < 0 || type > kDebugSpawnMaxType) return false;
   float position[3], forward[2];
   if (!CurrentPlayerPose(position, forward)) {
     Log("DebugSpawn: the player object is unavailable (type %d not spawned)", type);
