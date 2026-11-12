@@ -63,6 +63,9 @@ bool g_scanLogged = false;
 bool g_writeErrorLogged = false;
 bool g_readerStarted = false;
 int g_candidatesLogged = 0;  // a handful of lines per process, never one per scan
+char g_candidatePaths[4][1024] = {};  // every Sony interface of the pad, for feature reports
+int g_candidateCount = 0;
+bool g_speakerRoutingTried = false;
 
 // ---- input ------------------------------------------------------------------------------------
 // The reader thread blocks on ReadFile and publishes the newest PadState; the DirectInput hook
@@ -203,11 +206,39 @@ const char* PathTail(const char* path) {
   return tail ? tail + 1 : path;
 }
 
+// A wired DualShock 4 v2 sends its USB audio to the headphone jack. Feature report 0xE0 00 03 moves
+// it to the built-in speaker (psdevwiki, DS4-USB); without it the pad's audio device plays into an
+// empty jack and the speaker stays silent. The feature lives on the pad's audio/config collection,
+// which on USB is a different interface from the gamepad one, so every Sony interface is tried.
+bool RouteAudioToSpeaker() {
+  uint8_t report[3] = {0xE0, 0x00, 0x03};
+  if (g_write != INVALID_HANDLE_VALUE && HidD_SetFeature(g_write, report, sizeof report)) {
+    Log("DS4: USB audio routed to the built-in speaker (feature 0xE0)");
+    return true;
+  }
+  for (int i = 0; i < g_candidateCount; ++i) {
+    HANDLE handle = CreateFileA(g_candidatePaths[i], GENERIC_READ | GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0,
+                                nullptr);
+    if (handle == INVALID_HANDLE_VALUE) continue;
+    const bool ok = HidD_SetFeature(handle, report, sizeof report) != FALSE;
+    CloseHandle(handle);
+    if (ok) {
+      Log("DS4: USB audio routed to the built-in speaker (feature 0xE0)");
+      return true;
+    }
+  }
+  Log("DS4: speaker routing feature 0xE0 was not accepted (%lu); audio may stay on the jack",
+      GetLastError());
+  return false;
+}
+
 bool OpenController() {
   GUID hid = {};
   HidD_GetHidGuid(&hid);
   HDEVINFO set = SetupDiGetClassDevsA(&hid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
   if (set == INVALID_HANDLE_VALUE) return false;
+  g_candidateCount = 0;
   Candidate best;
   for (DWORD index = 0;; ++index) {
     SP_DEVICE_INTERFACE_DATA iface = {};
@@ -271,7 +302,18 @@ bool OpenController() {
           candidate.pid, candidate.outputLength, candidate.inputLength,
           candidate.score == 3 ? "gamepad" : "other collection, not driven");
     }
-    if (candidate.score > best.score) best = candidate;
+    if (g_candidateCount < 4) {
+      std::strncpy(g_candidatePaths[g_candidateCount], candidate.path,
+                   sizeof g_candidatePaths[0] - 1);
+      ++g_candidateCount;
+    }
+    // Both links can be up at once (cable plugged in while Bluetooth stays paired). USB is the one
+    // with an audio endpoint and the small report pair, so it wins a tie.
+    if (candidate.score > best.score ||
+        (candidate.score == best.score && best.found && IsBluetoothPath(best.path) &&
+         !IsBluetoothPath(candidate.path))) {
+      best = candidate;
+    }
   }
   SetupDiDestroyDeviceInfoList(set);
   if (!best.found) return false;
@@ -299,6 +341,10 @@ bool OpenController() {
   g_inputLength = best.inputLength;
   g_writeErrorLogged = false;
   g_dualSense = best.dualSense;
+  if (!g_bluetooth && !g_speakerRoutingTried) {
+    g_speakerRoutingTried = true;
+    RouteAudioToSpeaker();
+  }
   static uint16_t loggedOut = 0;
   static uint16_t loggedIn = 0;
   if (loggedOut != g_outputLength || loggedIn != g_inputLength) {
@@ -386,64 +432,97 @@ WAVEFORMATEX* g_format = nullptr;
 UINT32 g_audioFrames = 0;
 bool g_audioStarted = false;
 bool g_audioFloat = false;
-bool g_audioTried = false;
-bool g_audioMissing = false;
+int g_audioAttempts = 0;
+DWORD g_lastAudioAttempt = 0;
 std::atomic<bool> g_shotRequested{false};
 uint32_t g_burstFrame = 0;
 uint32_t g_burstLength = 0;
 
-IMMDevice* FindControllerSpeaker(IMMDeviceEnumerator* enumerator) {
-  IMMDeviceCollection* collection = nullptr;
-  if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &collection))) return nullptr;
-  UINT count = 0;
-  collection->GetCount(&count);
-  IMMDevice* found = nullptr;
-  for (UINT i = 0; i < count; ++i) {
-    IMMDevice* device = nullptr;
-    if (FAILED(collection->Item(i, &device))) continue;
-    IPropertyStore* store = nullptr;
-    PROPVARIANT name;
-    PropVariantInit(&name);
-    const bool named = SUCCEEDED(device->OpenPropertyStore(STGM_READ, &store)) &&
-                       SUCCEEDED(store->GetValue(PKEY_Device_FriendlyName, &name)) &&
-                       name.vt == VT_LPWSTR && name.pwszVal &&
-                       (std::wcsstr(name.pwszVal, L"Wireless Controller") ||
-                        std::wcsstr(name.pwszVal, L"DUALSHOCK") ||
-                        std::wcsstr(name.pwszVal, L"DualShock"));
-    if (named && !found) {
-      found = device;
-    } else if (name.vt == VT_LPWSTR && name.pwszVal && count <= 6) {
-      // Only a handful of endpoints: showing their names once makes a missing match diagnosable.
-      char text[96] = {};
-      WideCharToMultiByte(CP_ACP, 0, name.pwszVal, -1, text, sizeof text, nullptr, nullptr);
-      Log("DS4: render endpoint '%s'", text);
-    }
-    PropVariantClear(&name);
-    if (store) store->Release();
-    if (found != device) device->Release();
-  }
-  collection->Release();
-  return found;
+const char* EndpointStateName(DWORD state) {
+  if (state & DEVICE_STATE_ACTIVE) return "active";
+  if (state & DEVICE_STATE_DISABLED) return "disabled";
+  if (state & DEVICE_STATE_UNPLUGGED) return "unplugged";
+  if (state & DEVICE_STATE_NOTPRESENT) return "not present";
+  return "unknown";
 }
 
-bool OpenSpeaker() {
+bool IsControllerSpeakerName(const wchar_t* name) {
+  if (!name) return false;
+  if (sf::g_config.ds4SpeakerDevice[0]) {
+    wchar_t wanted[64] = {};
+    MultiByteToWideChar(CP_ACP, 0, sf::g_config.ds4SpeakerDevice, -1, wanted,
+                        static_cast<int>(sizeof wanted / sizeof wanted[0]));
+    return wanted[0] && std::wcsstr(name, wanted) != nullptr;
+  }
+  return std::wcsstr(name, L"Wireless Controller") != nullptr ||
+         std::wcsstr(name, L"DUALSHOCK") != nullptr ||
+         std::wcsstr(name, L"DualShock") != nullptr ||
+         std::wcsstr(name, L"DualSense") != nullptr;
+}
+
+IMMDevice* FindControllerSpeaker(IMMDeviceEnumerator* enumerator, bool verbose) {
+  // A disabled or unplugged endpoint still proves the device exists; only an active one can play.
+  const DWORD states[] = {DEVICE_STATE_ACTIVE, DEVICE_STATE_DISABLED, DEVICE_STATE_UNPLUGGED};
+  IMMDevice* active = nullptr;
+  for (DWORD state : states) {
+    IMMDeviceCollection* collection = nullptr;
+    if (FAILED(enumerator->EnumAudioEndpoints(eRender, state, &collection))) continue;
+    UINT count = 0;
+    collection->GetCount(&count);
+    for (UINT i = 0; i < count; ++i) {
+      IMMDevice* device = nullptr;
+      if (FAILED(collection->Item(i, &device))) continue;
+      IPropertyStore* store = nullptr;
+      PROPVARIANT name;
+      PropVariantInit(&name);
+      const bool read = SUCCEEDED(device->OpenPropertyStore(STGM_READ, &store)) &&
+                        SUCCEEDED(store->GetValue(PKEY_Device_FriendlyName, &name)) &&
+                        name.vt == VT_LPWSTR && name.pwszVal;
+      if (read) {
+        if (verbose) {
+          char text[96] = {};
+          WideCharToMultiByte(CP_ACP, 0, name.pwszVal, -1, text, sizeof text, nullptr, nullptr);
+          Log("DS4: render endpoint '%s' (%s)", text, EndpointStateName(state));
+        }
+        if (IsControllerSpeakerName(name.pwszVal)) {
+          if (!(state & DEVICE_STATE_ACTIVE)) {
+            Log("DS4: the controller endpoint is %s; enable it in Windows sound settings",
+                EndpointStateName(state));
+          } else if (!active) {
+            active = device;
+            device = nullptr;  // keep the reference
+          }
+        }
+      }
+      PropVariantClear(&name);
+      if (store) store->Release();
+      if (device) device->Release();
+    }
+    collection->Release();
+  }
+  return active;
+}
+
+bool OpenSpeaker(bool verbose) {
   if (g_audio) return true;
-  if (g_audioTried) return !g_audioMissing;
-  g_audioTried = true;
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);  // fails harmlessly if already initialised
   IMMDeviceEnumerator* enumerator = nullptr;
   if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                               IID_PPV_ARGS(&enumerator)))) {
-    g_audioMissing = true;
     Log("DS4: MMDeviceEnumerator unavailable; speaker silent");
     return false;
   }
-  IMMDevice* device = FindControllerSpeaker(enumerator);
+  IMMDevice* device = FindControllerSpeaker(enumerator, verbose);
   enumerator->Release();
   if (!device) {
-    g_audioMissing = true;
-    Log("DS4: no controller audio endpoint; speaker silent (USB v2 or the wireless adapter "
-        "exposes one, Bluetooth does not)");
+    if (g_bluetooth) {
+      // Windows has no audio path to a DualShock 4 over plain Bluetooth: the speaker needs the USB
+      // audio device a v2 pad (or Sony's wireless adapter) exposes.
+      Log("DS4: the pad is on Bluetooth, where Windows has no speaker path for a DualShock 4; "
+          "connect the cable to use the built-in speaker");
+    } else {
+      Log("DS4: no controller audio endpoint for this pad; speaker silent");
+    }
     return false;
   }
   IAudioClient* client = nullptr;
@@ -451,14 +530,12 @@ bool OpenSpeaker() {
                                              reinterpret_cast<void**>(&client));
   device->Release();
   if (FAILED(activated) || !client) {
-    g_audioMissing = true;
     Log("DS4: controller audio endpoint could not be activated (0x%08lX)", activated);
     return false;
   }
   WAVEFORMATEX* format = nullptr;
   if (FAILED(client->GetMixFormat(&format)) || !format) {
     client->Release();
-    g_audioMissing = true;
     Log("DS4: controller audio mix format unavailable; speaker silent");
     return false;
   }
@@ -467,7 +544,6 @@ bool OpenSpeaker() {
   if (FAILED(init) || FAILED(client->GetService(IID_PPV_ARGS(&render)))) {
     CoTaskMemFree(format);
     client->Release();
-    g_audioMissing = true;
     Log("DS4: controller audio stream could not start (0x%08lX); speaker silent", init);
     return false;
   }
@@ -502,9 +578,10 @@ void FillAudio(uint8_t* data, UINT32 frames) {
     g_burstFrame = 0;
     g_burstLength = rate * 16 / 100;  // 160 ms
   }
+  const float volume = static_cast<float>(sf::g_config.ds4SpeakerVolume) / 100.0f;
   for (UINT32 frame = 0; frame < frames; ++frame) {
     float sample = 0.0f;
-    if (g_burstFrame < g_burstLength) sample = GunshotSample(g_burstFrame++, rate);
+    if (g_burstFrame < g_burstLength) sample = GunshotSample(g_burstFrame++, rate) * volume;
     for (int channel = 0; channel < channels; ++channel) {
       const size_t index = static_cast<size_t>(frame) * static_cast<size_t>(channels) + channel;
       if (g_audioFloat) {
@@ -562,6 +639,11 @@ void Ds4Tick() {
       g_lightStart = now;
       g_lastLight = 0;
       g_scanLogged = false;
+      if (sf::g_config.ds4Speaker && !g_audio && g_audioAttempts < 3) {
+        ++g_audioAttempts;
+        g_lastAudioAttempt = now;
+        OpenSpeaker(g_audioAttempts == 1);
+      }
     } else if (!g_scanLogged) {
       g_scanLogged = true;
       Log("DS4: no controller found yet; it is picked up as soon as it is connected");
@@ -615,7 +697,6 @@ bool InstallDs4() {
     g_readerStarted = true;
     std::thread(ReaderLoop).detach();
   }
-  if (sf::g_config.ds4Speaker) OpenSpeaker();
   return true;
 }
 

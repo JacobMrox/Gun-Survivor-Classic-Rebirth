@@ -98,6 +98,11 @@ void LoadConfig(const char* iniPath) {
   c.ds4 = Read("DualShock4", true);
   c.ds4Speaker = Read("Ds4Speaker", true);
   c.ds4Rumble = Read("Ds4Rumble", true);
+  c.ds4SpeakerVolume = GetPrivateProfileIntA("SurvivorFix", "Ds4SpeakerVolume", 80, iniPath);
+  if (c.ds4SpeakerVolume < 0) c.ds4SpeakerVolume = 0;
+  if (c.ds4SpeakerVolume > 100) c.ds4SpeakerVolume = 100;
+  GetPrivateProfileStringA("SurvivorFix", "Ds4SpeakerDevice", "", c.ds4SpeakerDevice,
+                           sizeof(c.ds4SpeakerDevice), iniPath);
   c.lethalZombieHeadshots = GetPrivateProfileIntA("Fixes", "LethalZombieHeadshots", 0, iniPath) != 0;
   char uncensored[16] = {};
   GetPrivateProfileStringA("Fixes", "UncensoredHeadshots", "", uncensored, sizeof(uncensored), iniPath);

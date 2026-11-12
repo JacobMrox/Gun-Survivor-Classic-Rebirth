@@ -126,6 +126,10 @@ struct Config {
   bool ds4 = true;
   bool ds4Speaker = true;
   bool ds4Rumble = true;
+  // Controller speaker level, 0-100. Windows only exposes the DS4 speaker over USB.
+  int ds4SpeakerVolume = 80;
+  // Optional endpoint-name substring, for a pad Windows names oddly.
+  char ds4SpeakerDevice[64] = {};
 
   // Hidden switch, ini only: the configuration window never shows it. F2/F10 and the pad's
   // DebugMenu button stay inert until this is 1 in config.ini [SurvivorFix].
