@@ -2,8 +2,9 @@
 
 # Why
 
-First and foremost reason is that the Master "Gemini Classic Rebirth-DiscBirth/Loboto3" refused to do it.
-<img width="1033" height="712" alt="image" src="https://github.com/user-attachments/assets/2df7648c-7819-4fd3-a8da-bcd0c7a2a92c" />
+First and foremost reason is that the Master "Gemini Classic Rebirth-DiscBirth/Loboto3" refused to do it:
+<img width="606" height="247" alt="image" src="https://github.com/user-attachments/assets/7962745f-5dfc-4627-8eec-7f08545c6f5b" />
+
 
 ## English
 Biohazard: Gun Survivor (known in China as 惡靈古堡：生存遊戲 and internationally Resident Evil: Survivor) was released on PC exclusively in China and Taiwan, and that version has long been infamous for its instability, bugs, and poor technical implementation. On modern systems, the game is extremely difficult—if not impossible—to run properly due to outdated APIs, broken dependencies, and compatibility issues.
