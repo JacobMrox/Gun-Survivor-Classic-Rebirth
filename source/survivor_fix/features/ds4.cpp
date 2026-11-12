@@ -58,6 +58,7 @@ DWORD g_lastLight = 0;
 DWORD g_lastScan = 0;
 DWORD g_lastShotAt = 0;    // rumble bursts are timed from the game's own events
 DWORD g_lastDamageAt = 0;
+DWORD g_lastFlashAt = 0;
 int g_lastHealth = -1;
 bool g_scanLogged = false;
 bool g_writeErrorLogged = false;
@@ -629,6 +630,16 @@ void Ds4OnPlayerShot() {
   g_shotRequested.store(true);
 }
 
+void Ds4OnPlayerDamage() {
+  if (!g_installed) return;
+  g_lastDamageAt = GetTickCount();
+}
+
+void Ds4OnScreenFlash() {
+  if (!g_installed) return;
+  g_lastFlashAt = GetTickCount();
+}
+
 void Ds4Tick() {
   if (!g_installed) return;
   const DWORD now = GetTickCount();
@@ -670,8 +681,15 @@ void Ds4Tick() {
       const uint8_t shotWeak = ds4::RumbleLevel(now - g_lastShotAt, 120, 140);
       const uint8_t shotStrong = ds4::RumbleLevel(now - g_lastShotAt, 120, 90);
       const uint8_t hit = ds4::RumbleLevel(now - g_lastDamageAt, 300, 210);
-      rumble.weak = shotWeak > hit / 3 ? shotWeak : static_cast<uint8_t>(hit / 3);
-      rumble.strong = shotStrong > hit ? shotStrong : hit;
+      // The title flash is a short, softer pulse than a hit.
+      const uint8_t flashWeak = ds4::RumbleLevel(now - g_lastFlashAt, 260, 70);
+      const uint8_t flashStrong = ds4::RumbleLevel(now - g_lastFlashAt, 260, 130);
+      uint8_t weak = shotWeak > hit / 3 ? shotWeak : static_cast<uint8_t>(hit / 3);
+      if (flashWeak > weak) weak = flashWeak;
+      uint8_t strong = shotStrong > hit ? shotStrong : hit;
+      if (flashStrong > strong) strong = flashStrong;
+      rumble.weak = weak;
+      rumble.strong = strong;
     }
     if (!SendLight(color, rumble)) {
       // Keep the input handle: only the lightbar needs the output path, and a pad held by another

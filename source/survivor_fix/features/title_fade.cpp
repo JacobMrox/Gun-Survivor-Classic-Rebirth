@@ -33,6 +33,7 @@ bool __cdecl RunTitleFade(){
      frequency.QuadPart<1000||frequency.QuadPart>1000000000||
      !QueryPerformanceCounter(&start)||!SurvivorPc_BeginTitleTransition())return false;
   Log("TitleFade: begin original PS1 flash/fade; native 4779 ms wait replaced");
+  Ds4OnScreenFlash();  // the white flash is a rumble beat, as on the pad on the PS1
   // Confirmation runs after the native title draw and before EndScene/Present.
   // Finish that scene once to capture the confirmed title. Held-frame presents
   // then have their own balanced BeginScene/EndScene; no nested native scene.

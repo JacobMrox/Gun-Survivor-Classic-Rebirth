@@ -1198,7 +1198,7 @@ bool CloneSpawnCase(int from, int to) {
     if (other > start && (end == 0 || other < end)) end = other;
   }
   const size_t length = end > start ? static_cast<size_t>(end - start) : 0;
-  static const uint8_t kZombieHead[] = {0xD9, 0x5C, 0x24, 0x10};  // fst dword ptr [esp+10h]
+  static const uint8_t kZombieHead[] = {0xD9, 0x54, 0x24, 0x10};  // fst dword ptr [esp+10h]
   constexpr size_t kSetupCall = 0x89;
   constexpr size_t kRegisterCall = 0xC7;
   constexpr size_t kTailJump = 0xCE;

@@ -472,7 +472,7 @@ void UpdateBiteSequence(void* s) {
     }
     return;
   }
-  if (g_config.ps1DamageView && !g_seq.jolt.done) {
+  if (g_config.ps1DamageView && !g_seq.jolt.done && !PlayerInvincible()) {
     ps1::StepBiteJolt(g_seq.jolt);  // 800830F8 steps 0-2 and 5, one frame per update
     SetDamageViewJolt(g_seq.jolt.yawOff, g_seq.jolt.lookY);
   }

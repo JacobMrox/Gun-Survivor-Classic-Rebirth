@@ -76,9 +76,21 @@ void __fastcall AmmoUseDetour(void* stats, void* edx) {
   if (playerStats) ScreenFxOnPlayerShot();
 }
 void __fastcall DamageDetour(void* stats, void* edx, int damage) {
-  // Infinite health refills HP after the room tick; invincibility never lets the damage land.
-  const bool blocked = g_infiniteHealth.load() || g_invincible.load();
-  if (!UtilitySuppressDamage(blocked, IsPlayerStats(stats), damage)) g_damage(stats, edx, damage);
+  const bool player = IsPlayerStats(stats);
+  // Only invincibility refuses the hit: without the native call there is no health loss and, since
+  // the hit rumble is timed from this event, no damage rumble either.
+  if (UtilitySuppressDamage(g_invincible.load(), player, damage)) return;
+  g_damage(stats, edx, damage);
+  if (!player || damage <= 0) return;
+  Ds4OnPlayerDamage();
+  // Infinite health lets the hit land - the reaction and its rumble stay - and only puts the bar back,
+  // so health never reads lower and the death check never sees 0.
+  if (!g_infiniteHealth.load()) return;
+  void* live = *reinterpret_cast<void**>(game::kGameStats);
+  if (!live) return;
+  int* hp = game::Field<int>(live, game::kGameStatsHp);
+  const int restored = UtilityRestoredHealth(true, *hp);
+  if (restored != *hp) *hp = restored;
 }
 void __fastcall InventoryDrawDetour(void* menu, void* edx, int item, int amount,
                                     int variant, int row, int y, int x) {
@@ -671,6 +683,8 @@ void ToggleDebugMenuInternal() {
 }
 
 }  // namespace
+
+bool PlayerInvincible() { return g_invincible.load(); }
 
 int QuickSaveAfterRoomTick(void* gameObject, int nativeResult) {
   if (g_infiniteHealth.load()) {

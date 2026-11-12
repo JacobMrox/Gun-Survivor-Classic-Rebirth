@@ -160,11 +160,19 @@ bool InstallScreenFx();
 bool InstallDs4();
 void Ds4Tick();
 void Ds4OnPlayerShot();
+// A player hit landed (00463E70): times the hit rumble from the event, not from a health drop, so
+// INFINITE HEALTH still rumbles while INVINCIBLE, which never reaches the native call, does not.
+void Ds4OnPlayerDamage();
+// The title's white flash (New Game and the confirmed Load Game slot) drives one rumble beat.
+void Ds4OnScreenFlash();
 // The newest DualShock 4 input report, for the pad overlay in dinputhook.cpp. The DS4 is a
 // DirectInput pad, so the game never sees it without this.
 bool Ds4PadState(sf::pad::PadState* out);
 // The player is in PS1 state 3 (8008369C, Ps1PlayerDeath): no jolt or view rotation.
 bool PlayerDying();
+// The utility menu's INVINCIBLE switch: no player damage lands at all, so nothing shakes and no
+// rumble is timed.
+bool PlayerInvincible();
 
 // PS1 zombies (zombie/): stumble, bite, hits, death, pose, blood, push, chase, walk.
 bool InstallZombies();
