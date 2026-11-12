@@ -97,7 +97,9 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const float glyphH = 14.0f * scale, glyphW = glyphH * xComp;
     const float marginY = 18.0f * scale, marginX = marginY * xComp;
     const bool utility = sf::features::DebugMenuUtilityVisible();
-    const float boxW = 430.0f * scale;
+    // The jump list is short; the utility list shows the full "ENEMxx - Name" spawn label, so it
+    // gets a wider box than the 430 used for the room list.
+    const float boxW = (utility ? 600.0f : 430.0f) * scale;
     // The utility list has twelve rows; the box follows the row count so the current-room and
     // hint lines stay below the last entry.
     const float boxH = utility ? marginY * 2.0f + glyphH * 16.0f : 300.0f * scale;

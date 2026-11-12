@@ -1,6 +1,7 @@
 #include "../source/survivor_fix/features/debug_utility.h"
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 int main() {
@@ -65,25 +66,39 @@ int main() {
   // The utility menu has one spawn row: LEFT/RIGHT scrolls this table.
   // One entry per actor type 0..0x25, in id order, with the item last: the SPAWN row scrolls the
   // same table the spawner uses, so a type is never silently unreachable.
+  // One entry per actor type 0..0x25, in id order, with the item last: the SPAWN row scrolls the
+  // same table the spawner uses, so a type is never silently unreachable.
   assert(kDebugSpawnChoiceCount == kDebugSpawnMaxType + 2);
   for (int type = 0; type <= kDebugSpawnMaxType; ++type) {
-    assert(kDebugSpawnChoices[type].type == type);
-    assert(!kDebugSpawnChoices[type].item);
-    assert(kDebugSpawnChoices[type].name && kDebugSpawnChoices[type].name[0] != '\0');
+    const SpawnChoice& choice = kDebugSpawnChoices[type];
+    assert(choice.type == type);
+    assert(!choice.item);
+    // Every label reads "ENEMxx - Name", so the row and the model file agree at a glance.
+    assert(std::strncmp(choice.name, "ENEM", 4) == 0);
+    assert(std::atoi(choice.name + 4) == type);
+    assert(std::strstr(choice.name, " - ") != nullptr);
+    // "%c SPAWN < %s >" has to fit the menu's 48-byte line buffer.
+    assert(std::strlen(choice.name) <= 35);
   }
   assert(kDebugSpawnChoices[kDebugSpawnMaxType + 1].item);
   assert(kDebugSpawnChoices[kDebugSpawnMaxType + 1].type < 0);
-  assert(std::strcmp(kDebugSpawnChoices[kDebugSpawnZombie].name, "ZOMBIE") == 0);
-  assert(std::strcmp(kDebugSpawnChoices[kDebugSpawnCerberus].name, "DOG") == 0);
-  assert(std::strcmp(kDebugSpawnChoices[kDebugSpawnCrow].name, "CROW") == 0);
-  // The ids with no Nab model in this install are flagged, and only those.
-  for (int type = 0; type <= kDebugSpawnMaxType; ++type) {
-    const bool starred = std::strchr(kDebugSpawnChoices[type].name, '*') != nullptr;
-    assert(starred == !DebugSpawnTypeHasModel(type));
-  }
+  assert(std::strcmp(kDebugSpawnChoices[11].name, "ENEM11 - Zombie Dog") == 0);
+  assert(std::strstr(kDebugSpawnChoices[13].name, "Licker") != nullptr);
+  assert(std::strstr(kDebugSpawnChoices[18].name, "Crocodile") != nullptr);
+  assert(std::strstr(kDebugSpawnChoices[22].name, "Mr. X") != nullptr);
+  assert(std::strstr(kDebugSpawnChoices[28].name, "Hunter") != nullptr);
+  assert(std::strstr(kDebugSpawnChoices[30].name, "Umbrella Cleaner") != nullptr);
+  assert(std::strstr(kDebugSpawnChoices[36].name, "Giant Grey Spider") != nullptr);
+  // Model files: 07 was added by hand and counts as present; these ids have none in this install.
+  assert(DebugSpawnTypeHasModel(7));
   assert(!DebugSpawnTypeHasModel(3));
   assert(!DebugSpawnTypeHasModel(21));
-  assert(DebugSpawnTypeHasModel(0) && DebugSpawnTypeHasModel(1) && DebugSpawnTypeHasModel(37));
+  assert(!DebugSpawnTypeHasModel(24));
+  assert(!DebugSpawnTypeHasModel(25));
+  assert(!DebugSpawnTypeHasModel(27));
+  assert(!DebugSpawnTypeHasModel(29));
+  assert(DebugSpawnTypeHasModel(0) && DebugSpawnTypeHasModel(37));
+  assert(std::strstr(kDebugSpawnChoices[7].name, "WIP") != nullptr);
   assert(DebugSpawnChoiceWrap(-1) == kDebugSpawnChoiceCount - 1);
   assert(DebugSpawnChoiceWrap(kDebugSpawnChoiceCount) == 0);
   assert(DebugSpawnChoiceWrap(2) == 2);

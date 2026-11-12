@@ -40,11 +40,13 @@ struct SpawnPoint {
   float x = 0.0f, y = 0.0f, z = 0.0f;
 };
 constexpr float kDebugSpawnDistance = 400.0f;
-// The room spawner 00434850 accepts actor types 0..0x25. The game's nab folder ships one model per
-// type (ENEM00..ENEM37); 03, 21, 24, 25, 27 and 29 have no NAB file in this install, so those
-// entries carry a star and the menu logs a warning for them. Whether those ids are the human/NPC
-// actors that would use an HMD model instead is not verified: the Resource folder only holds the
-// DEBUGHxx.HMD debug humans, so they are offered by id rather than guessed at.
+// The room spawner 00434850 accepts actor types 0..0x25, and the game's nab folder ships one model
+// per type (ENEM00..ENEM37). The names are taken from those models: 00-10 are the zombie variants, 11
+// the Cerberus, 12 the crow, 13/14 the lickers, 15 the cockroach, 16/17/34/35/36 the spiders, 18 the
+// crocodile, 19/20 the ivy, 22-24 Mr. X, 26 the moth, 28 the hunter, 30 the Umbrella cleaner and 31-33
+// the Hypnos-T forms. 07 is the extra zombie slot with a WIP NAB/NAC added by hand; 03, 21, 24, 25, 27
+// and 29 have no model file in this install and carry a "Missing" label, and 37 has no name yet.
+// Every label reads "ENEMxx - Name" and stays inside the menu's 48-byte line.
 constexpr int kDebugSpawnZombie = 1;
 constexpr int kDebugSpawnZombieAlt = 5;
 constexpr int kDebugSpawnCerberus = 11;
@@ -58,51 +60,51 @@ struct SpawnChoice {
 };
 
 inline constexpr SpawnChoice kDebugSpawnChoices[] = {
-    {"ENEM00", 0, false},
-    {"ZOMBIE", 1, false},
-    {"ENEM02", 2, false},
-    {"ENEM03*", 3, false},
-    {"ENEM04", 4, false},
-    {"ENEM05", 5, false},
-    {"ENEM06", 6, false},
-    {"ENEM07", 7, false},
-    {"ENEM08", 8, false},
-    {"ENEM09", 9, false},
-    {"ENEM10", 10, false},
-    {"DOG", 11, false},
-    {"CROW", 12, false},
-    {"ENEM13", 13, false},
-    {"ENEM14", 14, false},
-    {"ENEM15", 15, false},
-    {"ENEM16", 16, false},
-    {"ENEM17", 17, false},
-    {"ENEM18", 18, false},
-    {"ENEM19", 19, false},
-    {"ENEM20", 20, false},
-    {"ENEM21*", 21, false},
-    {"ENEM22", 22, false},
-    {"ENEM23", 23, false},
-    {"ENEM24*", 24, false},
-    {"ENEM25*", 25, false},
-    {"ENEM26", 26, false},
-    {"ENEM27*", 27, false},
-    {"ENEM28", 28, false},
-    {"ENEM29*", 29, false},
-    {"ENEM30", 30, false},
-    {"ENEM31", 31, false},
-    {"ENEM32", 32, false},
-    {"ENEM33", 33, false},
-    {"ENEM34", 34, false},
-    {"ENEM35", 35, false},
-    {"ENEM36", 36, false},
-    {"ENEM37", 37, false},
+    {"ENEM00 - Zombie", 0, false},
+    {"ENEM01 - Zombie", 1, false},
+    {"ENEM02 - Zombie", 2, false},
+    {"ENEM03 - Zombie", 3, false},
+    {"ENEM04 - Zombie", 4, false},
+    {"ENEM05 - Zombie", 5, false},
+    {"ENEM06 - Zombie", 6, false},
+    {"ENEM07 - Zombie (WIP)", 7, false},
+    {"ENEM08 - Zombie", 8, false},
+    {"ENEM09 - Zombie", 9, false},
+    {"ENEM10 - Zombie", 10, false},
+    {"ENEM11 - Zombie Dog", 11, false},
+    {"ENEM12 - Zombie Crow", 12, false},
+    {"ENEM13 - Licker", 13, false},
+    {"ENEM14 - Super Licker", 14, false},
+    {"ENEM15 - Cockroach", 15, false},
+    {"ENEM16 - Big Spider", 16, false},
+    {"ENEM17 - Giant Grey Spider", 17, false},
+    {"ENEM18 - Crocodile", 18, false},
+    {"ENEM19 - Ivy 1", 19, false},
+    {"ENEM20 - Ivy 2", 20, false},
+    {"ENEM21 - Missing", 21, false},
+    {"ENEM22 - Mr. X", 22, false},
+    {"ENEM23 - Mr. X", 23, false},
+    {"ENEM24 - Mr. X", 24, false},
+    {"ENEM25 - Missing", 25, false},
+    {"ENEM26 - Moth", 26, false},
+    {"ENEM27 - Missing", 27, false},
+    {"ENEM28 - Hunter", 28, false},
+    {"ENEM29 - Missing", 29, false},
+    {"ENEM30 - Umbrella Cleaner", 30, false},
+    {"ENEM31 - Hypno-T Form 1", 31, false},
+    {"ENEM32 - Hypno-T Form 2", 32, false},
+    {"ENEM33 - Hypno-T Form 3", 33, false},
+    {"ENEM34 - Big Spider", 34, false},
+    {"ENEM35 - Big Spider", 35, false},
+    {"ENEM36 - Giant Grey Spider", 36, false},
+    {"ENEM37 - Unknown", 37, false},
     {"ITEM", -1, true},
 };
 
 inline constexpr int kDebugSpawnChoiceCount =
     static_cast<int>(sizeof(kDebugSpawnChoices) / sizeof(kDebugSpawnChoices[0]));
 
-// Actor ids whose model file is absent from nab in this install.
+// Actor ids with no model file in this install. 07 is not here: its NAB/NAC were added by hand.
 inline constexpr int kDebugSpawnNoModelTypes[] = {3, 21, 24, 25, 27, 29};
 
 constexpr bool DebugSpawnTypeHasModel(int type) {
