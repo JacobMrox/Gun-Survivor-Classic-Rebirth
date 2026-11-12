@@ -895,7 +895,11 @@ void DebugSpawnChoiceCycle(int delta) {
 bool DebugSpawnChosen() {
   const SpawnChoice& choice = kDebugSpawnChoices[g_spawnChoice];
   if (!choice.item && !DebugSpawnTypeHasModel(choice.type)) {
-    Log("DebugSpawn: type %02X has no NAB model in this install; it may not draw", choice.type);
+    // The spawn table's default block still indexes the enemy manager with a -1 handle, so a type
+    // without a case crashes instead of drawing nothing. Refuse it and say why.
+    Log("DebugSpawn: type %02X has no NAB model in this install; spawn refused", choice.type);
+    Notify("NO MODEL FOR THAT TYPE");
+    return false;
   }
   return choice.item ? DebugSpawnItemInFront() : DebugSpawnEntity(choice.type);
 }

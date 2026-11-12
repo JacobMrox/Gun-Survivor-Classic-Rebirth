@@ -99,6 +99,11 @@ int main() {
   assert(!DebugSpawnTypeHasModel(29));
   assert(DebugSpawnTypeHasModel(0) && DebugSpawnTypeHasModel(37));
   assert(std::strstr(kDebugSpawnChoices[7].name, "WIP") != nullptr);
+  // 03 has no files either, and 37 is a straight duplicate of 36.
+  assert(std::strstr(kDebugSpawnChoices[3].name, "Missing") != nullptr);
+  assert(std::strstr(kDebugSpawnChoices[37].name, "Giant Grey Spider") != nullptr);
+  assert(kDebugSpawnZombieWip == 7);
+  assert(!DebugSpawnTypeHasModel(kDebugSpawnZombieWip) == false);  // 07 has hand-added files
   assert(DebugSpawnChoiceWrap(-1) == kDebugSpawnChoiceCount - 1);
   assert(DebugSpawnChoiceWrap(kDebugSpawnChoiceCount) == 0);
   assert(DebugSpawnChoiceWrap(2) == 2);

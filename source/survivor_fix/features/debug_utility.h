@@ -45,12 +45,13 @@ constexpr float kDebugSpawnDistance = 400.0f;
 // the Cerberus, 12 the crow, 13/14 the lickers, 15 the cockroach, 16/17/34/35/36 the spiders, 18 the
 // crocodile, 19/20 the ivy, 22-24 Mr. X, 26 the moth, 28 the hunter, 30 the Umbrella cleaner and 31-33
 // the Hypnos-T forms. 07 is the extra zombie slot with a WIP NAB/NAC added by hand; 03, 21, 24, 25, 27
-// and 29 have no model file in this install and carry a "Missing" label, and 37 has no name yet.
+// and 29 have no model file in this install and carry a "Missing" label; 37 is a duplicate of 36.
 // Every label reads "ENEMxx - Name" and stays inside the menu's 48-byte line.
 constexpr int kDebugSpawnZombie = 1;
 constexpr int kDebugSpawnZombieAlt = 5;
 constexpr int kDebugSpawnCerberus = 11;
 constexpr int kDebugSpawnCrow = 12;
+constexpr int kDebugSpawnZombieWip = 7;  // hand-added zombie variant with no case of its own
 constexpr int kDebugSpawnMaxType = 0x25;
 
 struct SpawnChoice {
@@ -63,7 +64,7 @@ inline constexpr SpawnChoice kDebugSpawnChoices[] = {
     {"ENEM00 - Zombie", 0, false},
     {"ENEM01 - Zombie", 1, false},
     {"ENEM02 - Zombie", 2, false},
-    {"ENEM03 - Zombie", 3, false},
+    {"ENEM03 - Missing", 3, false},
     {"ENEM04 - Zombie", 4, false},
     {"ENEM05 - Zombie", 5, false},
     {"ENEM06 - Zombie", 6, false},
@@ -97,7 +98,7 @@ inline constexpr SpawnChoice kDebugSpawnChoices[] = {
     {"ENEM34 - Big Spider", 34, false},
     {"ENEM35 - Big Spider", 35, false},
     {"ENEM36 - Giant Grey Spider", 36, false},
-    {"ENEM37 - Unknown", 37, false},
+    {"ENEM37 - Giant Grey Spider", 37, false},
     {"ITEM", -1, true},
 };
 

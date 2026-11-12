@@ -88,6 +88,8 @@ inline constexpr uint8_t kBuildRoomEnemyGateBytes[]={0x38,0x1D,0x14,0x2C,0x5F,0x
 // transform, runs the type's setup (00436060) and registers the actor in the enemy manager
 // [005F2C18] through 0043C600, so a spawn through it is an ordinary native enemy.
 constexpr uintptr_t kSpawnEntity = 0x00434850;
+// The spawner dispatches on the actor type with "cmp eax,25h; ja default; jmp [eax*4+table]".
+constexpr uintptr_t kSpawnTypeTable = 0x00435FC8;
 inline constexpr uint8_t kSpawnEntityBytes[] = {0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, 0x53, 0x55,
                                                 0x8B, 0x0D, 0xC4, 0xD0, 0x5F, 0x00};
 // Enemy manager context the room build stores; zero outside a room.

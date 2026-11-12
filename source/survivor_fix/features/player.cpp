@@ -1155,6 +1155,32 @@ bool CurrentPlayerPose(float position[3], float forward[2]) {
   return true;
 }
 
+// Type 07 is the extra zombie variant whose model exists but whose case never did: its slot falls
+// into the default block, which indexes the enemy manager with the -1 handle the spawner sets before
+// the dispatch. Pointing the slot at the zombie's case gives it that setup; the type argument is
+// still 07, so a model chosen from the argument stays the pad's own.
+bool AliasSpawnType(int from, int to) {
+  if (from < 0 || from > 0x25 || to < 0 || to > 0x25) return false;
+  uint32_t* table = reinterpret_cast<uint32_t*>(game::kSpawnTypeTable);
+  const uint32_t target = table[to];
+  const uint32_t low = static_cast<uint32_t>(game::kSpawnEntity);
+  const uint32_t high = low + 0x2000;  // the spawner's cases all live inside this window
+  if (target < low || target >= high) {
+    Log("DebugSpawn: type %02X has no usable case (%08X); alias left alone", to, target);
+    return false;
+  }
+  if (table[from] == target) return true;
+  DWORD old = 0;
+  if (!VirtualProtect(&table[from], sizeof(uint32_t), PAGE_READWRITE, &old)) {
+    Log("DebugSpawn: the spawn table is not writable (%lu)", GetLastError());
+    return false;
+  }
+  table[from] = target;
+  VirtualProtect(&table[from], sizeof(uint32_t), old, &old);
+  Log("DebugSpawn: type %02X now runs the type %02X case (%08X)", from, to, target);
+  return true;
+}
+
 bool DebugSpawnEntity(int type) {
   if (!g_spawnReady || !*reinterpret_cast<void**>(game::kEnemyManager)) {
     Log("DebugSpawn: no room enemy manager (type %d not spawned)", type);
@@ -1247,6 +1273,7 @@ bool InstallPlayer() {
   g_spawnReady = game::CheckBytes({game::kSpawnEntity, game::kSpawnEntityBytes,
                                    sizeof(game::kSpawnEntityBytes)});
   Log("DebugSpawn: native room-table spawn 00434850 %s", g_spawnReady ? "ready" : "unavailable");
+  if (g_spawnReady) AliasSpawnType(kDebugSpawnZombieWip, kDebugSpawnZombie);
   const game::ByteSignature physics = {game::kPhysics, game::kPhysicsPrologue,
                                        sizeof(game::kPhysicsPrologue)};
   const game::ByteSignature transform = {game::kTransform, game::kTransformPrologue,
