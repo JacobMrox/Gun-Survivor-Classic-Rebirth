@@ -596,6 +596,7 @@ bool InstallZombies() {
   if (!ready) WorldBridgeReady(false);
   if (ready) InstallZombieHeightSupport();
   if (ready) InstallZombiePose();
+  if (ready) tyrant::InstallHooks();  // Mr. X: the clip rate is scaled where 00412B90 applies it
   if (ready) InstallZombieBlood();
   if (ready) InstallZombieDeath();
   if (ready) InstallZombieAudio();

@@ -18,6 +18,7 @@
 
 #include "../config.h"
 #include "../game.h"
+#include "../hooks.h"
 #include "../ps1/nav_logic.h"
 #include "../ps1/tyrant_logic.h"
 #include "features.h"
@@ -57,7 +58,6 @@ struct Track {
   int frames = 1;  // gameplay frames between two updates of this actor
   const uint8_t* model = nullptr;   // what the engine draws for him
   uint32_t updates = 0;             // world updates seen (the clip may advance once per update)
-  uint32_t advanced = 0;            // the update the last allowed draw advance belongs to
   uint32_t draws = 0;               // draws of his model, for the draw/update ratio in the trace
   uint32_t lastFrame = 0;
   float savedAim[3] = {};
@@ -430,21 +430,54 @@ void Map(void* s, int request, int& result) {
   result = ps1::TyrantWalkSelector(t.standing);
 }
 
-// The engine advances the animation on every draw (00412469, inc [M+44]), not on every world update: at
-// the PC frame rate a 30 Hz walk clip cycles two or three times per step and the feet slide. A tyrant's
-// cursors may advance only on a draw that has a world update behind it, which restores the authored
-// cadence no matter how many times the frame is drawn.
-bool AllowDrawAdvance(const void* model) {
-  if (!g_config.ps1Tyrant || !model) return true;
+// Diagnostic only: counts the draws of a tracked tyrant's model. The engine draws his model about once
+// per world update (measured: 29 draws per 30 updates), so there is no extra per-draw animation advance
+// to throttle - the clip rate comes from the mapper, which is why it is scaled in ApplySequenceDetour.
+void NoteDraw(const void* model) {
+  if (!g_config.ps1Tyrant || !model) return;
   for (auto& item : g_tracks) {
     Track& tr = item.second;
-    if (!tr.model || tr.model != model) continue;
-    ++tr.draws;
-    if (tr.updates == tr.advanced) return false;
-    tr.advanced = tr.updates;
-    return true;
+    if (tr.model && tr.model == model) {
+      ++tr.draws;
+      return;
+    }
   }
-  return true;
+}
+
+// True when the model being drawn belongs to an actor this module tracks.
+bool OwnsModel(const void* model) {
+  if (!g_config.ps1Tyrant || !model) return false;
+  for (const auto& item : g_tracks) {
+    if (item.second.model && item.second.model == model) return true;
+  }
+  return false;
+}
+// 00412B90(M, track, selector, transition, speed): hands one clip to one track. This runs after the
+// mapper has written S+40, so the speed scaled here is the one the clip actually plays at.
+using ApplySequenceFn = void(__fastcall*)(void* m, void* edx, void* track, int selector, int transition,
+                                          float speed);
+ApplySequenceFn g_applySequence = nullptr;
+
+void __fastcall ApplySequenceDetour(void* m, void* edx, void* track, int selector, int transition,
+                                    float speed) {
+  if (!g_applySequence) return;
+  if (OwnsModel(m)) {
+    if (selector == ps1::kTyrantWalkSelector) {
+      speed *= ps1::kTyrantWalkClipScale;
+    } else if (selector == ps1::kTyrantChargeSelector) {
+      speed *= ps1::kTyrantChargeClipScale;
+    }
+  }
+  g_applySequence(m, edx, track, selector, transition, speed);
+}
+
+bool InstallHooks() {
+  if (!g_config.ps1Tyrant) return false;
+  const bool ready = Hook("ApplySequence", game::kApplySequence,
+                          reinterpret_cast<void*>(&ApplySequenceDetour),
+                          reinterpret_cast<void**>(&g_applySequence));
+  Log("Tyrant: clip rate scale at 00412B90 %s", ready ? "installed" : "unavailable");
+  return ready;
 }
 
 void Reset() {

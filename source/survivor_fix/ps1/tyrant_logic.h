@@ -37,6 +37,11 @@ constexpr int kTyrantSwingRight = 0x15;  // PlayerSide 2: ty_anim(e, 0x15, 0x40)
 // update while the legs cycle at more than twice the cadence that stride needs. The PS1 walk of
 // tyrant.c is a slow stalk, so the walk is played at half the mapper's value, which brings the feet
 // back onto the 26 unit step; the idle keeps the mapper's 2.0.
+// The mapper writes 3.0 for the walk clip, but the port moves him 26 units per update: at that step the
+// mapper's rate cycles the legs twice for every stride, which is the "legs double the torso" report. The
+// scale is applied where the clip is handed to each track (00412B90), after the mapper, so it sticks.
+constexpr float kTyrantWalkClipScale = 0.5f;
+constexpr float kTyrantChargeClipScale = 1.0f;  // the charge step is doubled, so its clip stays as authored
 constexpr float kTyrantIdleSpeed = 2.0f;
 constexpr float kTyrantWalkSpeed = 1.0f;
 // The charge covers 52 units per update, twice the walk, so its clip runs at twice the walk rate.

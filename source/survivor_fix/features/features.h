@@ -44,9 +44,11 @@ void Finish(void* s);
 void Map(void* s, int request, int& result);
 void OnPlayerShot();
 void Reset();
-// True on a draw that may advance his clip: the engine advances it per draw, so without this his legs
-// cycle two or three times per world step (zombie_pose.cpp applies it).
-bool AllowDrawAdvance(const void* model);
+// Counts a draw of his model (diagnostic: the draw/update ratio in the trace).
+void NoteDraw(const void* model);
+// Scales the clip rate where the mapper hands it to each track (00412B90), so the walk plays at the
+// cadence the 26-unit step needs. Installed with the zombie hooks.
+bool InstallHooks();
 }  // namespace tyrant
 
 // Start of a zombie's life (zombie_life.cpp): the native initialisation of S (4361B0 -> 436B04).
