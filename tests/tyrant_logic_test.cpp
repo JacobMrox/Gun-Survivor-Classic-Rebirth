@@ -77,6 +77,14 @@ int main() {
   const float turnDegrees = kTyrantTurnStep * 180.0f / 3.14159265f;
   CHECK(turnDegrees > 4.1f && turnDegrees < 4.3f);
   if (failures) return 1;
+  // Clip rate follows the ground actually covered: a full step keeps the base, a slide is scaled
+  // down, a pinned body drops to the floor, and it never runs above the authored rate.
+  CHECK(std::fabs(TyrantClipRate(1.0f, 26.0f, 26.0f) - 1.0f) < 1e-5f);
+  CHECK(std::fabs(TyrantClipRate(1.0f, 52.0f, 26.0f) - 0.5f) < 1e-5f);
+  CHECK(std::fabs(TyrantClipRate(2.0f, 52.0f, 3.6f) - 0.5f) < 1e-5f);
+  CHECK(std::fabs(TyrantClipRate(1.0f, 52.0f, 80.0f) - 1.0f) < 1e-5f);
+  CHECK(std::fabs(TyrantClipRate(1.0f, 0.0f, 0.0f) - 0.25f) < 1e-5f);
+  CHECK(std::fabs(TyrantClipRate(2.0f, 52.0f, 52.0f) - 2.0f) < 1e-5f);
   std::puts("PASS: Mr. X walk step, charge, aim, sidestep and death rules");
   return 0;
 }

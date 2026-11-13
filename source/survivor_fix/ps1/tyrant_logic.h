@@ -38,7 +38,20 @@ constexpr int kTyrantSwingRight = 0x15;  // PlayerSide 2: ty_anim(e, 0x15, 0x40)
 // tyrant.c is a slow stalk, so the walk is played at half the mapper's value, which brings the feet
 // back onto the 26 unit step; the idle keeps the mapper's 2.0.
 constexpr float kTyrantIdleSpeed = 2.0f;
-constexpr float kTyrantWalkSpeed = 1.5f;
+constexpr float kTyrantWalkSpeed = 1.0f;
+// The charge covers 52 units per update, twice the walk, so its clip runs at twice the walk rate.
+constexpr float kTyrantChargeSpeed = 2.0f;
+// The clip rate follows the ground the body actually covered in the last update, not the step it asked
+// for: a charge pinned on a wall, or a walk sliding along one, must not keep pumping the legs at full
+// stride while the body covers a handful of units (the "legs faster than he moves" complaint). The
+// scale is clamped so a nudge never stops the legs and a slide can never outrun the authored rate.
+constexpr float TyrantClipRate(float base, float intendedStep, float travelled) {
+  if (!(intendedStep > 1.0f) || !(travelled > 0.0f)) return base * 0.25f;
+  const float ratio = travelled / intendedStep;
+  if (!(ratio > 0.0f)) return base * 0.25f;
+  const float clamped = ratio > 1.0f ? 1.0f : (ratio < 0.25f ? 0.25f : ratio);
+  return base * clamped;
+}
 
 // ---- WalkStep (80101404) -------------------------------------------------------------------------
 constexpr float kTyrantStrideRange = 3001.0f;  // 0xBB9: the stride band and the charge rearm

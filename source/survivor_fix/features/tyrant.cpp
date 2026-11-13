@@ -208,10 +208,13 @@ void BeginUpdate(void* s, bool active) {
     // The clip is reapplied on every update, which keeps its completion flag down: end on the port's
     // own counter, and drop the charge when it cannot advance (a wall or a body in front).
     if (tr.travel < 1.0f) ++tr.chargeBlocked; else tr.chargeBlocked = 0;
-    if (tr.chargeUpdates < ps1::kTyrantChargeMinimum) {
+    // A charge that cannot advance is over at once, even before its minimum: holding the clip while the
+    // body slides along a wall is the pose that looked like a pause, and the legs kept running.
+    if (tr.chargeBlocked >= ps1::kTyrantChargeBlocked) {
+      tr.charging = false;
+    } else if (tr.chargeUpdates < ps1::kTyrantChargeMinimum) {
       // keep charging
-    } else if (done || tr.chargeUpdates >= ps1::kTyrantChargeUpdates ||
-               tr.chargeBlocked >= ps1::kTyrantChargeBlocked) {
+    } else if (done || tr.chargeUpdates >= ps1::kTyrantChargeUpdates) {
       tr.charging = false;
     }
   }
@@ -343,9 +346,9 @@ void Finish(void* s) {
     // how a slow walk looked like a walk that was not being stepped.
     if ((++tr.traces % 30) == 1) {
       const float* now = reinterpret_cast<const float*>(o + game::O::kPos);
-      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 x=%.0f z=%.0f", s,
+      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 rate=%.2f x=%.0f z=%.0f", s,
           game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step,
-          tr.travel, tr.frames, now[0], now[2]);
+          tr.travel, tr.frames, game::Read<float>(s, game::S::kNextSpeed), now[0], now[2]);
     }
     return;
   }
@@ -394,7 +397,8 @@ void Map(void* s, int request, int& result) {
     return;
   }
   if (t.charging && ps1::IsTyrantWalkRequest(request)) {
-    *game::Field<float>(s, game::S::kNextSpeed) = ps1::kTyrantWalkSpeed;
+    *game::Field<float>(s, game::S::kNextSpeed) =
+        ps1::TyrantClipRate(ps1::kTyrantChargeSpeed, t.step, t.travel);
     result = ps1::kTyrantChargeSelector;
     return;
   }
@@ -404,7 +408,10 @@ void Map(void* s, int request, int& result) {
     return;
   }
   if (!ps1::IsTyrantWalkRequest(request) || result != ps1::kTyrantWalkSelector) return;
-  *game::Field<float>(s, game::S::kNextSpeed) = ps1::kTyrantWalkSpeed;
+  // The idle clip keeps the mapper's own rate; the walk follows the ground covered this update.
+  *game::Field<float>(s, game::S::kNextSpeed) =
+      t.standing ? ps1::kTyrantIdleSpeed
+                 : ps1::TyrantClipRate(ps1::kTyrantWalkSpeed, t.step, t.travel);
   result = ps1::TyrantWalkSelector(t.standing);
 }
 
