@@ -78,9 +78,12 @@ bool __fastcall Load(void* sound,void* edx,const char* path,char mode,int flags,
 unsigned __fastcall Sound(void* manager,void* edx,int family,int cue) {
   // 43D550 calls 471260(13,5) only when a walking animation is reapplied. Keep its
   // voices and all other callers; the PS1 event below owns this walking sound.
-  // Mr. X: the same call is suppressed here and emitted from WalkAudioAfter at the walk cadence.
-  if (reinterpret_cast<uintptr_t>(_ReturnAddress())==0x0043D5F2 &&
-      subject && family==13 && cue==5 && (tyrantWalk || Managed(subject))) return 0;
+  // Mr. X: keep the native call (it selects his own bank), but only one step in
+  // kTyrantFootstepUpdates instead of one per reapplication.
+  if (reinterpret_cast<uintptr_t>(_ReturnAddress())==0x0043D5F2 && subject && family==13 && cue==5) {
+    if (Managed(subject)) return 0;
+    if (tyrantWalk && (++tyrantSteps[subject] % kTyrantFootstepUpdates) != 3) return 0;
+  }
   return nativeSound(manager,edx,family,cue);
 }
 bool CacheWave(const std::vector<int16_t>& pcm,int cue,std::string& path,const char* category="walk") {
@@ -139,21 +142,11 @@ void WalkAudioAfter(void* s) {
   const bool tyrant=tyrantWalk&&active;
   subject=nullptr;tyrantWalk=false;
   if(tyrant) {
-    // One step per kTyrantFootstepUpdates updates of walking; the native bank and cue are kept.
-    uint8_t *o,*t;
+    // The step counter is advanced by the native calls themselves (Sound); it is only reset when
+    // this actor stops walking, so the first step of a new walk sounds at once.
     const int request=game::Read<int>(s,game::S::kRequest);
-    if(GetObjects(s,o,t)&&game::Read<float>(o,0x11C)>0&&request>=2&&request<=7) {
-      const unsigned step=++tyrantSteps[s];
-      if(step%kTyrantFootstepUpdates==3) {
-        void* manager=*reinterpret_cast<void**>(game::kGameState);
-        if(manager&&nativeSound) {
-          nativeSound(manager,nullptr,13,5);
-          if(emitted++<16)Log("TyrantWalkAudio: S=%p step=%u",s,step);
-        }
-      }
-    } else {
-      tyrantSteps.erase(s);
-    }
+    uint8_t *o,*t;
+    if(!GetObjects(s,o,t)||game::Read<float>(o,0x11C)<=0||request<2||request>7) tyrantSteps.erase(s);
     return;
   }
   // Crow wing flap (crow.c FlyStep: frame 3 -> FN_EN_ANIM_SOUND e,9,2).

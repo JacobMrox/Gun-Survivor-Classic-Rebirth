@@ -55,6 +55,9 @@ struct Config {
   // produced (idle when the body does not move, faster when it rushes) and the death clip is the PS1
   // 9 instead of the PC's random 8. Nothing moves, hits or dies differently.
   bool ps1Tyrant = true;
+  // The tyrant's unused PS1 clips (aim stop 0x13, sidestep 5/0x15). Off by default: those selectors
+  // play poses this PC model does not read as the PS1 action.
+  bool ps1TyrantExtras = false;
   // Monsters also bite from behind (the PC filtered out the hits from behind).
   bool biteFromBehind = true;
   // PS1 size of the zombie shadow (80073C5C). Follows Ps1ShadowBlend, the shadow blending setting.

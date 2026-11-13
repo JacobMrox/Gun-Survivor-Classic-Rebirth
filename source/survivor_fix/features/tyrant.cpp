@@ -52,11 +52,9 @@ struct Track {
   bool gameplay = false;  // the update is the gameplay one
   float hx = 0.0f, hz = 1.0f;
   float step = ps1::kTyrantWalkStep;
-  // The PS1 world normally commits the step; if this body never travels while it should, the port
-  // writes the XZ itself instead of standing still (a life the world does not tick).
-  bool direct = false;
-  int stalled = 0;
   int traces = 0;
+  int frames = 1;  // gameplay frames between two updates of this actor
+  uint32_t lastFrame = 0;
   float savedAim[3] = {};
   bool aimSaved = false;
 };
@@ -152,6 +150,14 @@ void BeginUpdate(void* s, bool active) {
     tr.index = index;
   }
   ++g_tick;
+  // Gameplay frames between two updates of this actor, from the shared PS1 cadence counter.
+  uint32_t frame = 0;
+  if (Ps1LogicFrame(&frame)) {
+    if (tr.lastFrame != 0 && frame > tr.lastFrame) {
+      tr.frames = static_cast<int>((std::min)(frame - tr.lastFrame, 4u));
+    }
+    tr.lastFrame = frame;
+  }
   tr.gameplay = active;
   tr.walking = false;
   tr.turning = false;
@@ -216,8 +222,11 @@ void BeginUpdate(void* s, bool active) {
     }
   }
 
-  // Aim stop (PlayerFiring): far away, player in front, a shot just fired.
-  if (tr.aim) {
+  // Aim stop (PlayerFiring): far away, player in front, a shot just fired. Off by default,
+  // the selector is unused by this model.
+  if (!g_config.ps1TyrantExtras) {
+    tr.aim = false;
+  } else if (tr.aim) {
     if (++tr.aimUpdates >= ps1::kTyrantAimUpdates) tr.aim = false;
   } else {
     const bool shotRecently = g_lastShot != 0 && g_tick >= g_lastShot &&
@@ -235,7 +244,10 @@ void BeginUpdate(void* s, bool active) {
   const float* tv = reinterpret_cast<const float*>(t + game::O::kVelocity);
   const bool playerMoving = Planar(tv[0], tv[2]) > 1.0f;
   const int side = ps1::TyrantSideFromLineSide(fw[0] * toZ - fw[2] * toX);
-  if (ps1::TyrantCanSidestep(tr.charging || tr.aim, distance, facing, playerMoving, side)) tr.side = side;
+  if (g_config.ps1TyrantExtras &&
+      ps1::TyrantCanSidestep(tr.charging || tr.aim, distance, facing, playerMoving, side)) {
+    tr.side = side;
+  }
 
   const bool walking = (locomotion || tr.charging) && !tr.aim &&
                        (selector == ps1::kTyrantIdleSelector || selector == ps1::kTyrantWalkSelector ||
@@ -247,14 +259,10 @@ void BeginUpdate(void* s, bool active) {
   tr.walking = true;
   // 26 units per update for the walk: the walk clip is authored at that stride (S+40 = 3.0 is the PS1
   // 1x rate). Only the charge clip takes the doubled step.
-  tr.step = ps1::TyrantStep(tr.charging);
-  // A body the PS1 world does not move would stand still for ever: after 20 updates that should
-  // have travelled, own the XZ here instead.
-  if (!tr.direct && tr.travel < 1.0f) {
-    if (++tr.stalled > 20) tr.direct = true;
-  } else {
-    tr.stalled = 0;
-  }
+  // The PS1 covers 26 units per frame. The PC services this actor at its own cadence, so the step
+  // is multiplied by the frames elapsed since its last update: an actor updated every third frame
+  // then covers three frames of ground instead of crawling.
+  tr.step = ps1::TyrantStep(tr.charging) * static_cast<float>(tr.frames);
   if (tr.charging) return;  // the charge keeps the heading it committed to
 
   // Steer: the same PS1 nav the zombies use. It turns to the player, strides with a clear line and
@@ -319,21 +327,8 @@ void Finish(void* s) {
   if (!tr.walking) return;
   zombie::SetHeading(o, tr.hx, tr.hz);
   ClearPlanar(o);
-  // Diagnostic: the travel of the last step against the step and the clip rate tell whether the
-  // animation and the transform agree. Only written when logging is enabled.
-  if ((++tr.traces % 30) == 1) {
-    const float* p = reinterpret_cast<const float*>(o + game::O::kPos);
-    Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f rate=%.2f own=%d x=%.0f z=%.0f", s,
-        game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step, tr.travel,
-        game::Read<float>(s, game::S::kNextSpeed), zombie::WorldOwnsObject(o) ? 1 : 0, p[0], p[2]);
-  }
-  if (!tr.direct && zombie::WorldOwnsObject(o)) {
-    // Planned here and committed once by WorldFinishUpdate -> StepZombieWorld, like the zombies.
-    zombie::MoveZombie(o, tr.hx * tr.step, tr.hz * tr.step);
-    tr.committed = false;
-    return;
-  }
-  // No PS1 world for this room: own the XZ absolutely, so the native physics cannot add a step.
+  // The XZ is written here in every case: the PS1 world keeps protecting it from the physics, but the
+  // commit of 0043A8A0 is skipped for this actor often enough to make it stutter, so the step is ours.
   float* pos = game::Field<float>(o, game::O::kPos);
   if (!tr.committed) {
     tr.commitX = pos[0];
@@ -352,6 +347,13 @@ void Finish(void* s) {
   tr.commitZ = nz;
   pos[0] = nx;
   pos[2] = nz;
+  // Diagnostic: travel against step and clip rate, plus the update cadence, tell whether the body and
+  // the animation agree. Only written when logging is enabled.
+  if ((++tr.traces % 30) == 1) {
+    Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d rate=%.2f x=%.0f z=%.0f", s,
+        game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step, tr.travel,
+        tr.frames, game::Read<float>(s, game::S::kNextSpeed), nx, nz);
+  }
 }
 
 // Runs where the native mapper result is final. Death, aim, charge and sidestep pick their PS1 clip;
@@ -365,7 +367,7 @@ void Map(void* s, int request, int& result) {
   auto it = g_tracks.find(s);
   if (it == g_tracks.end()) return;
   Track& t = it->second;
-  if (t.aim && ps1::IsTyrantWalkRequest(request)) {
+  if (g_config.ps1TyrantExtras && t.aim && ps1::IsTyrantWalkRequest(request)) {
     *game::Field<float>(s, game::S::kNextSpeed) = ps1::kTyrantWalkSpeed;
     result = ps1::kTyrantAimSelector;
     return;
@@ -375,21 +377,13 @@ void Map(void* s, int request, int& result) {
     result = ps1::kTyrantChargeSelector;
     return;
   }
-  if (request == 8 && t.side != 0) {
+  if (g_config.ps1TyrantExtras && request == 8 && t.side != 0) {
     result = ps1::TyrantSideSelector(t.side);
     t.side = 0;
     return;
   }
   if (!ps1::IsTyrantWalkRequest(request) || result != ps1::kTyrantWalkSelector) return;
-  // The legs must cover the ground the body actually covers: if the world only commits part of the
-  // planned step (contacts, a tick it skips), the clip is played slower by the same ratio instead of
-  // running under a body that lags behind it.
-  float rate = ps1::kTyrantWalkSpeed;
-  if (t.travel > 1.0f) {
-    rate *= t.travel / ps1::kTyrantWalkStep;
-    rate = (std::max)(0.6f, (std::min)(4.5f, rate));
-  }
-  *game::Field<float>(s, game::S::kNextSpeed) = rate;
+  *game::Field<float>(s, game::S::kNextSpeed) = ps1::kTyrantWalkSpeed;
   result = ps1::TyrantWalkSelector(t.standing);
 }
 
