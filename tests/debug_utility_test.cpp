@@ -107,4 +107,13 @@ int main() {
   assert(DebugSpawnChoiceWrap(-1) == kDebugSpawnChoiceCount - 1);
   assert(DebugSpawnChoiceWrap(kDebugSpawnChoiceCount) == 0);
   assert(DebugSpawnChoiceWrap(2) == 2);
+  // Spawn distance setting: the default keeps the old 400, and the range is clamped.
+  assert(kDebugSpawnDistance == 400.0f);
+  assert(DebugSpawnDistanceClamped(kDebugSpawnDistance) == 400.0f);
+  assert(DebugSpawnDistanceClamped(650.0f) == 650.0f);
+  assert(DebugSpawnDistanceClamped(0.0f) == kDebugSpawnDistanceMin);
+  assert(DebugSpawnDistanceClamped(-50.0f) == kDebugSpawnDistanceMin);
+  assert(DebugSpawnDistanceClamped(9000.0f) == kDebugSpawnDistanceMax);
+  assert(DebugSpawnDistanceClamped(std::nanf("")) == kDebugSpawnDistance);
+  assert(DebugSpawnDistanceClamped(99.9f) == kDebugSpawnDistanceMin);
 }

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 #include "../source/survivor_fix/config.h"
+#include "../source/survivor_fix/features/debug_utility.h"
 
 // config.cpp reports an unknown [Gamepad] binding through debug.h; the test never logs.
 bool gEnableLogging = false;
@@ -72,6 +73,12 @@ int main(){
   check(sf::g_config.ps1ShootFlashFrames==5,"flash duration stays within its upper bound");
   ini.load("[SurvivorFix]\nDebugEnable=1\n");
   check(sf::g_config.debugEnable,"explicit debug menu opt-in");
+  ini.load("[SurvivorFix]\nDebugSpawnDistance=650\n");
+  check(sf::g_config.debugSpawnDistance==650.0f,"spawn distance reads its ini value");
+  ini.load("[SurvivorFix]\nDebugSpawnDistance=9000\n");
+  check(sf::g_config.debugSpawnDistance==sf::features::kDebugSpawnDistanceMax,"spawn distance stays within its upper bound");
+  ini.load("[SurvivorFix]\nDebugSpawnDistance=10\n");
+  check(sf::g_config.debugSpawnDistance==sf::features::kDebugSpawnDistanceMin,"spawn distance stays within its lower bound");
  if(failures)return 1;
  std::puts("PASS: production INI defaults, existing configurations and diagnostic overrides");
 }

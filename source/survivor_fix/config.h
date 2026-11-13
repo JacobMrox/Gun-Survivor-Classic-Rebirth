@@ -141,6 +141,10 @@ struct Config {
   // Hidden switch, ini only: the configuration window never shows it. F2/F10 and the pad's
   // DebugMenu button stay inert until this is 1 in config.ini [SurvivorFix].
   bool debugEnable = false;
+  // How far in front of the player the utility menu's SPAWN row places an actor, in world units.
+  // 400 is the old fixed value; 600-800 puts a spawned Mr. X far enough away to watch him walk.
+  // Clamped to 100..6000 (debug_utility.h), ini only.
+  float debugSpawnDistance = 400.0f;
 
   // Crash fixes, always on.
   bool inputDeviceFix = true;

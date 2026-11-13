@@ -39,7 +39,19 @@ constexpr int UtilityInventoryAmount(bool enabled, int itemId, int amount) {
 struct SpawnPoint {
   float x = 0.0f, y = 0.0f, z = 0.0f;
 };
+// Placement distance in world units. The default is the historical 400 (about the room spawer's own
+// spacing, which puts an actor almost within reach); [SurvivorFix] DebugSpawnDistance raises it so an
+// actor can be watched walking from a few metres away. The floor keeps the spawn out of the player's
+// own body, the ceiling keeps it inside the room the room's geometry can hold.
 constexpr float kDebugSpawnDistance = 400.0f;
+constexpr float kDebugSpawnDistanceMin = 100.0f;
+constexpr float kDebugSpawnDistanceMax = 6000.0f;
+constexpr float DebugSpawnDistanceClamped(float distance) {
+  if (distance != distance) return kDebugSpawnDistance;  // NaN from a malformed ini value
+  if (distance < kDebugSpawnDistanceMin) return kDebugSpawnDistanceMin;
+  if (distance > kDebugSpawnDistanceMax) return kDebugSpawnDistanceMax;
+  return distance;
+}
 // The room spawner 00434850 accepts actor types 0..0x25, and the game's nab folder ships one model
 // per type (ENEM00..ENEM37). The names are taken from those models: 00-10 are the zombie variants, 11
 // the Cerberus, 12 the crow, 13/14 the lickers, 15 the cockroach, 16/17/34/35/36 the spiders, 18 the

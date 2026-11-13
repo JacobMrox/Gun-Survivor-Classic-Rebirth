@@ -1250,7 +1250,7 @@ bool DebugSpawnEntity(int type) {
     return false;
   }
   SpawnPoint point;
-  if (!DebugSpawnPoint(position, forward, kDebugSpawnDistance, &point)) return false;
+  if (!DebugSpawnPoint(position, forward, g_config.debugSpawnDistance, &point)) return false;
   // The room tables pass the placement's killed-flag word, which lives in the persistent room
   // state; a scratch word keeps the wrapper out of the room's enemy-presence bits.
   static uint32_t scratchFlag = 0;
@@ -1269,7 +1269,7 @@ bool DebugSpawnItemInFront() {
   float position[3], forward[2];
   if (!CurrentPlayerPose(position, forward)) return false;
   SpawnPoint point;
-  if (!DebugSpawnPoint(position, forward, kDebugSpawnDistance, &point)) return false;
+  if (!DebugSpawnPoint(position, forward, g_config.debugSpawnDistance, &point)) return false;
   // Only an id the room itself registered is reused: its item data is loaded and its orientation
   // is the one the room handed the manager, so the duplicate is a real pickup of this room.
   int id = -1;

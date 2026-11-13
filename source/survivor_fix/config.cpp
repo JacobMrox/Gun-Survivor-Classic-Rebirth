@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "../debug.h"
+#include "features/debug_utility.h"
 
 namespace sf {
 
@@ -128,6 +129,8 @@ void LoadConfig(const char* iniPath) {
   }
   c.ps1Cadence = Read("Ps1FrameRate", true);
   c.debugEnable = Read("DebugEnable", false);
+  c.debugSpawnDistance = features::DebugSpawnDistanceClamped(static_cast<float>(
+      GetPrivateProfileIntA("SurvivorFix", "DebugSpawnDistance", 400, iniPath)));
 
   c.inputDeviceFix = Read("InputDeviceFix", true);
   c.exitCrashFix = Read("ExitCrashFix", true);
