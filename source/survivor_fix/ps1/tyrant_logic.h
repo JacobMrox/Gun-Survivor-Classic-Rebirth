@@ -95,6 +95,10 @@ constexpr float kTyrantFacingCosine = 0.5f;
 // step=0 travel=0 at one x/z for seconds). After this many turning updates the step is taken anyway and
 // StepZombieWorld slides him along the obstacle, the way the zombies and dogs get round geometry.
 constexpr int kTyrantTurnGiveUp = 12;
+// One step is not enough: the nav asks for the turn again straight away and he lurches forward a few
+// units a second (measured 10-15 units/s against a 26 unit step). Once the turn gives up he commits to
+// walking for this many updates, long enough to slide past the obstacle that blocked the turn.
+constexpr int kTyrantEscapeUpdates = 30;
 constexpr bool TyrantTurnGivesUp(int turnUpdates) { return turnUpdates > kTyrantTurnGiveUp; }
 constexpr float kTyrantStandEnter = 3.0f;
 constexpr float kTyrantStandExit = 8.0f;

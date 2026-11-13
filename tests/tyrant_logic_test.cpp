@@ -89,6 +89,7 @@ int main() {
   CHECK(!TyrantTurnGivesUp(0));
   CHECK(!TyrantTurnGivesUp(kTyrantTurnGiveUp));
   CHECK(TyrantTurnGivesUp(kTyrantTurnGiveUp + 1));
+  CHECK(kTyrantEscapeUpdates > kTyrantTurnGiveUp);
   std::puts("PASS: Mr. X walk step, charge, aim, sidestep and death rules");
   return 0;
 }
