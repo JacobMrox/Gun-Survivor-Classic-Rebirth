@@ -11,6 +11,7 @@
 
 #include <intrin.h>
 
+#include "../features.h"
 #include "../../ps1/pose_logic.h"
 #include "../../survivor_pc.h"
 
@@ -140,7 +141,28 @@ int __fastcall DrawModelDetour(void* m, void* edx, int a, int b) {
     SurvivorPc_EndDynamicShadow();
     *game::Field<unsigned>(m, 0x44) = cursor;
   }
+  // Mr. X: the clip may only advance on a draw with a world update behind it (see tyrant.cpp). The
+  // cursors of the model and of each of its tracks are put back after a draw that must not advance.
+  bool throttle = false;
+  unsigned savedModel = 0, savedTracks[8] = {};
+  unsigned trackCount = 0;
+  uint8_t* tracks = nullptr;
+  if (drawDepth == 1 && m) {
+    throttle = !tyrant::AllowDrawAdvance(m);
+    if (throttle) {
+      savedModel = game::Read<unsigned>(m, 0x44);
+      tracks = game::Read<uint8_t*>(m, game::M::kTracks);
+      trackCount = game::Read<unsigned>(m, game::M::kTrackCount);
+      for (unsigned k = 0; tracks && k < trackCount && k < 8; ++k)
+        savedTracks[k] = game::Read<unsigned>(tracks + k * game::M::kTrackSize, 0x44);
+    }
+  }
   const int result = DrawPosed(m, edx, a, b);
+  if (throttle) {
+    *game::Field<unsigned>(m, 0x44) = savedModel;
+    for (unsigned k = 0; tracks && k < trackCount && k < 8; ++k)
+      *game::Field<unsigned>(tracks + k * game::M::kTrackSize, 0x44) = savedTracks[k];
+  }
   auto owner = g_subjectByDrawn.find(m);
   if (owner != g_subjectByDrawn.end()) {
     if (StillOwns(owner->second, m)) {

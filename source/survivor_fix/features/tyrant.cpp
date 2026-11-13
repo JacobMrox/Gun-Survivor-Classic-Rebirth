@@ -55,6 +55,9 @@ struct Track {
   float step = ps1::kTyrantWalkStep;
   int traces = 0;
   int frames = 1;  // gameplay frames between two updates of this actor
+  const uint8_t* model = nullptr;   // what the engine draws for him
+  uint32_t updates = 0;             // world updates seen (the clip may advance once per update)
+  uint32_t advanced = 0;            // the update the last allowed draw advance belongs to
   uint32_t lastFrame = 0;
   float savedAim[3] = {};
   bool aimSaved = false;
@@ -159,6 +162,8 @@ void BeginUpdate(void* s, bool active) {
     }
     tr.lastFrame = frame;
   }
+  tr.model = game::Read<uint8_t*>(o, game::O::kModel);
+  ++tr.updates;
   tr.gameplay = active;
   tr.walking = false;
   tr.turning = false;
@@ -346,9 +351,10 @@ void Finish(void* s) {
     // how a slow walk looked like a walk that was not being stepped.
     if ((++tr.traces % 30) == 1) {
       const float* now = reinterpret_cast<const float*>(o + game::O::kPos);
-      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 rate=%.2f x=%.0f z=%.0f", s,
+      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 rate=%.2f cur=%d x=%.0f z=%.0f", s,
           game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step,
-          tr.travel, tr.frames, game::Read<float>(s, game::S::kNextSpeed), now[0], now[2]);
+          tr.travel, tr.frames, game::Read<float>(s, game::S::kNextSpeed),
+          tr.model ? game::Read<int>(tr.model, 0x44) : -1, now[0], now[2]);
     }
     return;
   }
@@ -413,6 +419,22 @@ void Map(void* s, int request, int& result) {
       t.standing ? ps1::kTyrantIdleSpeed
                  : ps1::TyrantClipRate(ps1::kTyrantWalkSpeed, t.step, t.travel);
   result = ps1::TyrantWalkSelector(t.standing);
+}
+
+// The engine advances the animation on every draw (00412469, inc [M+44]), not on every world update: at
+// the PC frame rate a 30 Hz walk clip cycles two or three times per step and the feet slide. A tyrant's
+// cursors may advance only on a draw that has a world update behind it, which restores the authored
+// cadence no matter how many times the frame is drawn.
+bool AllowDrawAdvance(const void* model) {
+  if (!g_config.ps1Tyrant || !model) return true;
+  for (auto& item : g_tracks) {
+    Track& tr = item.second;
+    if (!tr.model || tr.model != model) continue;
+    if (tr.updates == tr.advanced) return false;
+    tr.advanced = tr.updates;
+    return true;
+  }
+  return true;
 }
 
 void Reset() {
