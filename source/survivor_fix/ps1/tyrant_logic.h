@@ -40,7 +40,12 @@ constexpr int kTyrantSwingRight = 0x15;  // PlayerSide 2: ty_anim(e, 0x15, 0x40)
 // The mapper writes 3.0 for the walk clip, but the port moves him 26 units per update: at that step the
 // mapper's rate cycles the legs twice for every stride, which is the "legs double the torso" report. The
 // scale is applied where the clip is handed to each track (00412B90), after the mapper, so it sticks.
-constexpr float kTyrantWalkClipScale = 0.5f;
+// The tracks do not share a cadence: scaling every track halved the torso with the legs and left them
+// moving independently, so only the lower-body track (index 1 and up) is scaled and the root/torso
+// track keeps the mapper's rate.
+constexpr float TyrantWalkClipScale(int trackIndex) {
+  return trackIndex <= 0 ? 1.0f : 0.5f;
+}
 constexpr float kTyrantChargeClipScale = 1.0f;  // the charge step is doubled, so its clip stays as authored
 constexpr float kTyrantIdleSpeed = 2.0f;
 constexpr float kTyrantWalkSpeed = 1.0f;

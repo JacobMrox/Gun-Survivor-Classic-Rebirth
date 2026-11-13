@@ -462,10 +462,23 @@ void __fastcall ApplySequenceDetour(void* m, void* edx, void* track, int selecto
                                     float speed) {
   if (!g_applySequence) return;
   if (OwnsModel(m)) {
+    // Which track is this? The tracks are an array of fixed-size records after the model header.
+    int index = 0;
+    if (auto* base = game::Read<uint8_t*>(m, game::M::kTracks); base && track &&
+                                                              reinterpret_cast<uint8_t*>(track) >= base &&
+                                                              game::M::kTrackSize > 0) {
+      index = static_cast<int>((reinterpret_cast<uint8_t*>(track) - base) / game::M::kTrackSize);
+      const unsigned count = game::Read<unsigned>(m, game::M::kTrackCount);
+      if (index < 0 || static_cast<unsigned>(index) >= count) index = 0;
+    }
     if (selector == ps1::kTyrantWalkSelector) {
-      speed *= ps1::kTyrantWalkClipScale;
+      speed *= ps1::TyrantWalkClipScale(index);
     } else if (selector == ps1::kTyrantChargeSelector) {
       speed *= ps1::kTyrantChargeClipScale;
+    }
+    static int logged = 0;
+    if (g_config.debugEnable && (++logged % 120) == 1) {
+      Log("TyrantTrack: idx=%d sel=%d speed=%.2f", index, selector, speed);
     }
   }
   g_applySequence(m, edx, track, selector, transition, speed);
