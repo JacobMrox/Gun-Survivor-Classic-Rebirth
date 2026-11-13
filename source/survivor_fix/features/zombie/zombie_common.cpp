@@ -424,7 +424,7 @@ int __fastcall UpdateEnemyDetour(void* s, void* edx) {
   // Mr. X (types 22/23): one travel sample per gameplay update, before the enemy logic (the physics
   // applied the previous update's movement). The suspend/resume calls of 0043D2F0/0043D340 are not
   // ticks and would add a second, empty sample to the same frame.
-  if (caller == game::kWorldEnemyUpdateReturn) tyrant::BeginUpdate(s);
+  if (caller == game::kWorldEnemyUpdateReturn) tyrant::BeginUpdate(s, NativeAiRuns(s));
   // The blood on hit (0043AC86) is created inside 0043A8A0: zombie_blood reads S from here.
   struct BloodScope {
     BloodScope(void* s) { SetBloodSubject(s); }

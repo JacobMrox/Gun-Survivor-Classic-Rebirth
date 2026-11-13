@@ -6,6 +6,7 @@
 #include "../game.h"
 #include "../hooks.h"
 #include "../log.h"
+#include "../ps1/tyrant_logic.h"
 #include "../ps1/zombie_profile.h"
 #include "features.h"
 
@@ -21,10 +22,12 @@ bool g_requestReady = false;
 int __fastcall RequestAnimDetour(void* s, void* edx, int request, int flag) {
   const auto caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
   if (caller == game::kZombieInitAnimReturn && s) zombie::ObserveZombieVoiceLife(s);
-  if (caller == game::kZombieInitAnimReturn && s &&
-      ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) {
-    zombie::NativeZombieLife(s);
-    zombie::BeginWalkSpeedLife(s);  // PS1 801047B4, before the mapper's first use
+  if (caller == game::kZombieInitAnimReturn && s) {
+    const int type = game::Read<int>(s, game::S::kType);
+    // Mr. X (22/23) is registered in the shared PS1 world too; his own walk step does not use the
+    // zombie walk speed table, so only the life is started.
+    if (ps1::IsPcZombie(type) || ps1::IsTyrant(type)) zombie::NativeZombieLife(s);
+    if (ps1::IsPcZombie(type)) zombie::BeginWalkSpeedLife(s);  // PS1 801047B4, before the mapper's first use
   }
   return g_requestAnim(s, edx, request, flag);
 }

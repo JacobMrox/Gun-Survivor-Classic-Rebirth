@@ -1,15 +1,16 @@
 // Mr. X (PC types 22/23): the PS1 walk step (port/decomp/tyrant.c, n_tyrant_WalkStep 0x80101404).
-//   - the body moves 26 units per update (52 while charging) along a heading turned at most 4.2 degrees
-//     per update, with the room's ROOMENV walls, like 8007F404; the native accumulation is cleared, so
-//     the walk clip keeps its authored 1x rate and the feet stay on the ground;
-//   - with a wall between the tyrant and the player the heading comes from the shared PS1 nav logic
-//     (ps1/nav_logic.h, NavStep): it turns, strides and goes round the wall;
-//   - the charge (clip 0x11) rolls on the PS1 band (inside 6000, one 25% roll per approach, player in
-//     front) and holds for at least a few steps;
-//   - the aim stop (clip 0x13) when the player fires while the tyrant is far, like PlayerFiring;
-//   - the sidestep: a swing to the player's side (clip 5 or 0x15) when they run past.
-// The native enemy logic still picks the attacks and owns the hit event, the damage and the death; the
-// steer aim point of the player is restored after every update.
+//
+// The PC enemy logic is not allowed to move him: the tyrant is a PS1 world actor (zombie_world_pc.cpp),
+// so its XZ is planned here - heading from the shared PS1 nav (ps1/nav_logic.h, NavStep, the same one the
+// zombies use) and one step of 26 units per update (52 while charging) - committed by
+// WorldFinishUpdate -> StepZombieWorld (ROOMENV and enemy-only walls, actor and player contacts) and
+// protected from the native physics by WorldPhysicsBegin/WorldPhysicsEnd, which restore the owned XZ and
+// clear O+C8/O+D4. That is what removes the drift the PC logic added by itself (sideways, backwards, or
+// an extra step on top of the walk).
+//
+// The clips come from the PC mapper's own case, which already uses the PS1 numbers: 1 walk, 0x11 charge,
+// 0x13 aim stop, 5/0x15 sidestep, 9 death. The native update still resolves the attacks, the hit event,
+// damage and death; everything it does with the body's direction and speed is replaced.
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -28,12 +29,15 @@ namespace {
 struct Track {
   const uint8_t* o = nullptr;
   int index = -1;
-  float x = 0.0f, z = 0.0f;
-  float travel = 0.0f;  // planar units between two updates
+  // Position the tyrant was left at (absolute ownership of the XZ without the PS1 world).
+  float commitX = 0.0f, commitZ = 0.0f;
+  bool committed = false;
+  float travel = 0.0f;  // planar units of the last step
   bool sampled = false;
+  float x = 0.0f, z = 0.0f;
   // WalkStep state.
   ps1::NavState nav;
-  bool strideMode = false;  // the far branch: parts' direction 0x20, charge rearmed
+  bool strideMode = false;  // far branch: charge rearmed
   bool charged = false;     // TW_CHARGED
   bool charging = false;    // clip 0x11 running
   int chargeUpdates = 0;
@@ -42,11 +46,16 @@ struct Track {
   int aimReadyTick = 0;
   int side = 0;  // a sidestep is owed for the next attack (1 left, 2 right)
   bool steering = false;
+  bool turning = false;   // the nav wants a turn on the spot: no step
   bool standing = false;  // the body does not travel: the idle clip replaces the walk
-  bool walking = false;   // this update moves the body
+  bool walking = false;   // this update plans a step
+  bool gameplay = false;  // the update is the gameplay one
   float hx = 0.0f, hz = 1.0f;
   float step = ps1::kTyrantWalkStep;
-  float scale = 1.0f;  // fallback: scale of the native accumulation without PS1 walls
+  // The PS1 world normally commits the step; if this body never travels while it should, the port
+  // writes the XZ itself instead of standing still (a life the world does not tick).
+  bool direct = false;
+  int stalled = 0;
   float savedAim[3] = {};
   bool aimSaved = false;
 };
@@ -80,9 +89,12 @@ void RestoreAim(Track& tr, uint8_t* t) {
   tr.aimSaved = false;
 }
 
-void ClearAccum(uint8_t* o) {
+// O+D4 (this update's accumulation) and O+C8 (the damped velocity of 0045E730): neither may add a step.
+void ClearPlanar(uint8_t* o) {
   float* accum = game::Field<float>(o, game::O::kAccum);
   accum[0] = accum[1] = accum[2] = 0.0f;
+  float* velocity = game::Field<float>(o, 0xC8);
+  velocity[0] = velocity[2] = 0.0f;
 }
 
 // Normalized forward, or the target when the matrix has no usable row.
@@ -106,7 +118,6 @@ void TurnTowards(const uint8_t* o, float tx, float tz, float& hx, float& hz) {
     hz = uz;
     return;
   }
-  // A step towards the target in the same sense as the cross product.
   const float a = angle > 0.0f ? ps1::kTyrantTurnStep : -ps1::kTyrantTurnStep;
   const float c = std::cos(a), sn = std::sin(a);
   hx = cx * c - cz * sn;
@@ -118,9 +129,9 @@ void TurnTowards(const uint8_t* o, float tx, float tz, float& hx, float& hz) {
 // A shot left the player's weapon (quick_save.cpp, both native firing paths).
 void OnPlayerShot() { g_lastShot = g_tick + 1; }
 
-// Before the enemy logic of every gameplay update: one travel sample (the physics applied the previous
-// update's movement) and the WalkStep decision for this one.
-void BeginUpdate(void* s) {
+// Before the enemy logic of a gameplay update: the WalkStep decision for this one. `active` is the
+// native gameplay gate: outside it the tyrant is not moved or re-aimed by the port.
+void BeginUpdate(void* s, bool active) {
   if (!g_config.ps1Tyrant || !ps1::IsTyrant(game::Read<int>(s, game::S::kType))) {
     g_tracks.erase(s);
     return;
@@ -140,25 +151,32 @@ void BeginUpdate(void* s) {
     tr.index = index;
   }
   ++g_tick;
-
-  const float* pos = reinterpret_cast<const float*>(o + game::O::kPos);
-  if (tr.sampled) tr.travel = Planar(pos[0] - tr.x, pos[2] - tr.z);
-  tr.x = pos[0];
-  tr.z = pos[2];
-  tr.sampled = true;
-  tr.standing = ps1::TyrantStanding(tr.standing, tr.travel);
-
-  tr.side = 0;
+  tr.gameplay = active;
   tr.walking = false;
+  tr.turning = false;
   tr.steering = false;
+  tr.side = 0;
   const int request = game::Read<int>(s, game::S::kRequest);
   const int selector = game::Read<int>(s, game::S::kSelector);
-  if (game::Read<float>(o, game::O::kHealth) <= 0.0f) {
+  if (!active || game::Read<float>(o, game::O::kHealth) <= 0.0f) {
+    tr.walking = false;
     tr.charging = false;
     tr.aim = false;
     RestoreAim(tr, t);
     return;
   }
+
+  const float* pos = reinterpret_cast<const float*>(o + game::O::kPos);
+  // Without the PS1 world the native physics can add a step of its own between two updates: the
+  // position written here last time is the only travel this actor is credited with.
+  const bool owned = zombie::WorldOwnsObject(o);
+  const float curX = owned || !tr.committed ? pos[0] : tr.commitX;
+  const float curZ = owned || !tr.committed ? pos[2] : tr.commitZ;
+  if (tr.sampled) tr.travel = Planar(curX - tr.x, curZ - tr.z);
+  tr.x = curX;
+  tr.z = curZ;
+  tr.sampled = true;
+  tr.standing = ps1::TyrantStanding(tr.standing, tr.travel);
 
   const float* tp = reinterpret_cast<const float*>(t + game::O::kPos);
   const float toX = tp[0] - pos[0];
@@ -168,8 +186,8 @@ void BeginUpdate(void* s) {
   const bool facing = ps1::TyrantFacing(fw[0], fw[2], toX, toZ);
   const bool locomotion = ps1::IsTyrantWalkRequest(request);
 
-  // WalkStep: the far branch switches the parts to the stride and rearms the charge once; after that
-  // the roll is made whenever the player is inside 6000, so a charge can start before he is close.
+  // The far branch switches the parts to the stride and rearms the charge once; after that the roll
+  // is made whenever the player is inside 6000, so a charge can start before he is close.
   if (ps1::TyrantEntersStride(tr.strideMode, distance)) {
     tr.strideMode = true;
     tr.charged = false;
@@ -195,8 +213,6 @@ void BeginUpdate(void* s) {
       tr.hx = fw[0] / flen;
       tr.hz = fw[2] / flen;
     }
-    // 0043A364: the native charge case adds 40 units of local forward movement once.
-    zombie::g_accumulate(o, nullptr, 0.0f, 0.0f, ps1::kTyrantChargeImpulse);
   }
 
   // Aim stop (PlayerFiring): far away, player in front, a shot just fired.
@@ -214,15 +230,12 @@ void BeginUpdate(void* s) {
   }
 
   // Sidestep: the player runs past while the tyrant faces them; the sign of the cross product is the
-  // side (PlayerSide 1 -> clip 5, 2 -> clip 0x15). One sidestep is owed per run-past, and the attack
-  // request of this same update consumes it.
+  // side (PlayerSide 1 -> clip 5, 2 -> clip 0x15).
   const float* tv = reinterpret_cast<const float*>(t + game::O::kVelocity);
   const bool playerMoving = Planar(tv[0], tv[2]) > 1.0f;
   const int side = ps1::TyrantSideFromLineSide(fw[0] * toZ - fw[2] * toX);
   if (ps1::TyrantCanSidestep(tr.charging || tr.aim, distance, facing, playerMoving, side)) tr.side = side;
 
-  // Steer: the PS1 turns to the player, strides on until a wall is ahead and then goes round it. The
-  // native turn follows the player's aim point, so steering aims it along the nav heading instead.
   const bool walking = (locomotion || tr.charging) && !tr.aim &&
                        (selector == ps1::kTyrantIdleSelector || selector == ps1::kTyrantWalkSelector ||
                         selector == ps1::kTyrantChargeSelector || tr.charging);
@@ -232,23 +245,43 @@ void BeginUpdate(void* s) {
   }
   tr.walking = true;
   // 26 units per update for the walk: the walk clip is authored at that stride (S+40 = 3.0 is the PS1
-  // 1x rate), so a faster step would skate again. Only the charge clip takes the doubled step.
+  // 1x rate). Only the charge clip takes the doubled step.
   tr.step = ps1::TyrantStep(tr.charging);
+  // A body the PS1 world does not move would stand still for ever: after 20 updates that should
+  // have travelled, own the XZ here instead.
+  if (!tr.direct && tr.travel < 1.0f) {
+    if (++tr.stalled > 20) tr.direct = true;
+  } else {
+    tr.stalled = 0;
+  }
   if (tr.charging) return;  // the charge keeps the heading it committed to
 
+  // Steer: the same PS1 nav the zombies use. It turns to the player, strides with a clear line and
+  // goes round a wall; while it asks for a turn on the spot there is no step (8007F210).
   const auto& walls = CurrentRoomWalls();
-  if (!walls.empty() && ps1::FirstBlockingWall(walls, {pos[0], -pos[2]}, {tp[0], -tp[2]}) >= 0) {
-    ps1::NavParams params;
+  ps1::NavParams params;
+  if (!walls.empty()) {
     params.ps1IntegerSteer = true;
     params.ps1Speed = -static_cast<int>(tr.step);
     params.turnStep = ps1::kTurnStep;
     params.rateScale = 1.0f;
     params.playerWallMargin = 0.0f;
-    const ps1::NavOutput nav =
-        ps1::NavStep(tr.nav, walls, {{pos[0], -pos[2]}, {fw[0], -fw[2]}, {tp[0], -tp[2]}}, params);
-    tr.hx = nav.heading.x;
-    tr.hz = -nav.heading.z;
-    tr.steering = true;
+  } else {
+    params.turnStep = g_config.navTurnStep * 3.14159265f / 180.0f;
+    params.rateScale = g_config.navRateScale;
+  }
+  const ps1::NavOutput nav =
+      ps1::NavStep(tr.nav, walls, {{pos[0], -pos[2]}, {fw[0], -fw[2]}, {tp[0], -tp[2]}}, params);
+  tr.hx = nav.heading.x;
+  tr.hz = -nav.heading.z;
+  tr.turning = !nav.walk;
+  tr.steering = nav.walk && !walls.empty() &&
+                ps1::FirstBlockingWall(walls, {pos[0], -pos[2]}, {tp[0], -tp[2]}) >= 0;
+  if (tr.turning) {
+    tr.step = 0.0f;  // turning on the spot
+    tr.standing = false;
+  }
+  if (tr.steering) {
     float* aim = game::Field<float>(t, game::O::kAimPoint);
     if (!tr.aimSaved) {
       std::memcpy(tr.savedAim, aim, sizeof tr.savedAim);
@@ -259,49 +292,61 @@ void BeginUpdate(void* s) {
     return;
   }
   RestoreAim(tr, t);
-  TurnTowards(o, toX, toZ, tr.hx, tr.hz);
+  // With a clear line the PS1 turns to the player at 0x30 angle units per frame; the nav turn while
+  // going round a wall is the same limit.
+  if (!tr.steering) TurnTowards(o, toX, toZ, tr.hx, tr.hz);
 }
 
-// After the native update: the PS1 step (8007F404) replaces the movement the enemy logic accumulated,
-// and the steer heading replaces the turn it added.
+// After the native update: the planned step replaces whatever the enemy logic did with the body.
 void Finish(void* s) {
   if (!g_config.ps1Tyrant) return;
   auto it = g_tracks.find(s);
   if (it == g_tracks.end()) return;
   Track& tr = it->second;
+  const bool gameplay = tr.gameplay;
+  tr.gameplay = false;
+  if (!gameplay) return;
   uint8_t* o = nullptr;
   uint8_t* t = nullptr;
   if (!Objects(s, o, t)) return;
   RestoreAim(tr, t);
   if (tr.aim) {
-    ClearAccum(o);  // PlayerFiring: the tyrant stands and aims
+    ClearPlanar(o);  // PlayerFiring: the tyrant stands and aims
+    tr.committed = false;
     return;
   }
   if (!tr.walking) return;
   zombie::SetHeading(o, tr.hx, tr.hz);
-  const auto& walls = CurrentRoomWalls();
-  if (!walls.empty()) {
-    // The PS1 clears the velocity every frame (8007F404) and moves |E+866| along the heading; the
-    // ROOMENV walls stop it. Keeping the native accumulation would add the port's own step on top.
-    ClearAccum(o);
+  ClearPlanar(o);
+  if (!tr.direct && zombie::WorldOwnsObject(o)) {
+    // Planned here and committed once by WorldFinishUpdate -> StepZombieWorld, like the zombies.
     zombie::MoveZombie(o, tr.hx * tr.step, tr.hz * tr.step);
+    tr.committed = false;
     return;
   }
-  // No PS1 walls in this room: keep the native collision and scale its own accumulation towards the
-  // same step, measured from the travel of the previous update.
-  float* accum = game::Field<float>(o, game::O::kAccum);
-  if (tr.travel > 0.5f) {
-    float factor = tr.step / tr.travel;
-    factor = (std::max)(0.1f, (std::min)(2.0f, factor));
-    tr.scale = tr.scale * 0.6f + factor * 0.4f;
+  // No PS1 world for this room: own the XZ absolutely, so the native physics cannot add a step.
+  float* pos = game::Field<float>(o, game::O::kPos);
+  if (!tr.committed) {
+    tr.commitX = pos[0];
+    tr.commitZ = pos[2];
+    tr.committed = true;
   }
-  accum[0] *= tr.scale;
-  accum[2] *= tr.scale;
+  float nx = tr.commitX + tr.hx * tr.step;
+  float nz = tr.commitZ + tr.hz * tr.step;
+  const auto& walls = CurrentRoomWalls();
+  if (!walls.empty() &&
+      ps1::FirstBlockingWall(walls, {tr.commitX, -tr.commitZ}, {nx, -nz}) >= 0) {
+    nx = tr.commitX;
+    nz = tr.commitZ;
+  }
+  tr.commitX = nx;
+  tr.commitZ = nz;
+  pos[0] = nx;
+  pos[2] = nz;
 }
 
 // Runs where the native mapper result is final. Death, aim, charge and sidestep pick their PS1 clip;
-// the walk keeps the authored 1x rate. Every other request keeps the PC's own selector, threshold and
-// speed.
+// the walk keeps the authored 1x rate.
 void Map(void* s, int request, int& result) {
   if (!g_config.ps1Tyrant || !ps1::IsTyrant(game::Read<int>(s, game::S::kType))) return;
   if (ps1::IsTyrantDeathRequest(request)) {

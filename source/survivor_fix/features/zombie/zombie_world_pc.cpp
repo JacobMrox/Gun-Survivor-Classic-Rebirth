@@ -2,6 +2,7 @@
 // The native PC physics phase keeps the vertical/static support; the owned XZ is committed once
 // after the real gameplay enemy logic call. No wall-clock lifetime or guessed hook ABI.
 #include "zombie_shared.h"
+#include "../../ps1/tyrant_logic.h"
 
 #include <algorithm>
 #include <array>
@@ -48,6 +49,8 @@ bool ValidModel(const uint8_t* o, int type) {
   const unsigned count = game::Read<unsigned>(m, game::M::kTrackCount);
   const auto* tracks = game::Read<uint8_t*>(m, game::M::kTracks);
   if (!tracks || count < 2 || count > 64) return false;
+  // Mr. X has his own model (ENEM22/23 clips up to 0x15); the 38-sequence zombie profile does not apply.
+  if (ps1::IsTyrant(type)) return true;
   for (unsigned i = 0; i < count; ++i)
     if (game::Read<int>(tracks + i * game::M::kTrackSize, 0xC) < ps1::RequiredZombieSequences(type)) return false;
   return true;
@@ -76,7 +79,10 @@ bool CorpseWithoutContacts(const ActorLife& life) {
   // S+4C = 1. The applied byte S+2C is read, not the proposed S+3C or the adjacent done byte S+2D.
   // The native 50 is a transition marker, never a timer introduced by this adapter.
   const float hp = game::Read<float>(life.o, 0x11C);
-  if (!ps1::IsPcZombie(game::Read<int>(life.s, game::S::kType)) || !std::isfinite(hp) || hp > 0) return false;
+  const int type = game::Read<int>(life.s, game::S::kType);
+  // Mr. X: a dead body stops blocking and stops being moved by the port.
+  if (ps1::IsTyrant(type)) return std::isfinite(hp) && hp <= 0.0f;
+  if (!ps1::IsPcZombie(type) || !std::isfinite(hp) || hp > 0) return false;
   if (DeathLying(life.s)) return true;  // Ps1ZombieDeath: PS1 pose on the ground (801032CC substate 3)
   const int request = game::Read<int>(life.s, game::S::kRequest);
   const int selector = game::Read<int>(life.s, game::S::kSelector);
@@ -91,6 +97,10 @@ bool CorpseWithoutContacts(const ActorLife& life) {
 
 bool Owns(const ActorLife& life) {
   if (!StillBound(life, life.c) || CorpseWithoutContacts(life)) return false;
+  // Mr. X: the PS1 walk step owns his XZ and heading in every request, not only while walking.
+  if (ps1::IsTyrant(game::Read<int>(life.s, game::S::kType))) {
+    return game::Read<uint8_t>(life.s, 0x68) != 0;
+  }
   const int request = game::Read<int>(life.s, game::S::kRequest);
   const auto phase = g_entries.find(life.s);
   return game::Read<uint8_t>(life.s, 0x68) != 0 &&
@@ -121,6 +131,12 @@ ps1::WorldActor Body(const ActorLife& life) {
     if (saved.o == life.o) originallyExcluded = (saved.flags & 2) != 0;
   if (originallyExcluded) body.flags |= 0x8000;
   if (CorpseWithoutContacts(life)) body.flags |= 1;
+  // Mr. X is much larger than a zombie: keep the radius his own collision sphere declares, so the
+  // player contact (80081FF0) does not let anyone walk into him.
+  if (ps1::IsTyrant(game::Read<int>(life.s, game::S::kType))) {
+    const float radius = game::Read<float>(life.o, 0xC4);
+    if (std::isfinite(radius) && radius > 0.0f && radius < 4000.0f) body.radius = static_cast<int>(radius);
+  }
   return body;
 }
 
@@ -177,9 +193,11 @@ void NativeZombieLife(void* s) {
   ResetPushActor(s);
   ResetDeathActor(s);
   lives.erase(s);
-  if (!ps1::IsPcZombie(game::Read<int>(s, game::S::kType))) return;
+  const int type = game::Read<int>(s, game::S::kType);
+  // Mr. X joins the same PS1 world as the zombies: same nav, walls, contacts and XZ ownership.
+  if (!ps1::IsPcZombie(type) && !ps1::IsTyrant(type)) return;
   uint8_t *o, *t;
-  if (!GetObjects(s, o, t) || !ValidModel(o, game::Read<int>(s, game::S::kType))) return;
+  if (!GetObjects(s, o, t) || !ValidModel(o, type)) return;
   for (auto it = lives.begin(); it != lives.end();) {
     if (it->second.o == o) {
       g_entries.erase(it->first);
