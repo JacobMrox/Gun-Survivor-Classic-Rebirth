@@ -1,5 +1,6 @@
 // Locomotion sound independent of RequestAnim restarts (PS1 80104108/80104660).
 #include "zombie_shared.h"
+#include "../../ps1/tyrant_logic.h"
 #include "../../ps1/zombie_audio_logic.h"
 #include "../../ps1/zombie_voice_samples.h"
 #include "../../ps1/crow_logic.h"
@@ -16,6 +17,11 @@ LoadFn nativeLoad = nullptr;
 bool ready = false;
 bool voiceSamplesReady = false;
 thread_local void* subject = nullptr;
+thread_local bool tyrantWalk = false;
+// Mr. X: the native walking call fires on every sequence reapplication; a heavy walk needs one step
+// every so many updates instead of one per update.
+constexpr unsigned kTyrantFootstepUpdates = 14;
+std::unordered_map<void*, unsigned> tyrantSteps;
 thread_local int headingBefore = 0;
 thread_local const char* replacement = nullptr;
 enum class ReplacementKind {None,Walk,DeathVoice};
@@ -29,6 +35,13 @@ struct ReplacementScope {
 std::string paths[2];
 std::array<std::string,9> voicePaths;
 unsigned emitted = 0;
+
+// Types 22/23: the same native walking call (0043D5F2, family 13 cue 5) at a walk cadence.
+bool TyrantManaged(void* s) {
+  if (!g_config.ps1Tyrant || !s || !ps1::IsTyrant(game::Read<int>(s, game::S::kType))) return false;
+  uint8_t *o, *t;
+  return GetObjects(s, o, t) && game::Read<float>(o, 0x11C) > 0;
+}
 
 bool Managed(void* s) {
   uint32_t tick;
@@ -65,8 +78,9 @@ bool __fastcall Load(void* sound,void* edx,const char* path,char mode,int flags,
 unsigned __fastcall Sound(void* manager,void* edx,int family,int cue) {
   // 43D550 calls 471260(13,5) only when a walking animation is reapplied. Keep its
   // voices and all other callers; the PS1 event below owns this walking sound.
+  // Mr. X: the same call is suppressed here and emitted from WalkAudioAfter at the walk cadence.
   if (reinterpret_cast<uintptr_t>(_ReturnAddress())==0x0043D5F2 &&
-      subject && Managed(subject) && family==13 && cue==5) return 0;
+      subject && family==13 && cue==5 && (tyrantWalk || Managed(subject))) return 0;
   return nativeSound(manager,edx,family,cue);
 }
 bool CacheWave(const std::vector<int16_t>& pcm,int cue,std::string& path,const char* category="walk") {
@@ -114,12 +128,34 @@ bool PrepareVoices(const std::vector<uint8_t>& bytes) {
 }
 void WalkAudioBefore(void* s) {
   subject=nullptr;
+  tyrantWalk=false;
+  if(TyrantManaged(s)){subject=s;tyrantWalk=true;return;}
   if(!Managed(s))return;
   uint8_t *o,*t;if(!GetObjects(s,o,t))return;
   subject=s;headingBefore=Heading(o);
 }
 void WalkAudioAfter(void* s) {
-  const bool active=subject==s;subject=nullptr;
+  const bool active=subject==s;
+  const bool tyrant=tyrantWalk&&active;
+  subject=nullptr;tyrantWalk=false;
+  if(tyrant) {
+    // One step per kTyrantFootstepUpdates updates of walking; the native bank and cue are kept.
+    uint8_t *o,*t;
+    const int request=game::Read<int>(s,game::S::kRequest);
+    if(GetObjects(s,o,t)&&game::Read<float>(o,0x11C)>0&&request>=2&&request<=7) {
+      const unsigned step=++tyrantSteps[s];
+      if(step%kTyrantFootstepUpdates==3) {
+        void* manager=*reinterpret_cast<void**>(game::kGameState);
+        if(manager&&nativeSound) {
+          nativeSound(manager,nullptr,13,5);
+          if(emitted++<16)Log("TyrantWalkAudio: S=%p step=%u",s,step);
+        }
+      }
+    } else {
+      tyrantSteps.erase(s);
+    }
+    return;
+  }
   // Crow wing flap (crow.c FlyStep: frame 3 -> FN_EN_ANIM_SOUND e,9,2).
   // The native crow dispatcher only fires on sequence reapplication, which
   // the held flying clip suppresses, so emit it here per-update instead.

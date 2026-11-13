@@ -56,6 +56,7 @@ struct Track {
   // writes the XZ itself instead of standing still (a life the world does not tick).
   bool direct = false;
   int stalled = 0;
+  int traces = 0;
   float savedAim[3] = {};
   bool aimSaved = false;
 };
@@ -318,6 +319,14 @@ void Finish(void* s) {
   if (!tr.walking) return;
   zombie::SetHeading(o, tr.hx, tr.hz);
   ClearPlanar(o);
+  // Diagnostic: the travel of the last step against the step and the clip rate tell whether the
+  // animation and the transform agree. Only written when logging is enabled.
+  if ((++tr.traces % 30) == 1) {
+    const float* p = reinterpret_cast<const float*>(o + game::O::kPos);
+    Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f rate=%.2f own=%d x=%.0f z=%.0f", s,
+        game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step, tr.travel,
+        game::Read<float>(s, game::S::kNextSpeed), zombie::WorldOwnsObject(o) ? 1 : 0, p[0], p[2]);
+  }
   if (!tr.direct && zombie::WorldOwnsObject(o)) {
     // Planned here and committed once by WorldFinishUpdate -> StepZombieWorld, like the zombies.
     zombie::MoveZombie(o, tr.hx * tr.step, tr.hz * tr.step);
@@ -372,7 +381,15 @@ void Map(void* s, int request, int& result) {
     return;
   }
   if (!ps1::IsTyrantWalkRequest(request) || result != ps1::kTyrantWalkSelector) return;
-  *game::Field<float>(s, game::S::kNextSpeed) = ps1::kTyrantWalkSpeed;
+  // The legs must cover the ground the body actually covers: if the world only commits part of the
+  // planned step (contacts, a tick it skips), the clip is played slower by the same ratio instead of
+  // running under a body that lags behind it.
+  float rate = ps1::kTyrantWalkSpeed;
+  if (t.travel > 1.0f) {
+    rate *= t.travel / ps1::kTyrantWalkStep;
+    rate = (std::max)(0.6f, (std::min)(4.5f, rate));
+  }
+  *game::Field<float>(s, game::S::kNextSpeed) = rate;
   result = ps1::TyrantWalkSelector(t.standing);
 }
 
