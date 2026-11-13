@@ -102,7 +102,7 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     const float boxW = (utility ? 600.0f : 430.0f) * scale;
     // The utility list has twelve rows; the box follows the row count so the current-room and
     // hint lines stay below the last entry.
-    const float boxH = utility ? marginY * 2.0f + glyphH * 16.0f : 300.0f * scale;
+    const float boxH = utility ? marginY * 2.0f + glyphH * 17.0f : 300.0f * scale;
     const float boxX = (static_cast<float>(backDesc.Width) - boxW) * 0.5f;
     const float boxY = (static_cast<float>(backDesc.Height) - boxH) * 0.32f;
 
@@ -176,12 +176,12 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
     if (utility) {
         const char* options[] = {"QUICK SAVE", "QUICK LOAD", "SAVE GAME", "LOAD GAME", "INFINITE AMMO",
                                  "INFINITE HEALTH", "DYNAMIC SHADOWS", "SHOOT FLASH", "INVINCIBLE",
-                                 "SPAWN", "QUIT TO TITLE", "QUIT GAME"};
-        for (int i = 0; i < 12; ++i) {
+                                 "FREE CAMERA", "SPAWN", "QUIT TO TITLE", "QUIT GAME"};
+        for (int i = 0; i < 13; ++i) {
             const char* status = "";
-            if (i >= 4 && i <= 8) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
+            if (i >= 4 && i <= 9) status = !sf::features::DebugUtilityCheatAvailable(i) ? " NOT READY" :
                 sf::features::DebugUtilityCheatEnabled(i) ? " ON" : " OFF";
-            if (i == 9) {
+            if (i == 10) {
                 // LEFT/RIGHT scroll this line, confirm spawns the shown entry.
                 snprintf(line, sizeof(line), "%c SPAWN < %s >", row == i ? '-' : ' ',
                          sf::features::kDebugSpawnChoices[sf::features::DebugSpawnChoice()].name);
@@ -204,13 +204,13 @@ void DebugMenu_Draw(IDirect3DDevice8* dev) {
         snprintf(line, sizeof(line), "CUR %02X %02X/%02X %-10s", cur, stage, room, roomName(cur));
     else
         snprintf(line, sizeof(line), "CUR %02X %-16s", cur, roomName(cur));
-    text(line, boxX + marginX, boxY + marginY + glyphH * (utility ? 14.0f : 12.0f), white);
+    text(line, boxX + marginX, boxY + marginY + glyphH * (utility ? 15.0f : 12.0f), white);
     static DWORD t0 = GetTickCount();
     const DWORD el = GetTickCount() - t0;
     snprintf(line, sizeof(line), "%02lu:%02lu:%02lu", (el / 3600000) % 24, (el / 60000) % 60, (el / 1000) % 60);
     text(line, boxX + boxW - glyphW * 10, boxY + boxH - glyphH * 2, D3DCOLOR_ARGB(255, 255, 0, 255));
     snprintf(line, sizeof(line), "UP DOWN LEFT RIGHT ENTER ESC F2");
-    text(line, boxX + marginX, boxY + marginY + glyphH * (utility ? 15.0f : 13.0f), white);
+    text(line, boxX + marginX, boxY + marginY + glyphH * (utility ? 16.0f : 13.0f), white);
     dev->ApplyStateBlock(state);
     dev->DeleteStateBlock(state);
 }

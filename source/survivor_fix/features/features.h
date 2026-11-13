@@ -97,6 +97,10 @@ int DebugMenuSelected();
 int DebugMenuRow();
 int DebugMenuCurrentScene();
 void DebugQueueJump(int scene);
+// Debug free camera (player.cpp): its own eye and direction over the running game, moved with the
+// numpad. The utility menu's FREE CAMERA row toggles it; no hotkey is spent on it.
+void ToggleFreeCamera();
+bool FreeCameraActive();
 // Pad bindings for the wrapper's own additions: the gamepad layer calls these on a fresh
 // press of a button that is bound to one of these actions instead of a key.
 void ToggleDebugMenu();

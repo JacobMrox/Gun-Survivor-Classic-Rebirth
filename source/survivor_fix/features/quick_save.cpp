@@ -104,7 +104,7 @@ DebugMenuInputGate g_debugInputGate;
 bool g_debugUpDown = false, g_debugDownDown = false, g_debugLeftDown = false, g_debugRightDown = false, g_debugEnterDown = false, g_debugEscDown = false;
 int g_debugSel = 1;
 int g_debugRow = 0;  // 0 JUMP, 1..6 dummy rows (RE2 layout)
-int g_spawnChoice = 0;  // utility row 9: index into kDebugSpawnChoices
+int g_spawnChoice = 0;  // utility row 10: index into kDebugSpawnChoices
 RECT g_windowedRect = {};
 bool g_haveWindowedRect = false;
 std::array<char, 64> g_notice = {};
@@ -579,15 +579,15 @@ void DebugMenuHandlePresses(unsigned presses) {
     if (g_debugUtility) { g_debugUtility = false; g_debugRow = 1; }
     else { g_debugOpen = false; Log("DebugMenu: closed via ESC"); }
   }
-  const int lastRow = 11;
+  const int lastRow = 12;
   if (presses & kMenuUp) g_debugRow = (g_debugRow > 0) ? g_debugRow - 1 : lastRow;
   if (presses & kMenuDown) g_debugRow = (g_debugRow < lastRow) ? g_debugRow + 1 : 0;
   if (!g_debugUtility && g_debugRow == 0 && (presses & kMenuLeft))
     g_debugSel = (g_debugSel > 1) ? g_debugSel - 1 : 0x79;
   if (!g_debugUtility && g_debugRow == 0 && (presses & kMenuRight))
     g_debugSel = (g_debugSel < 0x79) ? g_debugSel + 1 : 1;
-  if (g_debugUtility && g_debugRow == 9 && (presses & kMenuLeft)) DebugSpawnChoiceCycle(-1);
-  if (g_debugUtility && g_debugRow == 9 && (presses & kMenuRight)) DebugSpawnChoiceCycle(1);
+  if (g_debugUtility && g_debugRow == 10 && (presses & kMenuLeft)) DebugSpawnChoiceCycle(-1);
+  if (g_debugUtility && g_debugRow == 10 && (presses & kMenuRight)) DebugSpawnChoiceCycle(1);
   if (!(presses & kMenuConfirm)) return;
   if (g_debugUtility) {
     const UtilityAction action = UtilityActionForRow(g_debugRow);
@@ -615,14 +615,18 @@ void DebugMenuHandlePresses(unsigned presses) {
       Notify(enabled ? "INVINCIBLE ON" : "INVINCIBLE OFF");
       Log("DebugMenu: invincibility %s", enabled ? "on" : "off");
     } else if (g_debugRow == 9) {
+      ToggleFreeCamera();
+      Notify(FreeCameraActive() ? "FREE CAMERA ON" : "FREE CAMERA OFF");
+      Log("DebugMenu: free camera %s", FreeCameraActive() ? "on" : "off");
+    } else if (g_debugRow == 10) {
       const char* name = kDebugSpawnChoices[g_spawnChoice].name;
       char notice[48] = {};
       _snprintf_s(notice, _TRUNCATE, DebugSpawnChosen() ? "SPAWNED %s" : "SPAWN %s FAILED", name);
       Notify(notice);
       Log("DebugMenu: spawn row chose %s", name);
-    } else if (g_debugRow == 10) {
-      DebugReturnToTitle();
     } else if (g_debugRow == 11) {
+      DebugReturnToTitle();
+    } else if (g_debugRow == 12) {
       DebugQuitGame();
     } else if (action == UtilityAction::Unavailable) Notify("UNIMPLEMENTED");
     else { g_utilityPending = action; g_debugOpen = false; }
@@ -964,6 +968,7 @@ bool DebugUtilityCheatAvailable(int row) {
     case 6: return true;               // dynamic shadows can always be switched
     case 7: return true;               // the shooting flash can always be switched
     case 8: return g_healthAvailable;  // invincibility rides on the damage hook
+    case 9: return true;               // the free camera needs nothing from the room
     default: break;
   }
   return row == 4 ? g_ammoAvailable : row == 5 && g_healthAvailable;
@@ -973,6 +978,7 @@ bool DebugUtilityCheatEnabled(int row) {
     case 6: return SurvivorPc_DynamicModelShadows();
     case 7: return SurvivorPc_ShootFlash();
     case 8: return g_invincible.load();
+    case 9: return FreeCameraActive();
     default: break;
   }
   return row == 4 ? g_infiniteAmmo.load() : row == 5 && g_infiniteHealth.load();

@@ -447,7 +447,6 @@ int SetPlayerView(void* cam, void* edx, const float* a, const float* b, const fl
 // makes it usable for filming an enemy walk from the side or from behind.
 struct FreeCam {
   bool on = false;
-  bool f7Down = false;
   float eye[3] = {0.0f, 0.0f, 0.0f};
   float dir[3] = {0.0f, 0.0f, -1.0f};
 };
@@ -466,7 +465,7 @@ int ApplyFreeCamera() {
                    g_lastView.hasUp ? g_lastView.c : nullptr);
 }
 
-void ToggleFreeCamera() {
+void ToggleFreeCameraInternal() {
   if (!g_config.debugEnable) return;
   g_freeCam.on = !g_freeCam.on;
   if (g_freeCam.on && g_lastView.valid) {
@@ -483,10 +482,9 @@ void ToggleFreeCamera() {
       g_freeCam.eye[1], g_freeCam.eye[2]);
 }
 
+bool FreeCameraOnInternal() { return g_freeCam.on; }
+
 void UpdateFreeCamera() {
-  const bool f7 = FreeCamKeyDown(VK_F7);
-  if (f7 && !g_freeCam.f7Down) ToggleFreeCamera();
-  g_freeCam.f7Down = f7;
   if (!g_freeCam.on) return;
   const float yaw = (FreeCamKeyDown(VK_NUMPAD7) ? 1.0f : 0.0f) - (FreeCamKeyDown(VK_NUMPAD1) ? 1.0f : 0.0f);
   if (yaw != 0.0f) ps1::FreeCamYaw(g_freeCam.dir, yaw * ps1::kFreeCamYawStep);
@@ -1191,6 +1189,9 @@ bool RemovePcHeadBob() {
 }
 
 }  // namespace
+// Utility menu FREE CAMERA row (quick_save.cpp): the two names with external linkage.
+void ToggleFreeCamera() { ToggleFreeCameraInternal(); }
+bool FreeCameraActive() { return FreeCameraOnInternal(); }
 
 void SetDamageViewJolt(int yawUnits, int lookY) {
   g_joltYaw = yawUnits;
