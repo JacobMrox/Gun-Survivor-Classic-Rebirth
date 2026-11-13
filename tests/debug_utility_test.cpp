@@ -62,6 +62,19 @@ int main() {
   assert(!DebugSpawnPoint(nullptr, forward, kDebugSpawnDistance, &point));
   assert(!DebugSpawnPoint(at, forward, kDebugSpawnDistance, nullptr));
   assert(DebugSpawnPoint(at, forward, 0.0f, &point) && point.x == 100.0f);
+  // A debug spawn follows the free camera's bearing while it is on: the player's body forward lags it.
+  {
+    const float player[2] = {0.0f, -1.0f};
+    const float cam[3] = {-0.8f, 0.1f, 0.6f};
+    float facing[2] = {0.0f, 0.0f};
+    DebugSpawnForward(player, cam, true, facing);
+    assert(facing[0] == -0.8f && facing[1] == 0.6f);
+    DebugSpawnForward(player, cam, false, facing);
+    assert(facing[0] == 0.0f && facing[1] == -1.0f);
+    const float down[3] = {0.0f, 1.0f, 0.0f};  // straight down: no horizontal bearing to follow
+    DebugSpawnForward(player, down, true, facing);
+    assert(facing[0] == 0.0f && facing[1] == -1.0f);
+  }
   assert(kDebugSpawnZombie >= 0 && kDebugSpawnZombieAlt >= 0);
   assert(kDebugSpawnCerberus == 11 && kDebugSpawnCrow == 12);
   // The utility menu has one spawn row: LEFT/RIGHT scrolls this table.

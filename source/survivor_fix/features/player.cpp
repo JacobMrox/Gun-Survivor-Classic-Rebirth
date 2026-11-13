@@ -1325,6 +1325,7 @@ bool DebugSpawnEntity(int type) {
     Log("DebugSpawn: the player object is unavailable (type %d not spawned)", type);
     return false;
   }
+  DebugSpawnForward(forward, g_freeCam.dir, g_freeCam.on, forward);
   SpawnPoint point;
   if (!DebugSpawnPoint(position, forward, g_config.debugSpawnDistance, &point)) return false;
   // The room tables pass the placement's killed-flag word, which lives in the persistent room

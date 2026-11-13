@@ -132,6 +132,18 @@ constexpr int DebugSpawnChoiceWrap(int index) {
 }
 // The spawn point keeps the bandwidth's own height: native placements are entities whose origin
 // sits at the body sphere of the player, which is what the room tables pass as y.
+// While the free camera is on, a spawn is being filmed, and the shot is framed along the camera's
+// bearing: the player's body forward lags the camera (his torso turns with its own animation), so an
+// actor placed along it lands off-frame. The camera direction wins whenever it has a horizontal part.
+inline void DebugSpawnForward(const float playerForward[2], const float cameraDir[3], bool useCamera,
+                              float out[2]) {
+  out[0] = playerForward[0];
+  out[1] = playerForward[1];
+  if (!useCamera || !cameraDir) return;
+  if (std::fabs(cameraDir[0]) + std::fabs(cameraDir[2]) < 1e-4f) return;  // camera looks straight up/down
+  out[0] = cameraDir[0];
+  out[1] = cameraDir[2];
+}
 inline bool DebugSpawnPoint(const float position[3], const float forward[2], float distance,
                             SpawnPoint* out) {
   if (!position || !forward || !out) return false;
