@@ -339,6 +339,14 @@ void Finish(void* s) {
     // straight-line check would pin him against a crate), and keeps the actor and player contacts.
     zombie::MoveZombie(o, tr.hx * tr.step, tr.hz * tr.step);
     tr.committed = false;
+    // Same trace as the branch below: without it a world-owned tyrant reports nothing at all, which is
+    // how a slow walk looked like a walk that was not being stepped.
+    if ((++tr.traces % 30) == 1) {
+      const float* now = reinterpret_cast<const float*>(o + game::O::kPos);
+      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 x=%.0f z=%.0f", s,
+          game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step,
+          tr.travel, tr.frames, now[0], now[2]);
+    }
     return;
   }
   // No PS1 world for this room: own the XZ absolutely, so the native physics cannot add a step.
