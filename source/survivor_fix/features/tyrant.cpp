@@ -58,6 +58,7 @@ struct Track {
   const uint8_t* model = nullptr;   // what the engine draws for him
   uint32_t updates = 0;             // world updates seen (the clip may advance once per update)
   uint32_t advanced = 0;            // the update the last allowed draw advance belongs to
+  uint32_t draws = 0;               // draws of his model, for the draw/update ratio in the trace
   uint32_t lastFrame = 0;
   float savedAim[3] = {};
   bool aimSaved = false;
@@ -351,10 +352,18 @@ void Finish(void* s) {
     // how a slow walk looked like a walk that was not being stepped.
     if ((++tr.traces % 30) == 1) {
       const float* now = reinterpret_cast<const float*>(o + game::O::kPos);
-      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 rate=%.2f cur=%d x=%.0f z=%.0f", s,
-          game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest), tr.step,
-          tr.travel, tr.frames, game::Read<float>(s, game::S::kNextSpeed),
-          tr.model ? game::Read<int>(tr.model, 0x44) : -1, now[0], now[2]);
+      // The clip cursor lives on the model's tracks, not on the model header (M+44 reads 0). The draw
+      // count and the update count over the same second give the ratio the throttle has to undo.
+      int cursor = -1;
+      if (tr.model) {
+        if (uint8_t* tracks = game::Read<uint8_t*>(tr.model, game::M::kTracks)) {
+          cursor = game::Read<int>(tracks, game::Q::kCursor);
+        }
+      }
+      Log("Tyrant: S=%p sel=%d req=%d step=%.1f travel=%.1f frames=%d world=1 rate=%.2f cur=%d upd=%u draws=%u x=%.0f z=%.0f",
+          s, game::Read<int>(s, game::S::kSelector), game::Read<int>(s, game::S::kRequest),
+          tr.step, tr.travel, tr.frames, game::Read<float>(s, game::S::kNextSpeed), cursor,
+          tr.updates, tr.draws, now[0], now[2]);
     }
     return;
   }
@@ -430,6 +439,7 @@ bool AllowDrawAdvance(const void* model) {
   for (auto& item : g_tracks) {
     Track& tr = item.second;
     if (!tr.model || tr.model != model) continue;
+    ++tr.draws;
     if (tr.updates == tr.advanced) return false;
     tr.advanced = tr.updates;
     return true;
