@@ -48,10 +48,13 @@ constexpr float kTyrantWalkStep = 26.0f;       // speed = -0x1A per frame
 constexpr float kTyrantStrideStep = 52.0f;     // speed <<= 1 in the stride band
 // 0043A364, the PC charge case: accumulate (0, 0, 40) once when the charge clip starts.
 constexpr float kTyrantChargeImpulse = 40.0f;
-// A charge lasts at least this many updates, so a short charge clip is still a burst of steps.
+// A charge lasts at least this many updates, so a short charge clip is still a burst of steps, and at
+// most this many: the charge clip is reapplied every update, which keeps its completion flag from
+// rising, so the port ends the charge on its own counter instead of waiting for it.
 constexpr int kTyrantChargeMinimum = 24;
-// The clip's own loop can end earlier than the PS1 action; 300 updates is the safety net.
-constexpr int kTyrantChargeTimeout = 300;
+constexpr int kTyrantChargeUpdates = 45;
+// Charging into a wall for this many updates ends the charge instead of pinning him there.
+constexpr int kTyrantChargeBlocked = 6;
 // en_turn_to(0x30): at most 0x30 angle units (4.2 degrees) per frame.
 constexpr float kTyrantTurnStep = 0x30 * 2.0f * 3.14159265f / 4096.0f;
 

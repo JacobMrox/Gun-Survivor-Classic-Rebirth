@@ -100,6 +100,10 @@ unsigned __fastcall Sound(void* manager,void* edx,int family,int cue) {
       if (!tyrantStepNow) return 0;
     }
   }
+  // Mr. X's walking sounds are bank 22 (TyrantAudio: caller 0043DE48/DE9D/DEC3, family 22), fired
+  // several times per update by the animation handler; keep the cadence gate above for 13/5 and this
+  // one for bank 22 while he walks, so the step is heard once instead of every frame.
+  if (tyrantWalk && family == 22 && !tyrantStepNow) return 0;
   return nativeSound(manager,edx,family,cue);
 }
 bool CacheWave(const std::vector<int16_t>& pcm,int cue,std::string& path,const char* category="walk") {

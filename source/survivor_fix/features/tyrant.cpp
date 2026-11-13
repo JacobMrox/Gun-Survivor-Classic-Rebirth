@@ -41,6 +41,7 @@ struct Track {
   bool charged = false;     // TW_CHARGED
   bool charging = false;    // clip 0x11 running
   int chargeUpdates = 0;
+  int chargeBlocked = 0;    // consecutive updates of the charge that covered no ground
   bool aim = false;
   int aimUpdates = 0;
   int aimReadyTick = 0;
@@ -204,8 +205,13 @@ void BeginUpdate(void* s, bool active) {
   if (tr.charging) {
     ++tr.chargeUpdates;
     const bool done = game::Read<uint8_t>(s, game::S::kDone) != 0;
-    if ((done && tr.chargeUpdates >= ps1::kTyrantChargeMinimum) ||
-        tr.chargeUpdates > ps1::kTyrantChargeTimeout) {
+    // The clip is reapplied on every update, which keeps its completion flag down: end on the port's
+    // own counter, and drop the charge when it cannot advance (a wall or a body in front).
+    if (tr.travel < 1.0f) ++tr.chargeBlocked; else tr.chargeBlocked = 0;
+    if (tr.chargeUpdates < ps1::kTyrantChargeMinimum) {
+      // keep charging
+    } else if (done || tr.chargeUpdates >= ps1::kTyrantChargeUpdates ||
+               tr.chargeBlocked >= ps1::kTyrantChargeBlocked) {
       tr.charging = false;
     }
   }
@@ -214,6 +220,7 @@ void BeginUpdate(void* s, bool active) {
     tr.charging = true;
     tr.charged = true;
     tr.chargeUpdates = 0;
+    tr.chargeBlocked = 0;
     // The charge commits to its heading, like the PS1 action that does not turn.
     const float flen = Planar(fw[0], fw[2]);
     if (flen > 0.0f) {
@@ -327,8 +334,14 @@ void Finish(void* s) {
   if (!tr.walking) return;
   zombie::SetHeading(o, tr.hx, tr.hz);
   ClearPlanar(o);
-  // The XZ is written here in every case: the PS1 world keeps protecting it from the physics, but the
-  // commit of 0043A8A0 is skipped for this actor often enough to make it stutter, so the step is ours.
+  if (zombie::WorldOwnsObject(o)) {
+    // Committed by WorldFinishUpdate -> StepZombieWorld, which slides along the ROOMENV walls (a plain
+    // straight-line check would pin him against a crate), and keeps the actor and player contacts.
+    zombie::MoveZombie(o, tr.hx * tr.step, tr.hz * tr.step);
+    tr.committed = false;
+    return;
+  }
+  // No PS1 world for this room: own the XZ absolutely, so the native physics cannot add a step.
   float* pos = game::Field<float>(o, game::O::kPos);
   if (!tr.committed) {
     tr.commitX = pos[0];
