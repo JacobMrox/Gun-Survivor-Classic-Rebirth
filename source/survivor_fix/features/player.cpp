@@ -45,6 +45,17 @@ using SpawnEntityFn = int(__cdecl*)(int type, int reserved1, int reserved2, floa
                                     float scale);
 const auto g_spawnEntity = reinterpret_cast<SpawnEntityFn>(game::kSpawnEntity);
 bool g_spawnReady = false;
+// 00434850 is also called by the room tables themselves, so hooking it reports every actor a room
+// places - the only way to name an actor the PS1 world never binds (a scripted Mr. X, for instance).
+SpawnEntityFn g_spawnOriginal = nullptr;
+int __cdecl SpawnEntityDetour(int type, int reserved1, int reserved2, float x, float y, float z,
+                              float yaw, uint32_t* killedFlag, int asleep, float scale) {
+  if (!g_spawnOriginal) return 0;
+  if (g_config.debugEnable) {
+    Log("SpawnActor: type %02X at %.0f %.0f %.0f asleep=%d", type, x, y, z, asleep);
+  }
+  return g_spawnOriginal(type, reserved1, reserved2, x, y, z, yaw, killedFlag, asleep, scale);
+}
 
 int g_turnRequest = 0;  // -1/+1: direction asked by the command handler in this frame
 ps1::PlayerTurn g_turn;
@@ -1066,10 +1077,24 @@ void DeathSlideAfterPhysics(uint8_t* t) {
   mt[3 * game::O::kMatrixRowFloats + 2] = p[2];
 }
 
+// Debug model probe: the pointer the engine draws for the player. A cutscene that puts Ark's cutscene
+// body in place of the in-game one changes it, and that pointer is what a free-cam swap needs.
+void TracePlayerModel(uint8_t* t) {
+  if (!g_config.debugEnable || !t) return;
+  const uint8_t* model = game::Read<uint8_t*>(t, game::O::kModel);
+  static const uint8_t* lastModel = nullptr;
+  static uint8_t* lastPlayer = nullptr;
+  if (model == lastModel && t == lastPlayer) return;
+  lastModel = model;
+  lastPlayer = t;
+  Log("PlayerModel: %p for player %p", model, t);
+}
+
 void __fastcall PhysicsDetour(void* c, void* edx) {
   int index = -1;
   uint8_t* t = c ? Player(c, &index) : nullptr;
   g_livePlayer = t;
+  TracePlayerModel(t);
   if (t) {
     const ps1::Gait gait = GaitOf(t);
     g_moveStep = 0.0f;  // set again by ApplyMove or by the death slide
@@ -1407,6 +1432,10 @@ bool InstallPlayer() {
   g_spawnReady = game::CheckBytes({game::kSpawnEntity, game::kSpawnEntityBytes,
                                    sizeof(game::kSpawnEntityBytes)});
   Log("DebugSpawn: native room-table spawn 00434850 %s", g_spawnReady ? "ready" : "unavailable");
+  if (g_spawnReady && g_config.debugEnable) {
+    Hook("SpawnActor", game::kSpawnEntity, reinterpret_cast<void*>(&SpawnEntityDetour),
+         reinterpret_cast<void**>(&g_spawnOriginal));
+  }
   if (g_spawnReady && !CloneSpawnCase(kDebugSpawnZombieWip, kDebugSpawnZombie)) {
     // Fallback: at least the zombie behaviour, even if the model has to be the zombie's.
     AliasSpawnType(kDebugSpawnZombieWip, kDebugSpawnZombie);
