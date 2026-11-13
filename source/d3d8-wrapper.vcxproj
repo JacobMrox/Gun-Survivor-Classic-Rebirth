@@ -180,6 +180,7 @@
     <ClInclude Include="survivor_fix\ps1\cadence_logic.h" />
     <ClInclude Include="survivor_fix\ps1\cerberus_logic.h" />
     <ClInclude Include="survivor_fix\ps1\crow_logic.h" />
+    <ClInclude Include="survivor_fix\ps1\free_cam_logic.h" />
     <ClInclude Include="survivor_fix\ps1\damage_view_logic.h" />
     <ClInclude Include="survivor_fix\ps1\death_logic.h" />
     <ClInclude Include="survivor_fix\ps1\headbob_logic.h" />

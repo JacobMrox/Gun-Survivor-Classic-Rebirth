@@ -1,4 +1,5 @@
 #include "../source/survivor_fix/features/debug_utility.h"
+#include "../source/survivor_fix/ps1/free_cam_logic.h"
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
@@ -116,4 +117,24 @@ int main() {
   assert(DebugSpawnDistanceClamped(9000.0f) == kDebugSpawnDistanceMax);
   assert(DebugSpawnDistanceClamped(std::nanf("")) == kDebugSpawnDistance);
   assert(DebugSpawnDistanceClamped(99.9f) == kDebugSpawnDistanceMin);
+  // Free camera: normalised direction, level strafe basis, yaw around Y and the step combination.
+  {
+    float dir[3] = {0.0f, 0.0f, -4.0f};
+    assert(ps1::FreeCamNormalize(dir, dir));
+    assert(std::fabs(dir[2] + 1.0f) < 1e-5f);
+    float right[3];
+    ps1::FreeCamRight(dir, right);
+    assert(std::fabs(right[0] - 1.0f) < 1e-5f && right[1] == 0.0f && std::fabs(right[2]) < 1e-5f);
+    float pos[3] = {0.0f, 0.0f, 0.0f};
+    ps1::FreeCamAdvance(pos, dir, right, 1.0f, 0.0f, 0.0f, 10.0f);
+    assert(std::fabs(pos[2] + 10.0f) < 1e-4f);
+    ps1::FreeCamAdvance(pos, dir, right, 0.0f, 1.0f, 1.0f, 10.0f);
+    assert(std::fabs(pos[0] - 10.0f) < 1e-4f && std::fabs(pos[1] - 10.0f) < 1e-4f);
+    // Looking down -Z and turning right by 90 degrees ends up looking down +X, the strafe side.
+    ps1::FreeCamYaw(dir, 1.57079633f);
+    assert(std::fabs(dir[0] - 1.0f) < 1e-4f && std::fabs(dir[2]) < 1e-4f);
+    const float flat[3] = {0.0f, 0.0f, 0.0f};
+    float out[3] = {1.0f, 1.0f, 1.0f};
+    assert(!ps1::FreeCamNormalize(flat, out));
+  }
 }

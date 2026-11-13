@@ -14,6 +14,7 @@
 #include "../hooks.h"
 #include "../log.h"
 #include "../ps1/damage_view_logic.h"
+#include "../ps1/free_cam_logic.h"
 #include "../ps1/headbob_logic.h"
 #include "../ps1/player_logic.h"
 #include "../ps1/wake_view_logic.h"
@@ -439,17 +440,90 @@ int SetPlayerView(void* cam, void* edx, const float* a, const float* b, const fl
   return g_setView(cam, edx, at, eye, c);
 }
 
+// Debug free camera ([SurvivorFix] DebugEnable): F7 detaches the eye from the player. 00460450 rebuilds
+// the player view only on the frames that need it, so while the camera is on it is applied every physics
+// frame with its own eye and direction. NUMPAD 8/2 move along the view, 4/6 strafe, 9/3 rise and fall,
+// 7/1 turn, Shift is faster. The player stays where he stands and the world keeps running, which is what
+// makes it usable for filming an enemy walk from the side or from behind.
+struct FreeCam {
+  bool on = false;
+  bool f7Down = false;
+  float eye[3] = {0.0f, 0.0f, 0.0f};
+  float dir[3] = {0.0f, 0.0f, -1.0f};
+};
+FreeCam g_freeCam;
+int g_freeCamTrace = 0;
+
+bool FreeCamKeyDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
+
+// The look-at distance only carries the direction into SetView; the eye is ours.
+int ApplyFreeCamera() {
+  if (!g_lastView.valid) return 0;
+  const float at[3] = {g_freeCam.eye[0] + g_freeCam.dir[0] * ps1::kFreeCamLookDistance,
+                       g_freeCam.eye[1] + g_freeCam.dir[1] * ps1::kFreeCamLookDistance,
+                       g_freeCam.eye[2] + g_freeCam.dir[2] * ps1::kFreeCamLookDistance};
+  return g_setView(g_lastView.cam, nullptr, at, g_freeCam.eye,
+                   g_lastView.hasUp ? g_lastView.c : nullptr);
+}
+
+void ToggleFreeCamera() {
+  if (!g_config.debugEnable) return;
+  g_freeCam.on = !g_freeCam.on;
+  if (g_freeCam.on && g_lastView.valid) {
+    std::memcpy(g_freeCam.eye, g_lastView.b, sizeof g_freeCam.eye);
+    const float dir[3] = {g_lastView.a[0] - g_lastView.b[0], g_lastView.a[1] - g_lastView.b[1],
+                          g_lastView.a[2] - g_lastView.b[2]};
+    if (!ps1::FreeCamNormalize(dir, g_freeCam.dir)) {
+      g_freeCam.dir[0] = 0.0f;
+      g_freeCam.dir[1] = 0.0f;
+      g_freeCam.dir[2] = -1.0f;
+    }
+  }
+  Log("DebugCamera: free camera %s at %.1f, %.1f, %.1f", g_freeCam.on ? "on" : "off", g_freeCam.eye[0],
+      g_freeCam.eye[1], g_freeCam.eye[2]);
+}
+
+void UpdateFreeCamera() {
+  const bool f7 = FreeCamKeyDown(VK_F7);
+  if (f7 && !g_freeCam.f7Down) ToggleFreeCamera();
+  g_freeCam.f7Down = f7;
+  if (!g_freeCam.on) return;
+  const float yaw = (FreeCamKeyDown(VK_NUMPAD7) ? 1.0f : 0.0f) - (FreeCamKeyDown(VK_NUMPAD1) ? 1.0f : 0.0f);
+  if (yaw != 0.0f) ps1::FreeCamYaw(g_freeCam.dir, yaw * ps1::kFreeCamYawStep);
+  const float ahead = (FreeCamKeyDown(VK_NUMPAD8) ? 1.0f : 0.0f) - (FreeCamKeyDown(VK_NUMPAD2) ? 1.0f : 0.0f);
+  const float side = (FreeCamKeyDown(VK_NUMPAD6) ? 1.0f : 0.0f) - (FreeCamKeyDown(VK_NUMPAD4) ? 1.0f : 0.0f);
+  const float lift = (FreeCamKeyDown(VK_NUMPAD9) ? 1.0f : 0.0f) - (FreeCamKeyDown(VK_NUMPAD3) ? 1.0f : 0.0f);
+  float right[3];
+  ps1::FreeCamRight(g_freeCam.dir, right);
+  const float step =
+      (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 ? ps1::kFreeCamFastStep : ps1::kFreeCamStep;
+  ps1::FreeCamAdvance(g_freeCam.eye, g_freeCam.dir, right, ahead, side, lift, step);
+  ApplyFreeCamera();
+  // Same idea as the tyrant trace: the pose every 30 frames, so a shot can be framed from the log
+  // instead of by trial and error.
+  if (++g_freeCamTrace >= 30) {
+    g_freeCamTrace = 0;
+    Log("DebugCamera: eye %.0f %.0f %.0f dir %.2f %.2f %.2f", g_freeCam.eye[0], g_freeCam.eye[1],
+        g_freeCam.eye[2], g_freeCam.dir[0], g_freeCam.dir[1], g_freeCam.dir[2]);
+  }
+}
+
 int __fastcall SetViewDetour(void* cam, void* edx, const float* a, const float* b, const float* c) {
   const bool fromPlayer = SF_RETURN_ADDRESS() == game::kPlayerViewReturn;
-  // Bob: same offset for a and b, pitch unchanged.
-  if ((g_config.ps1HeadBob || g_config.ps1DamageView || g_config.ps1View || g_config.ps1PlayerDeath) && fromPlayer &&
-      a && b) {
+  const bool tracked = fromPlayer && a && b;
+  if (tracked) {
     g_lastView.cam = cam;
     std::memcpy(g_lastView.a, a, sizeof g_lastView.a);
     std::memcpy(g_lastView.b, b, sizeof g_lastView.b);
     g_lastView.hasUp = c != nullptr;
     if (c) std::memcpy(g_lastView.c, c, sizeof g_lastView.c);
     g_lastView.valid = true;
+  }
+  // The free camera keeps its own eye: the player's view is stored above (that is where the direction
+  // comes from when it is switched on) and then replaced.
+  if (g_freeCam.on && tracked) return ApplyFreeCamera();
+  // Bob: same offset for a and b, pitch unchanged.
+  if ((g_config.ps1HeadBob || g_config.ps1DamageView || g_config.ps1View || g_config.ps1PlayerDeath) && tracked) {
     g_viewThisFrame = true;
     return SetPlayerView(cam, edx, a, b, c);
   }
@@ -1034,6 +1108,7 @@ void __fastcall PhysicsDetour(void* c, void* edx) {
   ++g_physicsFrames;
   if (g_wake.frame >= 0 && t == g_wake.o) ApplyWakeFrame();
   RefreshJoltView();
+  UpdateFreeCamera();  // after the jolt, so the free camera wins the frame it is on
   UpdateItemApproachPrompt(t);
 }
 
