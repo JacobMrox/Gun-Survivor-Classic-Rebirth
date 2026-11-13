@@ -32,10 +32,13 @@ constexpr int kTyrantAimSelector = 0x13;
 constexpr int kTyrantSwingLeft = 5;      // PlayerSide 1: ty_anim(e, 5, 0x40)
 constexpr int kTyrantSwingRight = 0x15;  // PlayerSide 2: ty_anim(e, 0x15, 0x40)
 
-// S+40 of the mapper's own idle case (0043A21D) and of the 1x walk (0043A24C). 2.93 is the zombies'
-// 1x value in config.h; the tyrant case uses 3.0.
+// S+40 of the mapper's idle case (0043A21D) is 2.0. The walk case writes 3.0, but that is not this
+// model's 1x rate: measured in game (2026-11-13, Tyrant trace) the body covers exactly 26 units per
+// update while the legs cycle at more than twice the cadence that stride needs. The PS1 walk of
+// tyrant.c is a slow stalk, so the walk is played at half the mapper's value, which brings the feet
+// back onto the 26 unit step; the idle keeps the mapper's 2.0.
 constexpr float kTyrantIdleSpeed = 2.0f;
-constexpr float kTyrantWalkSpeed = 3.0f;
+constexpr float kTyrantWalkSpeed = 1.5f;
 
 // ---- WalkStep (80101404) -------------------------------------------------------------------------
 constexpr float kTyrantStrideRange = 3001.0f;  // 0xBB9: the stride band and the charge rearm

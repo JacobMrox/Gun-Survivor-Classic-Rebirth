@@ -18,8 +18,9 @@ bool ready = false;
 bool voiceSamplesReady = false;
 thread_local void* subject = nullptr;
 thread_local bool tyrantWalk = false;
-// Mr. X: the native walking call fires on every sequence reapplication; a heavy walk needs one step
-// every so many updates instead of one per update.
+thread_local bool tyrantStepNow = false;
+// Mr. X: the native walking call can fire several times in one update (once per reapplication), so the
+// throttle counts updates, not calls: one step every 14 updates is a heavy walk.
 constexpr unsigned kTyrantFootstepUpdates = 14;
 std::unordered_map<void*, unsigned> tyrantSteps;
 thread_local int headingBefore = 0;
@@ -76,13 +77,28 @@ bool __fastcall Load(void* sound,void* edx,const char* path,char mode,int flags,
   return ok || nativeLoad(sound,edx,path,mode,flags,algorithm);
 }
 unsigned __fastcall Sound(void* manager,void* edx,int family,int cue) {
+  // Identify which cues this actor emits while he walks (first call of each caller/cue pair only).
+  if (tyrantWalk && subject) {
+    const uintptr_t caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
+    static uintptr_t seen[8] = {};
+    static int seenCount = 0;
+    bool known = false;
+    for (int i = 0; i < seenCount; ++i) known = known || seen[i] == (caller ^ (uintptr_t(cue) << 24) ^ uintptr_t(family));
+    if (!known && seenCount < 8) {
+      seen[seenCount++] = caller ^ (uintptr_t(cue) << 24) ^ uintptr_t(family);
+      Log("TyrantAudio: caller=%08X family=%d cue=%d", static_cast<unsigned>(caller), family, cue);
+    }
+  }
   // 43D550 calls 471260(13,5) only when a walking animation is reapplied. Keep its
   // voices and all other callers; the PS1 event below owns this walking sound.
   // Mr. X: keep the native call (it selects his own bank), but only one step in
   // kTyrantFootstepUpdates instead of one per reapplication.
   if (reinterpret_cast<uintptr_t>(_ReturnAddress())==0x0043D5F2 && subject && family==13 && cue==5) {
     if (Managed(subject)) return 0;
-    if (tyrantWalk && (++tyrantSteps[subject] % kTyrantFootstepUpdates) != 3) return 0;
+    if (tyrantWalk) {
+      // Decided once per update in WalkAudioBefore, not per call.
+      if (!tyrantStepNow) return 0;
+    }
   }
   return nativeSound(manager,edx,family,cue);
 }
@@ -132,7 +148,11 @@ bool PrepareVoices(const std::vector<uint8_t>& bytes) {
 void WalkAudioBefore(void* s) {
   subject=nullptr;
   tyrantWalk=false;
-  if(TyrantManaged(s)){subject=s;tyrantWalk=true;return;}
+  if(TyrantManaged(s)){
+    subject=s;tyrantWalk=true;
+    tyrantStepNow=(++tyrantSteps[s]%kTyrantFootstepUpdates)==3;
+    return;
+  }
   if(!Managed(s))return;
   uint8_t *o,*t;if(!GetObjects(s,o,t))return;
   subject=s;headingBefore=Heading(o);
@@ -140,10 +160,10 @@ void WalkAudioBefore(void* s) {
 void WalkAudioAfter(void* s) {
   const bool active=subject==s;
   const bool tyrant=tyrantWalk&&active;
-  subject=nullptr;tyrantWalk=false;
+  subject=nullptr;tyrantWalk=false;tyrantStepNow=false;
   if(tyrant) {
-    // The step counter is advanced by the native calls themselves (Sound); it is only reset when
-    // this actor stops walking, so the first step of a new walk sounds at once.
+    // The counter advances once per update in WalkAudioBefore; it is only reset when this actor
+    // stops walking, so the first step of a new walk sounds at once.
     const int request=game::Read<int>(s,game::S::kRequest);
     uint8_t *o,*t;
     if(!GetObjects(s,o,t)||game::Read<float>(o,0x11C)<=0||request<2||request>7) tyrantSteps.erase(s);
