@@ -42,7 +42,7 @@ struct Track {
   bool charged = false;     // TW_CHARGED
   bool charging = false;    // clip 0x11 running
   int chargeUpdates = 0;
-  int chargeBlocked = 0;    // consecutive updates of the charge that covered no ground
+  int chargeBlocked = 0;    // consecutive updates that covered less than half the charge step
   bool aim = false;
   int aimUpdates = 0;
   int aimReadyTick = 0;
@@ -202,8 +202,7 @@ void BeginUpdate(void* s, bool active) {
   const bool facing = ps1::TyrantFacing(fw[0], fw[2], toX, toZ);
   const bool locomotion = ps1::IsTyrantWalkRequest(request);
 
-  // The far branch switches the parts to the stride and rearms the charge once; after that the roll
-  // is made whenever the player is inside 6000, so a charge can start before he is close.
+  // The far branch switches the parts to the stride and rearms exactly one charge attempt.
   if (ps1::TyrantEntersStride(tr.strideMode, distance)) {
     tr.strideMode = true;
     tr.charged = false;
@@ -215,7 +214,8 @@ void BeginUpdate(void* s, bool active) {
     const bool done = game::Read<uint8_t>(s, game::S::kDone) != 0;
     // The clip is reapplied on every update, which keeps its completion flag down: end on the port's
     // own counter, and drop the charge when it cannot advance (a wall or a body in front).
-    if (tr.travel < 1.0f) ++tr.chargeBlocked; else tr.chargeBlocked = 0;
+    if (ps1::TyrantChargeObstructed(tr.step, tr.travel)) ++tr.chargeBlocked;
+    else tr.chargeBlocked = 0;
     // A charge that cannot advance is over at once, even before its minimum: holding the clip while the
     // body slides along a wall is the pose that looked like a pause, and the legs kept running.
     if (tr.chargeBlocked >= ps1::kTyrantChargeBlocked) {
@@ -226,17 +226,23 @@ void BeginUpdate(void* s, bool active) {
       tr.charging = false;
     }
   }
-  if (!tr.charging && locomotion &&
-      ps1::TyrantShouldCharge(tr.charged, distance, zombie::NextRngByte() % 100, facing)) {
-    tr.charging = true;
-    tr.charged = true;
-    tr.chargeUpdates = 0;
-    tr.chargeBlocked = 0;
-    // The charge commits to its heading, like the PS1 action that does not turn.
-    const float flen = Planar(fw[0], fw[2]);
-    if (flen > 0.0f) {
-      tr.hx = fw[0] / flen;
-      tr.hz = fw[2] / flen;
+  const auto& walls = CurrentRoomWalls();
+  const bool clearPath = walls.empty() ||
+                         ps1::FirstBlockingWall(walls, {pos[0], -pos[2]}, {tp[0], -tp[2]}) < 0;
+  if (!tr.charging && locomotion) {
+    const ps1::TyrantChargeAttempt attempt =
+        ps1::TyrantTryCharge(tr.charged, distance, zombie::NextRngByte() % 100, facing, clearPath);
+    if (attempt.consumed) tr.charged = true;
+    if (attempt.start) {
+      tr.charging = true;
+      tr.chargeUpdates = 0;
+      tr.chargeBlocked = 0;
+      // The charge commits to its heading, like the PS1 action that does not turn.
+      const float flen = Planar(fw[0], fw[2]);
+      if (flen > 0.0f) {
+        tr.hx = fw[0] / flen;
+        tr.hz = fw[2] / flen;
+      }
     }
   }
 
@@ -275,17 +281,16 @@ void BeginUpdate(void* s, bool active) {
     return;
   }
   tr.walking = true;
-  // 26 units per update for the walk: the walk clip is authored at that stride (S+40 = 3.0 is the PS1
-  // 1x rate). Only the charge clip takes the doubled step.
+  // WalkStep uses 26 units with the parts at 0x10 and doubles both at 0x20. A charge also uses the
+  // doubled ground step, but its separate clip keeps its own authored rate.
   // The PS1 covers 26 units per frame. The PC services this actor at its own cadence, so the step
   // is multiplied by the frames elapsed since its last update: an actor updated every third frame
   // then covers three frames of ground instead of crawling.
-  tr.step = ps1::TyrantStep(tr.charging) * static_cast<float>(tr.frames);
+  tr.step = ps1::TyrantStep(tr.charging || tr.strideMode) * static_cast<float>(tr.frames);
   if (tr.charging) return;  // the charge keeps the heading it committed to
 
   // Steer: the same PS1 nav the zombies use. It turns to the player, strides with a clear line and
   // goes round a wall; while it asks for a turn on the spot there is no step (8007F210).
-  const auto& walls = CurrentRoomWalls();
   ps1::NavParams params;
   if (!walls.empty()) {
     params.ps1IntegerSteer = true;
@@ -412,7 +417,7 @@ void Finish(void* s) {
 }
 
 // Runs where the native mapper result is final. Death, aim, charge and sidestep pick their PS1 clip;
-// the walk keeps the authored 1x rate.
+// the walk keeps the PS1 0x10/0x20 cadence.
 void Map(void* s, int request, int& result) {
   if (!g_config.ps1Tyrant || !ps1::IsTyrant(game::Read<int>(s, game::S::kType))) return;
   if (ps1::IsTyrantDeathRequest(request)) {
@@ -429,7 +434,7 @@ void Map(void* s, int request, int& result) {
   }
   if (t.charging && ps1::IsTyrantWalkRequest(request)) {
     *game::Field<float>(s, game::S::kNextSpeed) =
-        ps1::TyrantClipRate(ps1::kTyrantChargeSpeed, t.step, t.travel);
+        ps1::TyrantChargeClipRate(t.chargeUpdates, t.step, t.travel);
     result = ps1::kTyrantChargeSelector;
     return;
   }
@@ -439,10 +444,11 @@ void Map(void* s, int request, int& result) {
     return;
   }
   if (!ps1::IsTyrantWalkRequest(request) || result != ps1::kTyrantWalkSelector) return;
-  // The idle clip keeps the mapper's own rate; the walk follows the ground covered this update.
+  // SetPartsDir uses 0x10 near the player and 0x20 in the far stride. The PC model's equivalent
+  // rates are 3.0 and 6.0; all tracks receive the same value from the native application loop.
   *game::Field<float>(s, game::S::kNextSpeed) =
       t.standing ? ps1::kTyrantIdleSpeed
-                 : ps1::TyrantClipRate(ps1::kTyrantWalkSpeed, t.step, t.travel);
+                 : ps1::TyrantWalkSpeed(t.strideMode);
   result = ps1::TyrantWalkSelector(t.standing);
 }
 
@@ -458,55 +464,6 @@ void NoteDraw(const void* model) {
       return;
     }
   }
-}
-
-// True when the model being drawn belongs to an actor this module tracks.
-bool OwnsModel(const void* model) {
-  if (!g_config.ps1Tyrant || !model) return false;
-  for (const auto& item : g_tracks) {
-    if (item.second.model && item.second.model == model) return true;
-  }
-  return false;
-}
-// 00412B90(M, track, selector, transition, speed): hands one clip to one track. This runs after the
-// mapper has written S+40, so the speed scaled here is the one the clip actually plays at.
-using ApplySequenceFn = void(__fastcall*)(void* m, void* edx, void* track, int selector, int transition,
-                                          float speed);
-ApplySequenceFn g_applySequence = nullptr;
-
-void __fastcall ApplySequenceDetour(void* m, void* edx, void* track, int selector, int transition,
-                                    float speed) {
-  if (!g_applySequence) return;
-  if (OwnsModel(m)) {
-    // Which track is this? The tracks are an array of fixed-size records after the model header.
-    int index = 0;
-    if (auto* base = game::Read<uint8_t*>(m, game::M::kTracks); base && track &&
-                                                              reinterpret_cast<uint8_t*>(track) >= base &&
-                                                              game::M::kTrackSize > 0) {
-      index = static_cast<int>((reinterpret_cast<uint8_t*>(track) - base) / game::M::kTrackSize);
-      const unsigned count = game::Read<unsigned>(m, game::M::kTrackCount);
-      if (index < 0 || static_cast<unsigned>(index) >= count) index = 0;
-    }
-    if (selector == ps1::kTyrantWalkSelector) {
-      speed *= ps1::TyrantWalkClipScale(index);
-    } else if (selector == ps1::kTyrantChargeSelector) {
-      speed *= ps1::kTyrantChargeClipScale;
-    }
-    static int logged = 0;
-    if (g_config.debugEnable && (++logged % 120) == 1) {
-      Log("TyrantTrack: idx=%d sel=%d speed=%.2f", index, selector, speed);
-    }
-  }
-  g_applySequence(m, edx, track, selector, transition, speed);
-}
-
-bool InstallHooks() {
-  if (!g_config.ps1Tyrant) return false;
-  const bool ready = Hook("ApplySequence", game::kApplySequence,
-                          reinterpret_cast<void*>(&ApplySequenceDetour),
-                          reinterpret_cast<void**>(&g_applySequence));
-  Log("Tyrant: clip rate scale at 00412B90 %s", ready ? "installed" : "unavailable");
-  return ready;
 }
 
 void Reset() {

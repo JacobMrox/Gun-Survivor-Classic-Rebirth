@@ -32,25 +32,19 @@ constexpr int kTyrantAimSelector = 0x13;
 constexpr int kTyrantSwingLeft = 5;      // PlayerSide 1: ty_anim(e, 5, 0x40)
 constexpr int kTyrantSwingRight = 0x15;  // PlayerSide 2: ty_anim(e, 0x15, 0x40)
 
-// S+40 of the mapper's idle case (0043A21D) is 2.0. The walk case writes 3.0, but that is not this
-// model's 1x rate: measured in game (2026-11-13, Tyrant trace) the body covers exactly 26 units per
-// update while the legs cycle at more than twice the cadence that stride needs. The PS1 walk of
-// tyrant.c is a slow stalk, so the walk is played at half the mapper's value, which brings the feet
-// back onto the 26 unit step; the idle keeps the mapper's 2.0.
-// The mapper writes 3.0 for the walk clip, but the port moves him 26 units per update: at that step the
-// mapper's rate cycles the legs twice for every stride, which is the "legs double the torso" report. The
-// scale is applied where the clip is handed to each track (00412B90), after the mapper, so it sticks.
-// The tracks do not share a cadence: scaling every track halved the torso with the legs and left them
-// moving independently, so only the lower-body track (index 1 and up) is scaled and the root/torso
-// track keeps the mapper's rate.
-constexpr float TyrantWalkClipScale(int trackIndex) {
-  return trackIndex <= 0 ? 1.0f : 0.5f;
-}
-constexpr float kTyrantChargeClipScale = 1.0f;  // the charge step is doubled, so its clip stays as authored
+// The PC mapper's walk value, 3.0, is the PS1 0x10 part increment (one authored frame). WalkStep changes
+// every animated part to 0x20 when striding, so both the ground step and the clip cadence double. Keep
+// every PC track on the same rate; splitting the root/torso and lower-body rates makes them drift by
+// construction.
 constexpr float kTyrantIdleSpeed = 2.0f;
-constexpr float kTyrantWalkSpeed = 1.0f;
-// The charge covers 52 units per update, twice the walk, so its clip runs at twice the walk rate.
-constexpr float kTyrantChargeSpeed = 2.0f;
+constexpr float kTyrantWalkSpeed = 3.0f;
+constexpr float kTyrantStrideSpeed = 6.0f;
+constexpr float TyrantWalkSpeed(bool striding) {
+  return striding ? kTyrantStrideSpeed : kTyrantWalkSpeed;
+}
+// The PC mapper's charge case writes 3.0 (0043A335).  Keep that authored rate while the world transform
+// moves at the PS1 stride step below; 2.0 made the charge action visibly play in slow motion.
+constexpr float kTyrantChargeSpeed = 3.0f;
 // The clip rate follows the ground the body actually covered in the last update, not the step it asked
 // for: a charge pinned on a wall, or a walk sliding along one, must not keep pumping the legs at full
 // stride while the body covers a handful of units (the "legs faster than he moves" complaint). The
@@ -61,6 +55,13 @@ constexpr float TyrantClipRate(float base, float intendedStep, float travelled) 
   if (!(ratio > 0.0f)) return base * 0.25f;
   const float clamped = ratio > 1.0f ? 1.0f : (ratio < 0.25f ? 0.25f : ratio);
   return base * clamped;
+}
+
+// The first charge frame has only the preceding walk's travel sample.  Do not let that stale sample
+// start the charge at the 0.25x floor; later frames can follow the distance actually covered.
+constexpr float TyrantChargeClipRate(int chargeUpdates, float intendedStep, float travelled) {
+  return chargeUpdates == 0 ? kTyrantChargeSpeed
+                            : TyrantClipRate(kTyrantChargeSpeed, intendedStep, travelled);
 }
 
 // ---- WalkStep (80101404) -------------------------------------------------------------------------
@@ -76,8 +77,12 @@ constexpr float kTyrantChargeImpulse = 40.0f;
 // rising, so the port ends the charge on its own counter instead of waiting for it.
 constexpr int kTyrantChargeMinimum = 24;
 constexpr int kTyrantChargeUpdates = 45;
-// Charging into a wall for this many updates ends the charge instead of pinning him there.
-constexpr int kTyrantChargeBlocked = 6;
+// A charge that covers less than half its requested step is obstructed. Two consecutive obstructed
+// updates are enough to drop the action and return control to wall steering.
+constexpr int kTyrantChargeBlocked = 2;
+constexpr bool TyrantChargeObstructed(float intendedStep, float travelled) {
+  return intendedStep > 1.0f && travelled < intendedStep * 0.5f;
+}
 // en_turn_to(0x30): at most 0x30 angle units (4.2 degrees) per frame.
 constexpr float kTyrantTurnStep = 0x30 * 2.0f * 3.14159265f / 4096.0f;
 
@@ -113,8 +118,7 @@ constexpr bool TyrantFacing(float fx, float fz, float tx, float tz) {
   return dot > 0.0f && dot * dot >= kTyrantFacingCosine * kTyrantFacingCosine * squared;
 }
 
-// The far branch of WalkStep switches the parts to the stride direction and rearms the charge roll
-// once; every later update may roll again, so a charge can start well before the player is close.
+// The far branch of WalkStep switches the parts to the stride direction and rearms one charge attempt.
 constexpr bool TyrantEntersStride(bool strideMode, float distance) {
   return distance >= kTyrantStrideRange && !strideMode;
 }
@@ -122,9 +126,16 @@ constexpr bool TyrantLeavesStride(float distance) { return distance < kTyrantStr
 constexpr bool TyrantStriding(float distance) { return distance >= kTyrantStrideRange; }
 constexpr float TyrantStep(bool striding) { return striding ? kTyrantStrideStep : kTyrantWalkStep; }
 
-// One charge per approach: inside 6001, a quarter of the rolls, with the player in front.
-constexpr bool TyrantShouldCharge(bool charged, float distance, int roll, bool facing) {
-  return !charged && distance < kTyrantChargeRange && roll < kTyrantChargeOdds && facing;
+// n_tyrant_CanCharge sets TW_CHARGED before checking range, RNG, visibility or cone.  Represent both
+// outputs so a failed roll is consumed rather than being retried every update until it succeeds.
+struct TyrantChargeAttempt {
+  bool consumed;
+  bool start;
+};
+constexpr TyrantChargeAttempt TyrantTryCharge(bool charged, float distance, int roll, bool facing,
+                                               bool clearPath) {
+  if (charged) return {false, false};
+  return {true, distance < kTyrantChargeRange && roll < kTyrantChargeOdds && facing && clearPath};
 }
 
 // PlayerSide of 80100FE8: 0 straight ahead, 1 and 2 the two sides of the line.

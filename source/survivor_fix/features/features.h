@@ -36,8 +36,8 @@ void WorldBeforeQuery(void* c, int index);
 void WorldBridgeReady(bool ready);
 }  // namespace zombie
 
-// Mr. X (tyrant.cpp): PC types 22/23 get the PS1 walk/idle choice from the travel the native physics
-// produced, and the PS1 death clip 9 (ps1/tyrant_logic.h). No movement, collision or attack is replaced.
+// Mr. X (tyrant.cpp): PC types 22/23 use the PS1 walk/stride movement, steering, charge and death clip
+// from ps1/tyrant_logic.h while retaining the PC model and attack mapper.
 namespace tyrant {
 void BeginUpdate(void* s, bool active);
 void Finish(void* s);
@@ -46,9 +46,6 @@ void OnPlayerShot();
 void Reset();
 // Counts a draw of his model (diagnostic: the draw/update ratio in the trace).
 void NoteDraw(const void* model);
-// Scales the clip rate where the mapper hands it to each track (00412B90), so the walk plays at the
-// cadence the 26-unit step needs. Installed with the zombie hooks.
-bool InstallHooks();
 }  // namespace tyrant
 
 // Start of a zombie's life (zombie_life.cpp): the native initialisation of S (4361B0 -> 436B04).

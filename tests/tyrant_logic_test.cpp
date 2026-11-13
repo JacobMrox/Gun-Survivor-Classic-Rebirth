@@ -35,16 +35,25 @@ int main() {
   CHECK(TyrantStriding(3001.0f));
   CHECK(TyrantStep(false) == 26.0f);
   CHECK(TyrantStep(true) == 52.0f);
+  CHECK(TyrantWalkSpeed(false) == 3.0f);
+  CHECK(TyrantWalkSpeed(true) == 6.0f);
   CHECK(TyrantEntersStride(false, 3001.0f));
   CHECK(!TyrantEntersStride(true, 3001.0f));
   CHECK(!TyrantEntersStride(false, 3000.0f));
   CHECK(TyrantLeavesStride(3000.0f));
   CHECK(!TyrantLeavesStride(3001.0f));
-  CHECK(TyrantShouldCharge(false, 5000.0f, 24, true));
-  CHECK(!TyrantShouldCharge(false, 5000.0f, 25, true));
-  CHECK(!TyrantShouldCharge(true, 5000.0f, 0, true));
-  CHECK(!TyrantShouldCharge(false, 6001.0f, 0, true));
-  CHECK(!TyrantShouldCharge(false, 5000.0f, 0, false));
+  TyrantChargeAttempt charge = TyrantTryCharge(false, 5000.0f, 24, true, true);
+  CHECK(charge.consumed && charge.start);
+  charge = TyrantTryCharge(false, 5000.0f, 25, true, true);
+  CHECK(charge.consumed && !charge.start);  // a failed PS1 roll is still the one attempt
+  charge = TyrantTryCharge(true, 5000.0f, 0, true, true);
+  CHECK(!charge.consumed && !charge.start);
+  charge = TyrantTryCharge(false, 6001.0f, 0, true, true);
+  CHECK(charge.consumed && !charge.start);
+  charge = TyrantTryCharge(false, 5000.0f, 0, false, true);
+  CHECK(charge.consumed && !charge.start);
+  charge = TyrantTryCharge(false, 5000.0f, 0, true, false);
+  CHECK(charge.consumed && !charge.start);  // WallToPlayer branch cannot charge
   // The aim stop: far, in front, a shot just fired, no aim running and off cooldown.
   CHECK(TyrantShouldAim(false, 3001.0f, true, true, true));
   CHECK(!TyrantShouldAim(true, 3001.0f, true, true, true));
@@ -85,6 +94,11 @@ int main() {
   CHECK(std::fabs(TyrantClipRate(1.0f, 52.0f, 80.0f) - 1.0f) < 1e-5f);
   CHECK(std::fabs(TyrantClipRate(1.0f, 0.0f, 0.0f) - 0.25f) < 1e-5f);
   CHECK(std::fabs(TyrantClipRate(2.0f, 52.0f, 52.0f) - 2.0f) < 1e-5f);
+  CHECK(std::fabs(TyrantChargeClipRate(0, 52.0f, 0.0f) - 3.0f) < 1e-5f);
+  CHECK(std::fabs(TyrantChargeClipRate(1, 52.0f, 52.0f) - 3.0f) < 1e-5f);
+  CHECK(TyrantChargeObstructed(52.0f, 10.0f));
+  CHECK(!TyrantChargeObstructed(52.0f, 26.0f));
+  CHECK(!TyrantChargeObstructed(52.0f, 52.0f));
   // A turn that cannot finish is abandoned so the body takes a step and slides along the geometry.
   CHECK(!TyrantTurnGivesUp(0));
   CHECK(!TyrantTurnGivesUp(kTyrantTurnGiveUp));
