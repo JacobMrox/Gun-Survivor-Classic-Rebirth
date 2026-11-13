@@ -91,6 +91,11 @@ constexpr int kTyrantAimShotWindow = 3;  // updates between the shot and the rea
 constexpr float kTyrantFacingCosine = 0.5f;
 
 // Hysteresis of the standstill (units of travel between two updates).
+// A turn the body cannot finish leaves him playing the walk clip on the spot (measured: sel=1 req=2
+// step=0 travel=0 at one x/z for seconds). After this many turning updates the step is taken anyway and
+// StepZombieWorld slides him along the obstacle, the way the zombies and dogs get round geometry.
+constexpr int kTyrantTurnGiveUp = 12;
+constexpr bool TyrantTurnGivesUp(int turnUpdates) { return turnUpdates > kTyrantTurnGiveUp; }
 constexpr float kTyrantStandEnter = 3.0f;
 constexpr float kTyrantStandExit = 8.0f;
 

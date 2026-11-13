@@ -85,6 +85,10 @@ int main() {
   CHECK(std::fabs(TyrantClipRate(1.0f, 52.0f, 80.0f) - 1.0f) < 1e-5f);
   CHECK(std::fabs(TyrantClipRate(1.0f, 0.0f, 0.0f) - 0.25f) < 1e-5f);
   CHECK(std::fabs(TyrantClipRate(2.0f, 52.0f, 52.0f) - 2.0f) < 1e-5f);
+  // A turn that cannot finish is abandoned so the body takes a step and slides along the geometry.
+  CHECK(!TyrantTurnGivesUp(0));
+  CHECK(!TyrantTurnGivesUp(kTyrantTurnGiveUp));
+  CHECK(TyrantTurnGivesUp(kTyrantTurnGiveUp + 1));
   std::puts("PASS: Mr. X walk step, charge, aim, sidestep and death rules");
   return 0;
 }

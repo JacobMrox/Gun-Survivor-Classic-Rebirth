@@ -49,6 +49,7 @@ struct Track {
   int side = 0;  // a sidestep is owed for the next attack (1 left, 2 right)
   bool steering = false;
   bool turning = false;   // the nav wants a turn on the spot: no step
+  int turnUpdates = 0;    // consecutive updates spent turning, for the give-up below
   bool standing = false;  // the body does not travel: the idle clip replaces the walk
   bool walking = false;   // this update plans a step
   bool gameplay = false;  // the update is the gameplay one
@@ -303,8 +304,17 @@ void BeginUpdate(void* s, bool active) {
   tr.steering = nav.walk && !walls.empty() &&
                 ps1::FirstBlockingWall(walls, {pos[0], -pos[2]}, {tp[0], -tp[2]}) >= 0;
   if (tr.turning) {
-    tr.step = 0.0f;  // turning on the spot
     tr.standing = false;
+    if (ps1::TyrantTurnGivesUp(++tr.turnUpdates)) {
+      // Wedged against geometry: take the step with the heading the nav asked for and let the world
+      // step slide along the wall instead of playing the walk clip on the spot for ever.
+      tr.turning = false;
+      tr.turnUpdates = 0;
+    } else {
+      tr.step = 0.0f;  // turning on the spot
+    }
+  } else {
+    tr.turnUpdates = 0;
   }
   if (tr.steering) {
     float* aim = game::Field<float>(t, game::O::kAimPoint);
