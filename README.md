@@ -231,7 +231,13 @@ Também tem um significado pessoal para mim, pois foi o primeiro jogo de Residen
 Current development version: **1.2**
 
 <img width="962" height="758" alt="image" src="https://github.com/user-attachments/assets/f2e5d51f-e0e3-4e08-8271-f85f2ef48407" />
+ <div align="center">Custom Debug Menu for Testing</div>
 
+<img width="1100" height="758" alt="image" src="https://github.com/user-attachments/assets/26246504-a5df-497d-923f-930c5c180d58"/>
+ <div align="center">Spot the new Zombie </div>
+
+
+Current & completed tasks:
 - Replace DirectShow movie playback with FFmpeg — implemented; a few movies still need investigation (Jacob).
 - ~~Skip FMV/video movies with Enter~~ (Jacob).
 - ~~Remove original game log printing (`debug.txt`)~~ — the game's own trace file is folded into `debug.log`, so no `debug.txt` is created any more (delete a leftover one from the game folder).
