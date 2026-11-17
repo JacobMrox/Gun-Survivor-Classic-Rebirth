@@ -236,6 +236,10 @@ Current development version: **1.2**
 <img width="1100" height="758" alt="image" src="https://github.com/user-attachments/assets/26246504-a5df-497d-923f-930c5c180d58"/>
  <div align="center">Spot the new Zombie </div>
 
+ <img width="802" height="638" alt="image" src="https://github.com/user-attachments/assets/707b9ee3-ec69-4d31-9d7f-7391f236dea3" />
+ <div align="center">Completely Reworked Title screen with new options (Quit, Continue, Multiplayer...)</div>
+
+
 
 Current & completed tasks:
 - Replace DirectShow movie playback with FFmpeg — implemented; a few movies still need investigation (Jacob).
